@@ -1,0 +1,298 @@
+use std::sync::{Arc, Mutex};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use ringbuf::{storage::Heap, traits::*, SharedRb};
+use tauri::Manager;
+
+pub struct StreamWrapper(pub cpal::Stream);
+unsafe impl Send for StreamWrapper {}
+unsafe impl Sync for StreamWrapper {}
+
+pub struct AudioState {
+    pub is_recording: bool,
+    pub buffer: Vec<f32>,
+    pub stream: Option<StreamWrapper>,
+    pub selected_device: Option<String>,
+    pub recording_start: Option<chrono::DateTime<chrono::Local>>,
+}
+
+pub struct AudioController {
+    pub state: Arc<Mutex<AudioState>>,
+}
+
+impl AudioController {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(AudioState {
+                is_recording: false,
+                buffer: Vec::new(),
+                stream: None,
+                selected_device: None,
+                recording_start: None,
+            })),
+        }
+    }
+
+    pub fn list_devices(&self) -> Result<Vec<String>, String> {
+        let host = cpal::default_host();
+        let devices = host.input_devices().map_err(|e| e.to_string())?;
+        let mut names = Vec::new();
+        for device in devices {
+            if let Ok(name) = device.name() {
+                names.push(name);
+            }
+        }
+        Ok(names)
+    }
+
+    pub fn set_selected_device(&self, device_name: Option<String>) {
+        let mut s = self.state.lock().unwrap();
+        s.selected_device = device_name;
+    }
+
+    pub fn start_recording(&self) -> Result<(), String> {
+        let mut s = self.state.lock().unwrap();
+        if s.is_recording {
+            return Err("Already recording".to_string());
+        }
+
+        let device_name = s.selected_device.clone();
+        
+        // Resolve device
+        let host = cpal::default_host();
+        let device = if let Some(name) = &device_name {
+            let mut devices = host.input_devices().map_err(|e| e.to_string())?;
+            if let Some(d) = devices.find(|d| d.name().map(|n| &n == name).unwrap_or(false)) {
+                d
+            } else {
+                println!("Selected device '{}' not found, falling back to default device.", name);
+                host.default_input_device()
+                    .ok_or_else(|| "No default input device found".to_string())?
+            }
+        } else {
+            host.default_input_device()
+                .ok_or_else(|| "No default input device found".to_string())?
+        };
+
+        let config = device.default_input_config().map_err(|e| e.to_string())?;
+        let sample_format = config.sample_format();
+        let stream_config: cpal::StreamConfig = config.into();
+
+        let channels = stream_config.channels;
+        let src_rate = stream_config.sample_rate.0;
+        let dst_rate = 16000;
+
+        // Create the ring buffer (10 seconds capacity)
+        let rb = SharedRb::<Heap<f32>>::new((dst_rate * 10) as usize);
+        let (mut producer, mut consumer) = rb.split();
+
+        s.buffer.clear();
+        s.is_recording = true;
+        s.recording_start = Some(chrono::Local::now());
+
+        // Spawn consumer thread to move data from ring buffer to AudioState buffer
+        let state_clone = Arc::clone(&self.state);
+        std::thread::spawn(move || {
+            let mut local_buf = vec![0.0; 1024];
+            loop {
+                // Check if still recording
+                {
+                    let s = state_clone.lock().unwrap();
+                    if !s.is_recording {
+                        // Drain any remaining samples
+                        let mut drained = Vec::new();
+                        while !consumer.is_empty() {
+                            let read = consumer.pop_slice(&mut local_buf);
+                            drained.extend_from_slice(&local_buf[..read]);
+                        }
+                        if !drained.is_empty() {
+                            let mut s = state_clone.lock().unwrap();
+                            s.buffer.extend_from_slice(&drained);
+                        }
+                        break;
+                    }
+                }
+
+                // Read from consumer
+                let read = consumer.pop_slice(&mut local_buf);
+                if read > 0 {
+                    let mut s = state_clone.lock().unwrap();
+                    s.buffer.extend_from_slice(&local_buf[..read]);
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        });
+
+        // Create the resampler and downmixer
+        let mut resampler = Resampler::new(src_rate, dst_rate);
+
+        let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+
+        let stream = match sample_format {
+            cpal::SampleFormat::F32 => {
+                device.build_input_stream(
+                    &stream_config,
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let mono = downmix(data, channels);
+                        let resampled = resampler.process(&mono);
+                        let _ = producer.push_slice(&resampled);
+                    },
+                    err_fn,
+                    None,
+                )
+            }
+            cpal::SampleFormat::I16 => {
+                device.build_input_stream(
+                    &stream_config,
+                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                        let f32_data: Vec<f32> = data
+                            .iter()
+                            .map(|&s| cpal::Sample::to_sample::<f32>(s))
+                            .collect();
+                        let mono = downmix(&f32_data, channels);
+                        let resampled = resampler.process(&mono);
+                        let _ = producer.push_slice(&resampled);
+                    },
+                    err_fn,
+                    None,
+                )
+            }
+            cpal::SampleFormat::U16 => {
+                device.build_input_stream(
+                    &stream_config,
+                    move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                        let f32_data: Vec<f32> = data
+                            .iter()
+                            .map(|&s| cpal::Sample::to_sample::<f32>(s))
+                            .collect();
+                        let mono = downmix(&f32_data, channels);
+                        let resampled = resampler.process(&mono);
+                        let _ = producer.push_slice(&resampled);
+                    },
+                    err_fn,
+                    None,
+                )
+            }
+            _ => return Err("Unsupported sample format".to_string()),
+        }
+        .map_err(|e| e.to_string())?;
+
+        stream.play().map_err(|e| e.to_string())?;
+        s.stream = Some(StreamWrapper(stream));
+
+        Ok(())
+    }
+
+    pub fn stop_recording(&self, app_handle: &tauri::AppHandle) -> Result<Option<String>, String> {
+        let mut s = self.state.lock().unwrap();
+        if !s.is_recording {
+            return Ok(None);
+        }
+
+        s.is_recording = false;
+        
+        // Stop and drop the stream to release the mic device
+        if let Some(wrapper) = s.stream.take() {
+            let _ = wrapper.0.pause();
+        }
+
+        let pcm_len = s.buffer.len();
+        println!("Recorded {} samples (16kHz)", pcm_len);
+
+        let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
+
+        // Write WAV file if there is recorded audio data
+        if pcm_len > 0 {
+            let app_local_data = app_handle
+                .path()
+                .app_local_data_dir()
+                .map_err(|e| e.to_string())?;
+            
+            // Ensure the directory exists
+            std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
+            
+            let file_name = format!("recording_{}.wav", start_time.format("%Y-%m-%d_%H-%M-%S"));
+            let wav_path = app_local_data.join(file_name);
+            let spec = hound::WavSpec {
+                channels: 1,
+                sample_rate: 16000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
+            if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
+                for &sample in &s.buffer {
+                    // Clamp to [-1.0, 1.0] and scale to i16
+                    let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+                    let _ = writer.write_sample(sample_i16);
+                }
+                let _ = writer.finalize();
+                let wav_path_str = wav_path.to_string_lossy().to_string();
+                println!("Saved debug WAV file to {}", wav_path_str);
+                return Ok(Some(wav_path_str));
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub fn is_recording(&self) -> bool {
+        self.state.lock().unwrap().is_recording
+    }
+}
+
+fn downmix(data: &[f32], channels: u16) -> Vec<f32> {
+    if channels == 1 {
+        return data.to_vec();
+    }
+    let mut mono = Vec::with_capacity(data.len() / channels as usize);
+    for chunk in data.chunks_exact(channels as usize) {
+        let sum: f32 = chunk.iter().sum();
+        mono.push(sum / channels as f32);
+    }
+    mono
+}
+
+pub struct Resampler {
+    src_rate: u32,
+    dst_rate: u32,
+    buffer: Vec<f32>,
+    pos: f64,
+}
+
+impl Resampler {
+    pub fn new(src_rate: u32, dst_rate: u32) -> Self {
+        Self {
+            src_rate,
+            dst_rate,
+            buffer: Vec::new(),
+            pos: 0.0,
+        }
+    }
+
+    pub fn process(&mut self, input: &[f32]) -> Vec<f32> {
+        if self.src_rate == self.dst_rate {
+            return input.to_vec();
+        }
+
+        self.buffer.extend_from_slice(input);
+        let mut output = Vec::new();
+        let ratio = self.src_rate as f64 / self.dst_rate as f64;
+
+        while (self.pos + 1.0) < self.buffer.len() as f64 {
+            let idx = self.pos as usize;
+            let frac = self.pos - idx as f64;
+            let sample =
+                self.buffer[idx] * (1.0 - frac as f32) + self.buffer[idx + 1] * frac as f32;
+            output.push(sample);
+            self.pos += ratio;
+        }
+
+        let remove_count = (self.pos.floor() as usize).min(self.buffer.len());
+        if remove_count > 0 {
+            self.buffer.drain(0..remove_count);
+            self.pos -= remove_count as f64;
+        }
+
+        output
+    }
+}

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
+import { invoke } from "@tauri-apps/api/core";
 
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -13,6 +14,25 @@ type ViewId = "usage" | "models" | "transcriptions" | "settings";
 function App() {
   const [activeView, setActiveView] = useState<ViewId>("usage");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    const initDevice = async () => {
+      try {
+        const saved = localStorage.getItem("selected_audio_device");
+        if (saved) {
+          const list = await invoke<string[]>("list_audio_devices");
+          if (list.includes(saved)) {
+            await invoke("set_selected_device", { device: saved });
+            return;
+          }
+        }
+        await invoke("set_selected_device", { device: null });
+      } catch (err) {
+        console.error("Failed to initialize audio device:", err);
+      }
+    };
+    initDevice();
+  }, []);
 
   const getTitleName = (id: ViewId) => {
     return id.charAt(0).toUpperCase() + id.slice(1);
