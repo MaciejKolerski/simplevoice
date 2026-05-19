@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, Trash2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export function SettingsView() {
   const [devices, setDevices] = useState<string[]>([]);
@@ -44,6 +45,15 @@ export function SettingsView() {
       }
     };
     loadDevices();
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<string | null>("device-changed", (event) => {
+      setSelectedDevice(event.payload || "default");
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
   }, []);
 
   const handleDeviceChange = async (val: string) => {

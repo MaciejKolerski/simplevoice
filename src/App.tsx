@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -32,6 +33,15 @@ function App() {
       }
     };
     initDevice();
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<string>("navigate", (event) => {
+      setActiveView(event.payload as ViewId);
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
   }, []);
 
   const getTitleName = (id: ViewId) => {

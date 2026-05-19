@@ -1,8 +1,9 @@
 mod audio;
 use audio::AudioController;
-use tauri::Manager;
+use tauri::{Manager, Emitter};
+use tauri::tray::TrayIconBuilder;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, CheckMenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -14,13 +15,23 @@ fn list_audio_devices(controller: tauri::State<'_, AudioController>) -> Result<V
 }
 
 #[tauri::command]
-fn set_selected_device(device: Option<String>, controller: tauri::State<'_, AudioController>) {
+fn set_selected_device(
+    device: Option<String>,
+    controller: tauri::State<'_, AudioController>,
+    app_handle: tauri::AppHandle,
+) {
     controller.set_selected_device(device);
+    let _ = rebuild_tray_menu(&app_handle);
 }
 
 #[tauri::command]
-fn start_recording(controller: tauri::State<'_, AudioController>) -> Result<(), String> {
-    controller.start_recording()
+fn start_recording(
+    controller: tauri::State<'_, AudioController>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    controller.start_recording()?;
+    let _ = rebuild_tray_menu(&app_handle);
+    Ok(())
 }
 
 #[tauri::command]
@@ -28,7 +39,9 @@ fn stop_recording(
     controller: tauri::State<'_, AudioController>,
     app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
-    controller.stop_recording(&app_handle)
+    let res = controller.stop_recording(&app_handle);
+    let _ = rebuild_tray_menu(&app_handle);
+    res
 }
 
 #[tauri::command]
@@ -41,13 +54,11 @@ fn clear_app_files(
     controller: tauri::State<'_, AudioController>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    // 1. Clear the active buffer in state
     {
         let mut s = controller.state.lock().unwrap();
         s.buffer.clear();
     }
 
-    // 2. Clear WAV files in local data directory
     let app_local_data = app_handle
         .path()
         .app_local_data_dir()
@@ -70,9 +81,155 @@ fn clear_app_files(
                 }
             }
         }
+        let _ = rebuild_tray_menu(&app_handle);
         Ok(format!("Deleted {} recording (.wav) files from disk.", deleted_count))
     } else {
+        let _ = rebuild_tray_menu(&app_handle);
         Ok("No recordings found to clear.".to_string())
+    }
+}
+
+fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    let controller = app_handle.state::<AudioController>();
+    let is_recording = controller.is_recording();
+    
+    let selected_device = {
+        let s = controller.state.lock().unwrap();
+        s.selected_device.clone()
+    };
+    
+    let toggle_label = if is_recording {
+        "Stop Recording"
+    } else {
+        "Start Recording"
+    };
+    let toggle_recording_item = MenuItemBuilder::new(toggle_label)
+        .id("toggle_recording")
+        .build(app_handle)
+        .map_err(|e| e.to_string())?;
+        
+    let nav_usage_item = MenuItemBuilder::new("Usage")
+        .id("nav_usage")
+        .build(app_handle)
+        .map_err(|e| e.to_string())?;
+        
+    let nav_models_item = MenuItemBuilder::new("Models")
+        .id("nav_models")
+        .build(app_handle)
+        .map_err(|e| e.to_string())?;
+        
+    let nav_history_item = MenuItemBuilder::new("History")
+        .id("nav_transcriptions")
+        .build(app_handle)
+        .map_err(|e| e.to_string())?;
+        
+    let nav_settings_item = MenuItemBuilder::new("Settings")
+        .id("nav_settings")
+        .build(app_handle)
+        .map_err(|e| e.to_string())?;
+
+    let devices = controller.list_devices().unwrap_or_default();
+    let mic_menu = {
+        let mut builder = SubmenuBuilder::new(app_handle, "Select Microphone");
+        
+        let is_default_checked = selected_device.is_none();
+        let default_mic_item = CheckMenuItemBuilder::new("Default System Microphone")
+            .id("mic_default")
+            .checked(is_default_checked)
+            .build(app_handle)
+            .map_err(|e| e.to_string())?;
+        builder = builder.item(&default_mic_item);
+        
+        for device_name in devices {
+            let is_checked = selected_device.as_ref().map_or(false, |d| d == &device_name);
+            let id = format!("mic_device:{}", device_name);
+            let device_item = CheckMenuItemBuilder::new(&device_name)
+                .id(id)
+                .checked(is_checked)
+                .build(app_handle)
+                .map_err(|e| e.to_string())?;
+            builder = builder.item(&device_item);
+        }
+        builder.build().map_err(|e| e.to_string())?
+    };
+    
+    let quit_item = MenuItemBuilder::new("Quit")
+        .id("quit")
+        .build(app_handle)
+        .map_err(|e| e.to_string())?;
+        
+    let separator = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
+    let separator2 = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
+    let separator3 = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
+    
+    let menu = MenuBuilder::new(app_handle)
+        .item(&toggle_recording_item)
+        .item(&separator)
+        .item(&nav_usage_item)
+        .item(&nav_models_item)
+        .item(&nav_history_item)
+        .item(&nav_settings_item)
+        .item(&separator2)
+        .item(&mic_menu)
+        .item(&separator3)
+        .item(&quit_item)
+        .build()
+        .map_err(|e| e.to_string())?;
+        
+    if let Some(tray) = app_handle.tray_by_id("main-tray") {
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+    } else {
+        let icon = app_handle.default_window_icon().cloned().ok_or_else(|| "Failed to get default window icon".to_string())?;
+        let _tray = TrayIconBuilder::with_id("main-tray")
+            .icon(icon)
+            .tooltip("Simple Voice")
+            .menu(&menu)
+            .on_menu_event(|app, event| {
+                let id = event.id().0.as_str();
+                handle_tray_menu_event(app, id);
+            })
+            .build(app_handle)
+            .map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
+    if id == "toggle_recording" {
+        let controller = app.state::<AudioController>();
+        if controller.is_recording() {
+            if let Ok(wav_path) = controller.stop_recording(app) {
+                let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
+                let _ = app.emit("recording-stopped", payload);
+            }
+        } else {
+            if let Ok(_) = controller.start_recording() {
+                let _ = app.emit("recording-started", ());
+            }
+        }
+        let _ = rebuild_tray_menu(app);
+    } else if id.starts_with("nav_") {
+        let view_name = id.trim_start_matches("nav_");
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+        let _ = app.emit("navigate", view_name);
+    } else if id == "mic_default" {
+        let controller = app.state::<AudioController>();
+        controller.set_selected_device(None);
+        let _ = app.emit("device-changed", None::<String>);
+        let _ = rebuild_tray_menu(app);
+    } else if id.starts_with("mic_device:") {
+        let device_name = id.trim_start_matches("mic_device:").to_string();
+        let controller = app.state::<AudioController>();
+        controller.set_selected_device(Some(device_name.clone()));
+        let _ = app.emit("device-changed", Some(device_name));
+        let _ = rebuild_tray_menu(app);
+    } else if id == "quit" {
+        app.exit(0);
     }
 }
 
@@ -81,6 +238,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AudioController::new())
+        .setup(|app| {
+            let app_handle = app.handle();
+            let _ = rebuild_tray_menu(app_handle);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             list_audio_devices,
