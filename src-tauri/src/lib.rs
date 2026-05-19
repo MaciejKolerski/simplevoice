@@ -89,9 +89,18 @@ fn clear_app_files(
     }
 }
 
-fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
+pub fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
     let controller = app_handle.state::<AudioController>();
     let is_recording = controller.is_recording();
+    let is_saving = controller.is_saving();
+    
+    let title = if is_recording {
+        Some("🔴")
+    } else if is_saving {
+        Some("🔵")
+    } else {
+        None
+    };
     
     let selected_device = {
         let s = controller.state.lock().unwrap();
@@ -177,10 +186,11 @@ fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
         
     if let Some(tray) = app_handle.tray_by_id("main-tray") {
+        let _ = tray.set_title(title);
         tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
     } else {
         let icon = app_handle.default_window_icon().cloned().ok_or_else(|| "Failed to get default window icon".to_string())?;
-        let _tray = TrayIconBuilder::with_id("main-tray")
+        let tray = TrayIconBuilder::with_id("main-tray")
             .icon(icon)
             .tooltip("Simple Voice")
             .menu(&menu)
@@ -190,6 +200,7 @@ fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
             })
             .build(app_handle)
             .map_err(|e| e.to_string())?;
+        let _ = tray.set_title(title);
     }
     
     Ok(())

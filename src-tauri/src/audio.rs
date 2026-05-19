@@ -9,6 +9,7 @@ unsafe impl Sync for StreamWrapper {}
 
 pub struct AudioState {
     pub is_recording: bool,
+    pub is_saving: bool,
     pub buffer: Vec<f32>,
     pub stream: Option<StreamWrapper>,
     pub selected_device: Option<String>,
@@ -24,6 +25,7 @@ impl AudioController {
         Self {
             state: Arc::new(Mutex::new(AudioState {
                 is_recording: false,
+                is_saving: false,
                 buffer: Vec::new(),
                 stream: None,
                 selected_device: None,
@@ -184,22 +186,31 @@ impl AudioController {
     }
 
     pub fn stop_recording(&self, app_handle: &tauri::AppHandle) -> Result<Option<String>, String> {
-        let mut s = self.state.lock().unwrap();
-        if !s.is_recording {
-            return Ok(None);
-        }
+        let (samples, start_time) = {
+            let mut s = self.state.lock().unwrap();
+            if !s.is_recording {
+                return Ok(None);
+            }
 
-        s.is_recording = false;
-        
-        // Stop and drop the stream to release the mic device
-        if let Some(wrapper) = s.stream.take() {
-            let _ = wrapper.0.pause();
-        }
+            s.is_recording = false;
+            s.is_saving = true;
+            
+            // Stop and drop the stream to release the mic device
+            if let Some(wrapper) = s.stream.take() {
+                let _ = wrapper.0.pause();
+            }
 
-        let pcm_len = s.buffer.len();
+            let samples = std::mem::take(&mut s.buffer);
+            let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
+            (samples, start_time)
+        };
+
+        let _ = crate::rebuild_tray_menu(app_handle);
+
+        let pcm_len = samples.len();
         println!("Recorded {} samples (16kHz)", pcm_len);
 
-        let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
+        let mut wav_path_str = None;
 
         // Write WAV file if there is recorded audio data
         if pcm_len > 0 {
@@ -220,23 +231,35 @@ impl AudioController {
                 sample_format: hound::SampleFormat::Int,
             };
             if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
-                for &sample in &s.buffer {
+                for &sample in &samples {
                     // Clamp to [-1.0, 1.0] and scale to i16
                     let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
                     let _ = writer.write_sample(sample_i16);
                 }
                 let _ = writer.finalize();
-                let wav_path_str = wav_path.to_string_lossy().to_string();
-                println!("Saved debug WAV file to {}", wav_path_str);
-                return Ok(Some(wav_path_str));
+                let path_str = wav_path.to_string_lossy().to_string();
+                println!("Saved debug WAV file to {}", path_str);
+                wav_path_str = Some(path_str);
             }
         }
 
-        Ok(None)
+        // Set is_saving to false
+        {
+            let mut s = self.state.lock().unwrap();
+            s.is_saving = false;
+        }
+
+        let _ = crate::rebuild_tray_menu(app_handle);
+
+        Ok(wav_path_str)
     }
 
     pub fn is_recording(&self) -> bool {
         self.state.lock().unwrap().is_recording
+    }
+
+    pub fn is_saving(&self) -> bool {
+        self.state.lock().unwrap().is_saving
     }
 }
 
