@@ -4,6 +4,35 @@ use tauri::{Manager, Emitter};
 use tauri::tray::TrayIconBuilder;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, CheckMenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
+fn draw_status_dot(base_image: &tauri::image::Image<'_>, color: [u8; 4]) -> tauri::image::Image<'static> {
+    let width = base_image.width();
+    let height = base_image.height();
+    let mut rgba = base_image.rgba().to_vec();
+    
+    // Draw a small dot (radius 3px for 32x32 icon) in the bottom-right corner
+    let cx = (width as f32 * 0.80) as i32;
+    let cy = (height as f32 * 0.80) as i32;
+    let radius = (width as f32 * 0.12).max(2.0) as i32;
+    
+    for y in 0..(height as i32) {
+        for x in 0..(width as i32) {
+            let dx = x - cx;
+            let dy = y - cy;
+            if dx * dx + dy * dy <= radius * radius {
+                let idx = ((y * (width as i32) + x) * 4) as usize;
+                if idx + 3 < rgba.len() {
+                    rgba[idx] = color[0];
+                    rgba[idx + 1] = color[1];
+                    rgba[idx + 2] = color[2];
+                    rgba[idx + 3] = color[3];
+                }
+            }
+        }
+    }
+    
+    tauri::image::Image::new_owned(rgba, width, height)
+}
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -94,10 +123,15 @@ pub fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
     let is_recording = controller.is_recording();
     let is_saving = controller.is_saving();
     
-    let title = if is_recording {
-        Some("🔴")
-    } else if is_saving {
-        Some("🔵")
+    let base_icon = app_handle.default_window_icon().cloned();
+    let tray_icon_img = if let Some(ref img) = base_icon {
+        if is_recording {
+            Some(draw_status_dot(img, [255, 59, 48, 255])) // iOS system red
+        } else if is_saving {
+            Some(draw_status_dot(img, [0, 122, 255, 255])) // iOS system blue
+        } else {
+            Some(img.clone())
+        }
     } else {
         None
     };
@@ -186,21 +220,23 @@ pub fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
         
     if let Some(tray) = app_handle.tray_by_id("main-tray") {
-        let _ = tray.set_title(title);
+        let _ = tray.set_title(None::<&str>);
+        if let Some(img) = tray_icon_img {
+            let _ = tray.set_icon(Some(img));
+        }
         tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
     } else {
-        let icon = app_handle.default_window_icon().cloned().ok_or_else(|| "Failed to get default window icon".to_string())?;
-        let tray = TrayIconBuilder::with_id("main-tray")
-            .icon(icon)
+        let mut builder = TrayIconBuilder::with_id("main-tray")
             .tooltip("Simple Voice")
             .menu(&menu)
             .on_menu_event(|app, event| {
                 let id = event.id().0.as_str();
                 handle_tray_menu_event(app, id);
-            })
-            .build(app_handle)
-            .map_err(|e| e.to_string())?;
-        let _ = tray.set_title(title);
+            });
+        if let Some(img) = tray_icon_img {
+            builder = builder.icon(img);
+        }
+        let _tray = builder.build(app_handle).map_err(|e| e.to_string())?;
     }
     
     Ok(())

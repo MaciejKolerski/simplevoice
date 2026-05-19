@@ -185,6 +185,38 @@ impl AudioController {
         Ok(())
     }
 
+    fn save_wav_file(&self, app_handle: &tauri::AppHandle, samples: &[f32], start_time: chrono::DateTime<chrono::Local>) -> Result<Option<String>, String> {
+        let pcm_len = samples.len();
+        if pcm_len > 0 {
+            let app_local_data = app_handle
+                .path()
+                .app_local_data_dir()
+                .map_err(|e| e.to_string())?;
+            
+            std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
+            
+            let file_name = format!("recording_{}.wav", start_time.format("%Y-%m-%d_%H-%M-%S"));
+            let wav_path = app_local_data.join(file_name);
+            let spec = hound::WavSpec {
+                channels: 1,
+                sample_rate: 16000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
+            if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
+                for &sample in samples {
+                    let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+                    let _ = writer.write_sample(sample_i16);
+                }
+                let _ = writer.finalize();
+                let path_str = wav_path.to_string_lossy().to_string();
+                println!("Saved debug WAV file to {}", path_str);
+                return Ok(Some(path_str));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn stop_recording(&self, app_handle: &tauri::AppHandle) -> Result<Option<String>, String> {
         let (samples, start_time) = {
             let mut s = self.state.lock().unwrap();
@@ -195,7 +227,6 @@ impl AudioController {
             s.is_recording = false;
             s.is_saving = true;
             
-            // Stop and drop the stream to release the mic device
             if let Some(wrapper) = s.stream.take() {
                 let _ = wrapper.0.pause();
             }
@@ -210,38 +241,8 @@ impl AudioController {
         let pcm_len = samples.len();
         println!("Recorded {} samples (16kHz)", pcm_len);
 
-        let mut wav_path_str = None;
-
-        // Write WAV file if there is recorded audio data
-        if pcm_len > 0 {
-            let app_local_data = app_handle
-                .path()
-                .app_local_data_dir()
-                .map_err(|e| e.to_string())?;
-            
-            // Ensure the directory exists
-            std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
-            
-            let file_name = format!("recording_{}.wav", start_time.format("%Y-%m-%d_%H-%M-%S"));
-            let wav_path = app_local_data.join(file_name);
-            let spec = hound::WavSpec {
-                channels: 1,
-                sample_rate: 16000,
-                bits_per_sample: 16,
-                sample_format: hound::SampleFormat::Int,
-            };
-            if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
-                for &sample in &samples {
-                    // Clamp to [-1.0, 1.0] and scale to i16
-                    let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-                    let _ = writer.write_sample(sample_i16);
-                }
-                let _ = writer.finalize();
-                let path_str = wav_path.to_string_lossy().to_string();
-                println!("Saved debug WAV file to {}", path_str);
-                wav_path_str = Some(path_str);
-            }
-        }
+        // Run the saving logic in a helper to safely catch early-return errors
+        let save_result = self.save_wav_file(app_handle, &samples, start_time);
 
         // Set is_saving to false
         {
@@ -251,7 +252,7 @@ impl AudioController {
 
         let _ = crate::rebuild_tray_menu(app_handle);
 
-        Ok(wav_path_str)
+        save_result
     }
 
     pub fn is_recording(&self) -> bool {
