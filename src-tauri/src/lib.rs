@@ -9,10 +9,10 @@ fn draw_status_dot(base_image: &tauri::image::Image<'_>, color: [u8; 4]) -> taur
     let height = base_image.height();
     let mut rgba = base_image.rgba().to_vec();
     
-    // Draw a small dot (radius 3px for 32x32 icon) in the bottom-right corner
-    let cx = (width as f32 * 0.80) as i32;
-    let cy = (height as f32 * 0.80) as i32;
-    let radius = (width as f32 * 0.12).max(2.0) as i32;
+    // Draw a status dot twice as large (radius factor 0.24 instead of 0.12)
+    let radius = (width as f32 * 0.24).max(4.0) as i32;
+    let cx = (width as i32) - radius - 2;
+    let cy = (height as i32) - radius - 2;
     
     for y in 0..(height as i32) {
         for x in 0..(width as i32) {
@@ -119,6 +119,15 @@ fn clear_app_files(
 }
 
 pub fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    let app_handle_clone = app_handle.clone();
+    app_handle.run_on_main_thread(move || {
+        if let Err(e) = rebuild_tray_menu_inner(&app_handle_clone) {
+            eprintln!("Error rebuilding tray menu on main thread: {}", e);
+        }
+    }).map_err(|e| e.to_string())
+}
+
+fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> {
     let controller = app_handle.state::<AudioController>();
     let is_recording = controller.is_recording();
     let is_saving = controller.is_saving();
