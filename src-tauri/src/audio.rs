@@ -98,17 +98,12 @@ impl AudioController {
             loop {
                 // Check if still recording
                 {
-                    let s = state_clone.lock().unwrap();
+                    let mut s = state_clone.lock().unwrap();
                     if !s.is_recording {
-                        // Drain any remaining samples
-                        let mut drained = Vec::new();
+                        // Drain any remaining samples directly into buffer
                         while !consumer.is_empty() {
                             let read = consumer.pop_slice(&mut local_buf);
-                            drained.extend_from_slice(&local_buf[..read]);
-                        }
-                        if !drained.is_empty() {
-                            let mut s = state_clone.lock().unwrap();
-                            s.buffer.extend_from_slice(&drained);
+                            s.buffer.extend_from_slice(&local_buf[..read]);
                         }
                         break;
                     }
