@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::{storage::Heap, traits::*, SharedRb};
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 
 pub struct StreamWrapper(pub cpal::Stream);
 unsafe impl Send for StreamWrapper {}
@@ -14,6 +14,9 @@ pub struct AudioState {
     pub stream: Option<StreamWrapper>,
     pub selected_device: Option<String>,
     pub recording_start: Option<chrono::DateTime<chrono::Local>>,
+    pub vad_enabled: bool,
+    pub vad_threshold: f32,
+    pub vad_silence_duration_ms: u32,
 }
 
 pub struct AudioController {
@@ -30,6 +33,9 @@ impl AudioController {
                 stream: None,
                 selected_device: None,
                 recording_start: None,
+                vad_enabled: false,
+                vad_threshold: 0.008,
+                vad_silence_duration_ms: 1500,
             })),
         }
     }
@@ -51,7 +57,7 @@ impl AudioController {
         s.selected_device = device_name;
     }
 
-    pub fn start_recording(&self) -> Result<(), String> {
+    pub fn start_recording(&self, app_handle: tauri::AppHandle) -> Result<(), String> {
         let mut s = self.state.lock().unwrap();
         if s.is_recording {
             return Err("Already recording".to_string());
@@ -93,20 +99,27 @@ impl AudioController {
 
         // Spawn consumer thread to move data from ring buffer to AudioState buffer
         let state_clone = Arc::clone(&self.state);
+        let app_handle_clone = app_handle.clone();
         std::thread::spawn(move || {
             let mut local_buf = vec![0.0; 1024];
+            let mut has_spoken = false;
+            let mut silence_samples = 0;
+
             loop {
-                // Check if still recording
-                {
+                // Check state at start of loop iteration
+                let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms) = {
+                    let s = state_clone.lock().unwrap();
+                    (s.is_recording, s.vad_enabled, s.vad_threshold, s.vad_silence_duration_ms)
+                };
+
+                if !is_recording {
+                    // Drain any remaining samples directly into buffer
                     let mut s = state_clone.lock().unwrap();
-                    if !s.is_recording {
-                        // Drain any remaining samples directly into buffer
-                        while !consumer.is_empty() {
-                            let read = consumer.pop_slice(&mut local_buf);
-                            s.buffer.extend_from_slice(&local_buf[..read]);
-                        }
-                        break;
+                    while !consumer.is_empty() {
+                        let read = consumer.pop_slice(&mut local_buf);
+                        s.buffer.extend_from_slice(&local_buf[..read]);
                     }
+                    break;
                 }
 
                 // Read from consumer
@@ -114,6 +127,87 @@ impl AudioController {
                 if read > 0 {
                     let mut s = state_clone.lock().unwrap();
                     s.buffer.extend_from_slice(&local_buf[..read]);
+
+                    if vad_enabled {
+                        // Compute RMS of the newly read samples
+                        let mut sum_sq = 0.0;
+                        for &sample in &local_buf[..read] {
+                            sum_sq += sample * sample;
+                        }
+                        let rms = (sum_sq / read as f32).sqrt();
+
+                        if rms >= vad_threshold {
+                            has_spoken = true;
+                            silence_samples = 0;
+                        } else if has_spoken {
+                            silence_samples += read;
+                            let timeout_samples = (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
+                            if silence_samples >= timeout_samples {
+                                println!("VAD: Silence detected. Auto-stopping recording after {} ms.", vad_silence_duration_ms);
+                                
+                                // Transition recording state to stop
+                                s.is_recording = false;
+                                s.is_saving = true;
+                                if let Some(wrapper) = s.stream.take() {
+                                    let _ = wrapper.0.pause();
+                                }
+                                
+                                let samples = std::mem::take(&mut s.buffer);
+                                let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
+                                
+                                // Drop the lock before running disk I/O to write file & rebuilding tray (to avoid deadlocks)
+                                drop(s);
+
+                                // Save WAV file and notify frontend / rebuild tray on a separate thread
+                                let state_save_clone = Arc::clone(&state_clone);
+                                let app_handle_save_clone = app_handle_clone.clone();
+                                std::thread::spawn(move || {
+                                    let pcm_len = samples.len();
+                                    let mut saved_path = None;
+                                    if pcm_len > 0 {
+                                        let app_local_data = app_handle_save_clone
+                                            .path()
+                                            .app_local_data_dir();
+                                        
+                                        if let Ok(app_local_data) = app_local_data {
+                                            let _ = std::fs::create_dir_all(&app_local_data);
+                                            let file_name = format!("recording_{}.wav", start_time.format("%Y-%m-%d_%H-%M-%S"));
+                                            let wav_path = app_local_data.join(file_name);
+                                            let spec = hound::WavSpec {
+                                                channels: 1,
+                                                sample_rate: 16000,
+                                                bits_per_sample: 16,
+                                                sample_format: hound::SampleFormat::Int,
+                                            };
+                                            if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
+                                                for sample in samples {
+                                                    let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+                                                    let _ = writer.write_sample(sample_i16);
+                                                }
+                                                let _ = writer.finalize();
+                                                let path_str = wav_path.to_string_lossy().to_string();
+                                                println!("Saved VAD debug WAV file to {}", path_str);
+                                                saved_path = Some(path_str);
+                                            }
+                                        }
+                                    }
+
+                                    {
+                                        let mut s = state_save_clone.lock().unwrap();
+                                        s.is_saving = false;
+                                    }
+
+                                    let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
+                                    
+                                    // Emit recording-stopped event with the path
+                                    let payload = saved_path.unwrap_or_else(|| "Recording stopped".to_string());
+                                    let _ = app_handle_save_clone.emit("recording-stopped", payload);
+                                });
+
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 std::thread::sleep(std::time::Duration::from_millis(50));

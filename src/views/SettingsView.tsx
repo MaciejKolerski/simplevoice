@@ -29,6 +29,7 @@ function formatKeycapLabel(key: string): string {
 }
 
 export function SettingsView() {
+  const [vadEnabled, setVadEnabled] = useState(false);
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [clearing, setClearing] = useState(false);
@@ -51,6 +52,12 @@ export function SettingsView() {
     setShortcutText(saved);
     invoke("register_shortcut", { shortcutStr: saved }).catch((err) => {
       console.error("Failed to register shortcut on mount:", err);
+    });
+
+    const savedVad = localStorage.getItem("vad_enabled") === "true";
+    setVadEnabled(savedVad);
+    invoke("set_vad_enabled", { enabled: savedVad }).catch((err) => {
+      console.error("Failed to set VAD state on mount:", err);
     });
   }, []);
 
@@ -223,6 +230,16 @@ export function SettingsView() {
     }
   };
 
+  const handleVadToggle = async (checked: boolean) => {
+    setVadEnabled(checked);
+    localStorage.setItem("vad_enabled", String(checked));
+    try {
+      await invoke("set_vad_enabled", { enabled: checked });
+    } catch (err) {
+      console.error("Failed to set VAD state:", err);
+    }
+  };
+
   return (
     <div className="flex flex-col">
       <div className="mb-6">
@@ -236,7 +253,7 @@ export function SettingsView() {
           Audio Processing
         </h2>
         <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
-          <div className="flex flex-col p-6">
+          <div className="flex flex-col p-6 border-b border-border">
             <label className="text-fg font-medium mb-3 block">
               Input Device
             </label>
@@ -257,6 +274,24 @@ export function SettingsView() {
                 <ChevronDown size={18} />
               </div>
             </div>
+          </div>
+          <div className="flex justify-between items-center p-6">
+            <div>
+              <div className="text-fg font-medium mb-1">
+                Voice Activity Detection (VAD)
+              </div>
+              <div className="text-muted text-[13px]">
+                Automatically stop recording when you stop speaking.
+              </div>
+            </div>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={vadEnabled}
+                onChange={(e) => handleVadToggle(e.target.checked)}
+              />
+              <span className="toggle-bg"></span>
+            </label>
           </div>
         </div>
 

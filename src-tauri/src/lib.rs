@@ -58,7 +58,7 @@ fn start_recording(
     controller: tauri::State<'_, AudioController>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    controller.start_recording()?;
+    controller.start_recording(app_handle.clone())?;
     let _ = rebuild_tray_menu(&app_handle);
     Ok(())
 }
@@ -260,7 +260,7 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
                 let _ = app.emit("recording-stopped", payload);
             }
         } else {
-            if let Ok(_) = controller.start_recording() {
+            if let Ok(_) = controller.start_recording(app.clone()) {
                 let _ = app.emit("recording-started", ());
             }
         }
@@ -314,6 +314,24 @@ fn register_shortcut(
     Ok(())
 }
 
+#[tauri::command]
+fn set_vad_enabled(
+    enabled: bool,
+    controller: tauri::State<'_, AudioController>,
+) -> Result<(), String> {
+    let mut s = controller.state.lock().unwrap();
+    s.vad_enabled = enabled;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_vad_enabled(
+    controller: tauri::State<'_, AudioController>,
+) -> Result<bool, String> {
+    let s = controller.state.lock().unwrap();
+    Ok(s.vad_enabled)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
@@ -327,7 +345,7 @@ pub fn run() {
                         let _ = app.emit("recording-stopped", payload);
                     }
                 } else {
-                    if let Ok(_) = controller.start_recording() {
+                    if let Ok(_) = controller.start_recording(app.clone()) {
                         let _ = app.emit("recording-started", ());
                     }
                 }
@@ -362,7 +380,9 @@ pub fn run() {
             stop_recording,
             get_recording_status,
             clear_app_files,
-            register_shortcut
+            register_shortcut,
+            set_vad_enabled,
+            get_vad_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
