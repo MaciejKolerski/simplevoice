@@ -289,10 +289,56 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
     }
 }
 
+#[tauri::command]
+fn register_shortcut(
+    shortcut_str: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+    
+    let global_shortcut = app_handle.global_shortcut();
+    
+    let _ = global_shortcut.unregister_all();
+    
+    if shortcut_str.trim().is_empty() {
+        return Ok(());
+    }
+    
+    let shortcut: Shortcut = shortcut_str.parse()
+        .map_err(|e| format!("Failed to parse shortcut '{}': {}", shortcut_str, e))?;
+        
+    global_shortcut.register(shortcut)
+        .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut_str, e))?;
+        
+    println!("Successfully registered global recording shortcut: {}", shortcut_str);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
+        .with_handler(|app, shortcut, event| {
+            if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                println!("Global shortcut pressed: {:?}", shortcut);
+                let controller = app.state::<AudioController>();
+                if controller.is_recording() {
+                    if let Ok(wav_path) = controller.stop_recording(app) {
+                        let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
+                        let _ = app.emit("recording-stopped", payload);
+                    }
+                } else {
+                    if let Ok(_) = controller.start_recording() {
+                        let _ = app.emit("recording-started", ());
+                    }
+                }
+                let _ = rebuild_tray_menu(app);
+            }
+        })
+        .build();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(global_shortcut_plugin)
         .manage(AudioController::new())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -315,7 +361,8 @@ pub fn run() {
             start_recording,
             stop_recording,
             get_recording_status,
-            clear_app_files
+            clear_app_files,
+            register_shortcut
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

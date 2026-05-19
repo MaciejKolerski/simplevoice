@@ -3,12 +3,93 @@ import { ChevronDown, Trash2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+function formatShortcutDisplay(str: string): string {
+  if (!str) return "None";
+  const isMac = navigator.userAgent.includes("Mac");
+  return str
+    .split("+")
+    .map((part) => {
+      if (part === "CommandOrControl") return isMac ? "⌘" : "Ctrl";
+      if (part === "Command") return "⌘";
+      if (part === "Control") return "Ctrl";
+      if (part === "Shift") return isMac ? "⇧" : "Shift";
+      if (part === "Alt") return isMac ? "⌥" : "Alt";
+      return part;
+    })
+    .join(isMac ? "" : " + ");
+}
+
 export function SettingsView() {
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [clearing, setClearing] = useState(false);
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
+  const [shortcutText, setShortcutText] = useState("CommandOrControl+Shift+Space");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("global_record_shortcut") || "CommandOrControl+Shift+Space";
+    setShortcutText(saved);
+    invoke("register_shortcut", { shortcut_str: saved }).catch((err) => {
+      console.error("Failed to register shortcut on mount:", err);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isRecordingShortcut) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
+        return;
+      }
+
+      if (e.key === "Escape") {
+        setIsRecordingShortcut(false);
+        return;
+      }
+
+      const parts: string[] = [];
+      if (e.metaKey || e.ctrlKey) {
+        parts.push("CommandOrControl");
+      } else {
+        if (e.ctrlKey) parts.push("Control");
+        if (e.metaKey) parts.push("Command");
+      }
+      if (e.altKey) parts.push("Alt");
+      if (e.shiftKey) parts.push("Shift");
+
+      let key = e.key;
+      if (key === " ") {
+        key = "Space";
+      } else if (key.length === 1) {
+        key = key.toUpperCase();
+      } else {
+        key = key.charAt(0).toUpperCase() + key.slice(1);
+      }
+
+      parts.push(key);
+
+      const shortcutStr = parts.join("+");
+      localStorage.setItem("global_record_shortcut", shortcutStr);
+      setShortcutText(shortcutStr);
+      setIsRecordingShortcut(false);
+
+      invoke("register_shortcut", { shortcut_str: shortcutStr })
+        .catch((err) => {
+          console.error("Failed to register shortcut:", err);
+          alert(`Failed to register shortcut: ${err}`);
+        });
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [isRecordingShortcut]);
 
   const handleClearCache = async () => {
     setClearing(true);
@@ -130,12 +211,19 @@ export function SettingsView() {
                 Global Record Toggle
               </div>
               <div className="text-muted text-[13px]">
-                Start/stop recording from anywhere.
+                Start/stop recording from anywhere. Click to change.
               </div>
             </div>
-            <div className="inline-flex items-center px-3 py-1.5 rounded text-xs font-mono font-medium bg-surface-active text-muted border border-border">
-              Cmd + Shift + Space
-            </div>
+            <button
+              onClick={() => setIsRecordingShortcut(true)}
+              className={`inline-flex items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 ${
+                isRecordingShortcut
+                  ? "bg-red-500/20 text-red-400 border-red-500/40 animate-pulse"
+                  : "bg-surface-active text-muted hover:text-white hover:border-muted border-border"
+              }`}
+            >
+              {isRecordingShortcut ? "Press keys... (Esc to cancel)" : formatShortcutDisplay(shortcutText)}
+            </button>
           </div>
           <div className="flex justify-between items-center p-6">
             <div>

@@ -26,5 +26,6 @@ cpal = "0.15"
 ringbuf = "0.4"
 hound = "3.5"
 chrono = "0.4"
+tauri-plugin-global-shortcut = "2"
 
 
