@@ -9,6 +9,7 @@ use tauri::menu::{
 };
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
+use tauri_plugin_sql::{Migration, MigrationKind};
 
 fn draw_status_dot(
     base_image: &tauri::image::Image<'_>,
@@ -836,7 +837,12 @@ struct TranscriptionItem {
 }
 
 #[tauri::command]
-fn save_transcription_data(wav_path: String, text: String, model: String) -> Result<(), String> {
+async fn save_transcription_data(
+    wav_path: String,
+    text: String,
+    model: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     let wav_path_buf = std::path::PathBuf::from(&wav_path);
     let parent_dir = wav_path_buf
         .parent()
@@ -855,18 +861,128 @@ fn save_transcription_data(wav_path: String, text: String, model: String) -> Res
     };
 
     let now = chrono::Local::now();
-    let item = TranscriptionItem {
-        id,
-        timestamp: now.format("%H:%M").to_string(),
-        date: now.format("%b %e").to_string(),
-        text,
-        model,
-        wav_path: Some(wav_path),
-        duration_sec,
-    };
+    let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let date = now.format("%Y-%m-%d").to_string();
+    let dur_val = duration_sec.unwrap_or(0.0);
+    let word_count = text.split_whitespace().count() as i32;
 
-    let data_json = serde_json::to_string_pretty(&item).map_err(|e| e.to_string())?;
-    std::fs::write(parent_dir.join("data.json"), data_json).map_err(|e| e.to_string())?;
+    // Use sqlx directly to the same database file used by the plugin
+    let app_dir = app_handle
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?;
+    let db_path = app_dir.join("simplevoice.db");
+    let db_url = format!("sqlite:{}", db_path.to_string_lossy());
+
+    let pool = sqlx::SqlitePool::connect(&db_url)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 1. Insert Transcription
+    sqlx::query(
+        "INSERT OR IGNORE INTO transcriptions (id, timestamp, date, text, model, wav_path, duration_sec) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+    .bind(&id)
+    .bind(&timestamp)
+    .bind(&date)
+    .bind(&text)
+    .bind(&model)
+    .bind(&wav_path)
+    .bind(dur_val)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // 2. Update Daily Usage
+    sqlx::query(
+        "INSERT INTO daily_usage (date, words_generated, time_transcribed_sec)
+         VALUES (?, ?, ?)
+         ON CONFLICT(date) DO UPDATE SET
+         words_generated = words_generated + excluded.words_generated,
+         time_transcribed_sec = time_transcribed_sec + excluded.time_transcribed_sec",
+    )
+    .bind(&date)
+    .bind(word_count)
+    .bind(dur_val)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+async fn run_json_migration(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    let app_dir = app_handle
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?;
+    let db_path = app_dir.join("simplevoice.db");
+    let db_url = format!("sqlite:{}", db_path.to_string_lossy());
+
+    // Ensure parent dir exists (plugin might not have created it yet if we run too early)
+    let _ = std::fs::create_dir_all(&app_dir);
+
+    let pool = sqlx::SqlitePool::connect(&db_url)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    let recordings_dir = app_local_data.join("recordings");
+
+    if !recordings_dir.exists() {
+        return Ok(());
+    }
+
+    if let Ok(entries) = std::fs::read_dir(&recordings_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let data_json_path = path.join("data.json");
+                if data_json_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&data_json_path) {
+                        if let Ok(item) = serde_json::from_str::<TranscriptionItem>(&content) {
+                            let word_count = item.text.split_whitespace().count() as i32;
+                            let dur_val = item.duration_sec.unwrap_or(0.0);
+                            let date_val = if item.date.len() > 10 {
+                                &item.date[0..10]
+                            } else {
+                                &item.date
+                            };
+
+                            let _ = sqlx::query(
+                                "INSERT OR IGNORE INTO transcriptions (id, timestamp, date, text, model, wav_path, duration_sec) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                            )
+                            .bind(&item.id)
+                            .bind(&item.timestamp)
+                            .bind(&item.date)
+                            .bind(&item.text)
+                            .bind(&item.model)
+                            .bind(&item.wav_path)
+                            .bind(dur_val)
+                            .execute(&pool)
+                            .await;
+
+                            let _ = sqlx::query(
+                                "INSERT INTO daily_usage (date, words_generated, time_transcribed_sec)
+                                 VALUES (?, ?, ?)
+                                 ON CONFLICT(date) DO UPDATE SET
+                                 words_generated = words_generated + excluded.words_generated,
+                                 time_transcribed_sec = time_transcribed_sec + excluded.time_transcribed_sec"
+                            )
+                            .bind(date_val)
+                            .bind(word_count)
+                            .bind(dur_val)
+                            .execute(&pool)
+                            .await;
+                        }
+                    }
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -966,6 +1082,20 @@ fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn delete_file_cmd(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if p.exists() && p.is_file() {
+        std::fs::remove_file(p).map_err(|e| e.to_string())?;
+
+        // Also try to remove the parent directory if it's empty (to clean up the timestamp folder)
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::remove_dir(parent); // We ignore errors here in case it's not empty
+        }
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
@@ -1004,9 +1134,21 @@ pub fn run() {
         })
         .build();
 
+    let migrations = vec![Migration {
+        version: 1,
+        description: "create_initial_tables",
+        sql: include_str!("../migrations/01_init.sql"),
+        kind: MigrationKind::Up,
+    }];
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(global_shortcut_plugin)
+        .plugin(
+            tauri_plugin_sql::Builder::default()
+                .add_migrations("sqlite:simplevoice.db", migrations)
+                .build(),
+        )
         .manage(AudioController::new())
         .manage(SttController::new())
         .manage(AppConfig {
@@ -1024,6 +1166,11 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = run_json_migration(&app_handle).await;
+            });
 
             let app_handle = app.handle();
             let _ = rebuild_tray_menu(app_handle);
@@ -1054,6 +1201,7 @@ pub fn run() {
             save_history,
             load_history,
             clear_history_cmd,
+            delete_file_cmd,
             save_transcription_data,
             set_transcribing,
             get_model_status,

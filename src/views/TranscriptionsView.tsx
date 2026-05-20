@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import Database from "@tauri-apps/plugin-sql";
 
 interface TranscriptionItem {
   id: string;
@@ -7,19 +8,31 @@ interface TranscriptionItem {
   date: string;
   text: string;
   model: string;
+  wav_path?: string;
 }
 
 export function TranscriptionsView() {
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const loadHistory = async () => {
     try {
-      const raw = await invoke<string>("load_history");
-      setHistory(JSON.parse(raw || "[]"));
+      const db = await Database.load("sqlite:simplevoice.db");
+      const result = await db.select<TranscriptionItem[]>(
+        "SELECT * FROM transcriptions ORDER BY id DESC",
+      );
+      setHistory(result);
     } catch (err) {
-      console.error("Failed to load transcription history:", err);
+      console.error("Failed to load transcription history from DB:", err);
+      // Fallback to legacy loader if DB fails or during migration
+      try {
+        const raw = await invoke<string>("load_history");
+        setHistory(JSON.parse(raw || "[]"));
+      } catch (innerErr) {
+        console.error("Legacy load failed too:", innerErr);
+      }
     }
   };
 
@@ -55,11 +68,32 @@ export function TranscriptionsView() {
   const handleConfirmClearHistory = async () => {
     setShowConfirmModal(false);
     try {
+      const db = await Database.load("sqlite:simplevoice.db");
+      await db.execute("DELETE FROM transcriptions");
+      await db.execute("DELETE FROM daily_usage");
+
       await invoke("clear_history_cmd");
       setHistory([]);
       window.dispatchEvent(new Event("transcription-added"));
     } catch (err) {
       console.error("Failed to clear history:", err);
+    }
+  };
+
+  const deleteItem = async (item: TranscriptionItem) => {
+    setIsDeleting(item.id);
+    try {
+      const db = await Database.load("sqlite:simplevoice.db");
+      await db.execute("DELETE FROM transcriptions WHERE id = ?", [item.id]);
+      if (item.wav_path) {
+        await invoke("delete_file_cmd", { path: item.wav_path });
+      }
+      await loadHistory();
+      window.dispatchEvent(new Event("transcription-added"));
+    } catch (err) {
+      console.error("Failed to delete item:", err);
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -91,7 +125,8 @@ export function TranscriptionsView() {
           </div>
           <h3 className="text-white font-medium mb-1">No transcriptions yet</h3>
           <p className="text-muted text-sm max-w-sm leading-relaxed">
-            Record some audio using your global shortcut to start transcribing speech to text.
+            Record some audio using your global shortcut to start transcribing
+            speech to text.
           </p>
         </div>
       ) : (
@@ -118,7 +153,33 @@ export function TranscriptionsView() {
                     "{item.text}"
                   </div>
                 </div>
-                <div className="flex-none text-right pl-4">
+                <div className="flex-none flex items-center justify-end pl-4 gap-2">
+                  <button
+                    onClick={() => deleteItem(item)}
+                    disabled={isDeleting === item.id}
+                    className="btn btn-small btn-outline text-red-400 hover:text-red-300 hover:border-red-400/50 w-10 px-0 flex justify-center transition-all cursor-pointer"
+                    title="Delete item"
+                  >
+                    {isDeleting === item.id ? (
+                      <span className="w-3 h-3 border-2 border-red-400/40 border-t-red-400 rounded-full animate-spin"></span>
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                      </svg>
+                    )}
+                  </button>
                   <button
                     onClick={() => handleCopy(item.id, item.text)}
                     className={`btn btn-small w-20 transition-all ${
@@ -143,7 +204,8 @@ export function TranscriptionsView() {
               Clear Transcription History?
             </h3>
             <p className="text-muted text-[13px] mb-6 leading-relaxed">
-              This will permanently delete all local audio recordings and their transcribed text from your device. This action cannot be undone.
+              This will permanently delete all local audio recordings and their
+              transcribed text from your device. This action cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button

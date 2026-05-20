@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import Database from "@tauri-apps/plugin-sql";
 
 interface ModelStatus {
   active: string | null;
@@ -30,7 +31,9 @@ export function UsageView() {
   const [loadingModel, setLoadingModel] = useState<string | null>(null);
   const [isRunningLocally, setIsRunningLocally] = useState<boolean>(true);
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
-  const [timeRange, setTimeRange] = useState<"7days" | "30days" | "all">("7days");
+  const [timeRange, setTimeRange] = useState<"7days" | "30days" | "all">(
+    "7days",
+  );
 
   const updateActiveModel = async () => {
     try {
@@ -70,10 +73,22 @@ export function UsageView() {
 
   const loadHistory = async () => {
     try {
-      const raw = await invoke<string>("load_history");
-      setHistory(JSON.parse(raw || "[]"));
+      const db = await Database.load("sqlite:simplevoice.db");
+      const result = await db.select<TranscriptionItem[]>(
+        "SELECT * FROM transcriptions ORDER BY id DESC",
+      );
+      setHistory(result);
     } catch (err) {
-      console.error("Failed to load transcription history for stats:", err);
+      console.error(
+        "Failed to load transcription history for stats from DB:",
+        err,
+      );
+      try {
+        const raw = await invoke<string>("load_history");
+        setHistory(JSON.parse(raw || "[]"));
+      } catch (innerErr) {
+        console.error("Legacy load failed too:", innerErr);
+      }
     }
   };
 
@@ -90,7 +105,7 @@ export function UsageView() {
 
     window.addEventListener("asr-engine-changed", handleAsrChanged);
     window.addEventListener("transcription-added", handleTranscriptionAdded);
-    
+
     let unlistenStatus: (() => void) | null = null;
     listen("model-status-changed", updateActiveModel).then((fn) => {
       unlistenStatus = fn;
@@ -98,7 +113,10 @@ export function UsageView() {
 
     return () => {
       window.removeEventListener("asr-engine-changed", handleAsrChanged);
-      window.removeEventListener("transcription-added", handleTranscriptionAdded);
+      window.removeEventListener(
+        "transcription-added",
+        handleTranscriptionAdded,
+      );
       if (unlistenStatus) unlistenStatus();
     };
   }, []);
@@ -114,7 +132,7 @@ export function UsageView() {
         parseInt(day),
         parseInt(hour),
         parseInt(min),
-        parseInt(sec)
+        parseInt(sec),
       );
     }
     const num = Number(id);
@@ -126,7 +144,10 @@ export function UsageView() {
 
   const getWordCount = (text: string): number => {
     if (!text) return 0;
-    return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    return text
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 0).length;
   };
 
   const formatDuration = (seconds: number): string => {
@@ -145,9 +166,13 @@ export function UsageView() {
 
   // Process history data based on selected time range
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
 
-  const itemsWithMeta = history.map(item => {
+  const itemsWithMeta = history.map((item) => {
     const parsedDate = parseIdToDate(item.id);
     const duration = item.duration_sec || 0;
     const words = getWordCount(item.text);
@@ -170,17 +195,24 @@ export function UsageView() {
   if (timeRange === "7days") {
     const currentStart = new Date(startOfToday);
     currentStart.setDate(startOfToday.getDate() - 6);
-    
+
     const prevStart = new Date(currentStart);
     prevStart.setDate(currentStart.getDate() - 7);
 
-    const currentItems = itemsWithMeta.filter(item => item.parsedDate >= currentStart);
-    const prevItems = itemsWithMeta.filter(item => item.parsedDate >= prevStart && item.parsedDate < currentStart);
+    const currentItems = itemsWithMeta.filter(
+      (item) => item.parsedDate >= currentStart,
+    );
+    const prevItems = itemsWithMeta.filter(
+      (item) => item.parsedDate >= prevStart && item.parsedDate < currentStart,
+    );
 
     totalDuration = currentItems.reduce((sum, item) => sum + item.duration, 0);
     totalWords = currentItems.reduce((sum, item) => sum + item.words, 0);
 
-    const prevDuration = prevItems.reduce((sum, item) => sum + item.duration, 0);
+    const prevDuration = prevItems.reduce(
+      (sum, item) => sum + item.duration,
+      0,
+    );
     const prevWords = prevItems.reduce((sum, item) => sum + item.words, 0);
 
     durationTrend = calculateTrend(totalDuration, prevDuration);
@@ -192,9 +224,19 @@ export function UsageView() {
       const d = new Date(startOfToday);
       d.setDate(startOfToday.getDate() - i);
       const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      const dEnd = new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+        23,
+        59,
+        59,
+        999,
+      );
 
-      const dayItems = itemsWithMeta.filter(item => item.parsedDate >= dStart && item.parsedDate <= dEnd);
+      const dayItems = itemsWithMeta.filter(
+        (item) => item.parsedDate >= dStart && item.parsedDate <= dEnd,
+      );
       const dayDur = dayItems.reduce((sum, item) => sum + item.duration, 0);
       rawVals.push(dayDur);
     }
@@ -204,9 +246,19 @@ export function UsageView() {
       const d = new Date(startOfToday);
       d.setDate(startOfToday.getDate() - i);
       const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      const dEnd = new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+        23,
+        59,
+        59,
+        999,
+      );
 
-      const dayItems = itemsWithMeta.filter(item => item.parsedDate >= dStart && item.parsedDate <= dEnd);
+      const dayItems = itemsWithMeta.filter(
+        (item) => item.parsedDate >= dStart && item.parsedDate <= dEnd,
+      );
       const dayDur = dayItems.reduce((sum, item) => sum + item.duration, 0);
       const label = d.toLocaleDateString(undefined, { weekday: "short" });
       const val = dayDur > 0 ? Math.round((dayDur / maxDur) * 90) + 10 : 0;
@@ -215,11 +267,10 @@ export function UsageView() {
         label,
         val,
         rawVal: dayDur,
-        tooltip: `${d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}: ${formatDuration(dayDur)}`,
-        today: i === 0
+        tooltip: `${d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}: ${formatDuration(dayDur)}`,
+        today: i === 0,
       });
     }
-
   } else if (timeRange === "30days") {
     const currentStart = new Date(startOfToday);
     currentStart.setDate(startOfToday.getDate() - 29);
@@ -227,13 +278,20 @@ export function UsageView() {
     const prevStart = new Date(currentStart);
     prevStart.setDate(currentStart.getDate() - 30);
 
-    const currentItems = itemsWithMeta.filter(item => item.parsedDate >= currentStart);
-    const prevItems = itemsWithMeta.filter(item => item.parsedDate >= prevStart && item.parsedDate < currentStart);
+    const currentItems = itemsWithMeta.filter(
+      (item) => item.parsedDate >= currentStart,
+    );
+    const prevItems = itemsWithMeta.filter(
+      (item) => item.parsedDate >= prevStart && item.parsedDate < currentStart,
+    );
 
     totalDuration = currentItems.reduce((sum, item) => sum + item.duration, 0);
     totalWords = currentItems.reduce((sum, item) => sum + item.words, 0);
 
-    const prevDuration = prevItems.reduce((sum, item) => sum + item.duration, 0);
+    const prevDuration = prevItems.reduce(
+      (sum, item) => sum + item.duration,
+      0,
+    );
     const prevWords = prevItems.reduce((sum, item) => sum + item.words, 0);
 
     durationTrend = calculateTrend(totalDuration, prevDuration);
@@ -245,9 +303,19 @@ export function UsageView() {
       const d = new Date(startOfToday);
       d.setDate(startOfToday.getDate() - i);
       const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      const dEnd = new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+        23,
+        59,
+        59,
+        999,
+      );
 
-      const dayItems = itemsWithMeta.filter(item => item.parsedDate >= dStart && item.parsedDate <= dEnd);
+      const dayItems = itemsWithMeta.filter(
+        (item) => item.parsedDate >= dStart && item.parsedDate <= dEnd,
+      );
       const dayDur = dayItems.reduce((sum, item) => sum + item.duration, 0);
       rawVals.push(dayDur);
     }
@@ -257,15 +325,28 @@ export function UsageView() {
       const d = new Date(startOfToday);
       d.setDate(startOfToday.getDate() - i);
       const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      const dEnd = new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+        23,
+        59,
+        59,
+        999,
+      );
 
-      const dayItems = itemsWithMeta.filter(item => item.parsedDate >= dStart && item.parsedDate <= dEnd);
+      const dayItems = itemsWithMeta.filter(
+        (item) => item.parsedDate >= dStart && item.parsedDate <= dEnd,
+      );
       const dayDur = dayItems.reduce((sum, item) => sum + item.duration, 0);
-      
+
       // Sparse labels to prevent overlap
       let label = "";
       if (i === 29 || i === 20 || i === 10 || i === 0) {
-        label = d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+        label = d.toLocaleDateString(undefined, {
+          day: "numeric",
+          month: "short",
+        });
       }
 
       const val = dayDur > 0 ? Math.round((dayDur / maxDur) * 90) + 10 : 0;
@@ -274,25 +355,34 @@ export function UsageView() {
         label,
         val,
         rawVal: dayDur,
-        tooltip: `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}: ${formatDuration(dayDur)}`,
-        today: i === 0
+        tooltip: `${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}: ${formatDuration(dayDur)}`,
+        today: i === 0,
       });
     }
-
   } else {
     // All time
     totalDuration = itemsWithMeta.reduce((sum, item) => sum + item.duration, 0);
     totalWords = itemsWithMeta.reduce((sum, item) => sum + item.words, 0);
-    
+
     // Generate last 6 monthly bars
     const rawVals: number[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
       const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
-      const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+      const mEnd = new Date(
+        d.getFullYear(),
+        d.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+      );
 
-      const mItems = itemsWithMeta.filter(item => item.parsedDate >= mStart && item.parsedDate <= mEnd);
+      const mItems = itemsWithMeta.filter(
+        (item) => item.parsedDate >= mStart && item.parsedDate <= mEnd,
+      );
       const mDur = mItems.reduce((sum, item) => sum + item.duration, 0);
       rawVals.push(mDur);
     }
@@ -302,9 +392,19 @@ export function UsageView() {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
       const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
-      const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+      const mEnd = new Date(
+        d.getFullYear(),
+        d.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+      );
 
-      const mItems = itemsWithMeta.filter(item => item.parsedDate >= mStart && item.parsedDate <= mEnd);
+      const mItems = itemsWithMeta.filter(
+        (item) => item.parsedDate >= mStart && item.parsedDate <= mEnd,
+      );
       const mDur = mItems.reduce((sum, item) => sum + item.duration, 0);
       const label = d.toLocaleDateString(undefined, { month: "short" });
       const val = mDur > 0 ? Math.round((mDur / maxDur) * 90) + 10 : 0;
@@ -313,31 +413,27 @@ export function UsageView() {
         label,
         val,
         rawVal: mDur,
-        tooltip: `${d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}: ${formatDuration(mDur)}`,
-        today: i === 0
+        tooltip: `${d.toLocaleDateString(undefined, { month: "long", year: "numeric" })}: ${formatDuration(mDur)}`,
+        today: i === 0,
       });
     }
   }
 
   // Dynamic Y-axis calculation
-  const chartMaxDur = Math.max(...bars.map(b => b.rawVal), 0);
+  const chartMaxDur = Math.max(...bars.map((b) => b.rawVal), 0);
   const displayMaxDur = chartMaxDur > 0 ? chartMaxDur : 3600;
   const yLabels = [
     formatDuration(displayMaxDur),
-    formatDuration(displayMaxDur * 2 / 3),
-    formatDuration(displayMaxDur * 1 / 3),
-    "0s"
+    formatDuration((displayMaxDur * 2) / 3),
+    formatDuration((displayMaxDur * 1) / 3),
+    "0s",
   ];
 
   const renderTrend = (value: number) => {
     if (timeRange === "all") {
-      return (
-        <span className="text-muted opacity-70">
-          All-time statistics
-        </span>
-      );
+      return <span className="text-muted opacity-70">All-time statistics</span>;
     }
-    
+
     if (value > 0) {
       return (
         <>
@@ -399,7 +495,9 @@ export function UsageView() {
             <span className="truncate">Time Transcribed</span>
             <Clock size={14} className="opacity-50 shrink-0" />
           </div>
-          <div className="stat-value mono truncate">{formatDuration(totalDuration)}</div>
+          <div className="stat-value mono truncate">
+            {formatDuration(totalDuration)}
+          </div>
           <div className="muted text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
             {renderTrend(durationTrend)}
           </div>
@@ -409,7 +507,9 @@ export function UsageView() {
             <span className="truncate">Words Generated</span>
             <FileText size={14} className="opacity-50 shrink-0" />
           </div>
-          <div className="stat-value mono truncate">{totalWords.toLocaleString()}</div>
+          <div className="stat-value mono truncate">
+            {totalWords.toLocaleString()}
+          </div>
           <div className="muted text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
             {renderTrend(wordsTrend)}
           </div>
@@ -423,20 +523,22 @@ export function UsageView() {
             {loadingModel ? loadingModel : activeModel}
           </div>
           <div className="muted text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
-            <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
-              loadingModel 
-                ? "bg-sky-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.5)]" 
-                : activeModel === "None" 
-                  ? "bg-amber-400" 
-                  : "bg-emerald-400"
-            }`}></span>
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                loadingModel
+                  ? "bg-sky-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.5)]"
+                  : activeModel === "None"
+                    ? "bg-amber-400"
+                    : "bg-emerald-400"
+              }`}
+            ></span>
             <span className="truncate opacity-70">
-              {loadingModel 
-                ? "Initializing engine..." 
-                : activeModel === "None" 
-                  ? "No active model" 
-                  : isRunningLocally 
-                    ? "Running locally" 
+              {loadingModel
+                ? "Initializing engine..."
+                : activeModel === "None"
+                  ? "No active model"
+                  : isRunningLocally
+                    ? "Running locally"
                     : "Running in the cloud"}
             </span>
           </div>
