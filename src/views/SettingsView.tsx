@@ -733,12 +733,13 @@ export function SettingsView() {
         </div>
       </div>
 
-      {isRecordingShortcut && (
+      {(isRecordingShortcut || isCopyShortcut) && (
         <div
           ref={overlayRef}
           onClick={(e) => {
             if (e.target === overlayRef.current && !isCompleted) {
               setIsRecordingShortcut(false);
+              setIsCopyShortcut(false);
             }
           }}
           className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl transition-all duration-300 animate-in fade-in"

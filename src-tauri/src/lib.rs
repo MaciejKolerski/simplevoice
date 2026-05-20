@@ -482,6 +482,25 @@ fn set_vad_enabled(
     Ok(())
 }
 
+#[tauri::command]
+fn register_copy_shortcut(
+    shortcut_str: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+    let global_shortcut = app_handle.global_shortcut();
+
+    if !shortcut_str.trim().is_empty() {
+        let shortcut: Shortcut = shortcut_str
+            .parse()
+            .map_err(|e| format!("Failed to parse copy shortcut '{}': {}", shortcut_str, e))?;
+        global_shortcut
+            .register(shortcut)
+            .map_err(|e| format!("Failed to register copy shortcut '{}': {}", shortcut_str, e))?;
+    }
+    Ok(())
+}
+
 #[derive(serde::Serialize, Clone)]
 struct LocalModel {
     name: String,
@@ -1039,6 +1058,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             register_shortcut,
+            register_copy_shortcut,
             set_vad_enabled,
             scan_models,
             load_model,
