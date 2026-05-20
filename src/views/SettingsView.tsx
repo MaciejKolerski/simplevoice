@@ -483,14 +483,13 @@ export function SettingsView() {
                 Automatically stop recording when you stop speaking.
               </div>
             </div>
-            <label className="toggle cursor-pointer">
+            <label className="toggle">
               <input
                 type="checkbox"
-                className="hidden"
                 checked={vadEnabled}
                 onChange={(e) => handleVadToggle(e.target.checked)}
               />
-              <span className="toggle-bg block w-11 h-6 bg-border rounded-full relative transition-colors duration-200"></span>
+              <span className="toggle-bg"></span>
             </label>
           </div>
 
@@ -501,14 +500,13 @@ export function SettingsView() {
                 Play a premium audio cue when starting and stopping recording.
               </div>
             </div>
-            <label className="toggle cursor-pointer">
+            <label className="toggle">
               <input
                 type="checkbox"
-                className="hidden"
                 checked={soundEnabled}
                 onChange={(e) => handleSoundToggle(e.target.checked)}
               />
-              <span className="toggle-bg block w-11 h-6 bg-border rounded-full relative transition-colors duration-200"></span>
+              <span className="toggle-bg"></span>
             </label>
           </div>
         </div>
@@ -529,14 +527,13 @@ export function SettingsView() {
                 fix spelling, or edit code.
               </div>
             </div>
-            <label className="toggle cursor-pointer">
+            <label className="toggle">
               <input
                 type="checkbox"
-                className="hidden"
                 checked={refinerEnabled}
                 onChange={(e) => updateRefinerToggle(e.target.checked)}
               />
-              <span className="toggle-bg block w-11 h-6 bg-border rounded-full relative transition-colors duration-200"></span>
+              <span className="toggle-bg"></span>
             </label>
           </div>
 
