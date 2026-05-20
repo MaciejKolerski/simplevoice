@@ -36,3 +36,4 @@ keyring = "2.1"
 sherpa-onnx = "1.13.2"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-native-tls"] }
 tokio = { version = "1.52.3", features = ["full"] }
+enigo = "0.6.1"

@@ -185,8 +185,21 @@ function App() {
 
             // Step 3: Copy to clipboard, play done chime, and auto-paste
             await navigator.clipboard.writeText(text);
-            invoke("play_done_sound").catch(() => {}); // Play completion notification sound
-            invoke("paste_text").catch(() => {}); // Execute automatic paste operation
+
+            try {
+              await invoke("play_done_sound");
+            } catch (e) {
+              console.warn("Failed to play sound:", e);
+            }
+
+            try {
+              // We don't await paste_text because it launches a thread that might outlive the invoke
+              invoke("paste_text").catch((err) =>
+                console.error("Paste failed:", err),
+              );
+            } catch (e) {
+              console.error("Paste invocation failed:", e);
+            }
 
             if (wavPath && wavPath !== "Recording stopped") {
               try {

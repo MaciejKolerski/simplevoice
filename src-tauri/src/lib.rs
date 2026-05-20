@@ -825,17 +825,6 @@ fn load_config(app_handle: tauri::AppHandle) -> Result<String, String> {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
-struct TranscriptionItem {
-    id: String,
-    timestamp: String,
-    date: String,
-    text: String,
-    model: String,
-    wav_path: Option<String>,
-    duration_sec: Option<f64>,
-}
-
 #[tauri::command]
 async fn save_transcription_data(
     wav_path: String,
@@ -945,20 +934,26 @@ fn play_done_sound(app_handle: tauri::AppHandle) {
 
 #[tauri::command]
 fn paste_text() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(80));
-            let script = r#"tell application "System Events" to keystroke "v" using command down"#;
-            let _ = std::process::Command::new("osascript")
-                .arg("-e")
-                .arg(script)
-                .output();
-        });
+    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+    // Simulate paste without a complex thread spawn, maybe that helps.
+    let settings = Settings::default();
+    if let Ok(mut enigo) = Enigo::new(&settings) {
+        #[cfg(target_os = "macos")]
+        {
+            let _ = enigo.key(Key::Meta, Direction::Press);
+            let _ = enigo.key(Key::Unicode('v'), Direction::Click);
+            let _ = enigo.key(Key::Meta, Direction::Release);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = enigo.key(Key::Control, Direction::Press);
+            let _ = enigo.key(Key::Unicode('v'), Direction::Click);
+            let _ = enigo.key(Key::Control, Direction::Release);
+        }
     }
     Ok(())
 }
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
