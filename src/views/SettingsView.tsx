@@ -507,14 +507,14 @@ export function SettingsView() {
                 Automatically stop recording when you stop speaking.
               </div>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
+
+            <label className="toggle cursor-pointer">
               <input
                 type="checkbox"
-                className="hidden"
                 checked={vadEnabled}
                 onChange={(e) => handleVadToggle(e.target.checked)}
               />
-              <span className="w-11 h-6 bg-border rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></span>
+              <span className="toggle-bg"></span>
             </label>
           </div>
 
@@ -525,14 +525,14 @@ export function SettingsView() {
                 Play a premium audio cue when starting and stopping recording.
               </div>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
+
+            <label className="toggle cursor-pointer">
               <input
                 type="checkbox"
-                className="hidden"
                 checked={soundEnabled}
                 onChange={(e) => handleSoundToggle(e.target.checked)}
               />
-              <span className="w-11 h-6 bg-border rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></span>
+              <span className="toggle-bg"></span>
             </label>
           </div>
         </div>
@@ -553,14 +553,14 @@ export function SettingsView() {
                 fix spelling, or edit code.
               </div>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
+
+            <label className="toggle cursor-pointer">
               <input
                 type="checkbox"
-                className="hidden"
                 checked={refinerEnabled}
                 onChange={(e) => updateRefinerToggle(e.target.checked)}
               />
-              <span className="w-11 h-6 bg-border rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></span>
+              <span className="toggle-bg"></span>
             </label>
           </div>
 
