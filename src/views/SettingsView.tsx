@@ -61,8 +61,13 @@ export function SettingsView() {
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
+  const [isCopyShortcut, setIsCopyShortcut] = useState(false);
   const [shortcutText, setShortcutText] = useState(
-    "CommandOrControl+Shift+Space",
+    localStorage.getItem("global_record_shortcut") ||
+      "CommandOrControl+Shift+Space",
+  );
+  const [copyShortcutText, setCopyShortcutText] = useState(
+    localStorage.getItem("global_copy_shortcut") || "CommandOrControl+Shift+C",
   );
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -156,76 +161,58 @@ export function SettingsView() {
   }, []);
 
   useEffect(() => {
-    if (!isRecordingShortcut) return;
+    if (!isRecordingShortcut && !isCopyShortcut) return;
 
     setActiveKeys([]);
     setIsCompleted(false);
     setErrorMessage(null);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isCompletedRef.current) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-
+      if (isCompletedRef.current) return;
       e.preventDefault();
       e.stopPropagation();
 
       if (e.key === "Escape") {
         setIsRecordingShortcut(false);
+        setIsCopyShortcut(false);
         return;
       }
 
       const keys: string[] = [];
-      if (e.metaKey || e.ctrlKey) {
-        keys.push("CommandOrControl");
-      } else {
-        if (e.ctrlKey) keys.push("Control");
-        if (e.metaKey) keys.push("Command");
-      }
+      if (e.metaKey || e.ctrlKey) keys.push("CommandOrControl");
       if (e.altKey) keys.push("Alt");
       if (e.shiftKey) keys.push("Shift");
 
       const isModifier = ["Control", "Shift", "Alt", "Meta"].includes(e.key);
       if (!isModifier) {
-        let mainKey = e.key;
-        if (mainKey === " ") {
-          mainKey = "Space";
-        } else if (mainKey.length === 1) {
-          mainKey = mainKey.toUpperCase();
-        } else {
-          mainKey = mainKey.charAt(0).toUpperCase() + mainKey.slice(1);
-        }
-
+        let mainKey = e.key === " " ? "Space" : e.key.toUpperCase();
         keys.push(mainKey);
         setActiveKeys(keys);
         setIsCompleted(true);
-        setErrorMessage(null);
-
         const shortcutStr = keys.join("+");
 
-        invoke("register_shortcut", { shortcutStr: shortcutStr })
+        const targetCommand = isRecordingShortcut
+          ? "register_shortcut"
+          : "register_copy_shortcut";
+        const storageKey = isRecordingShortcut
+          ? "global_record_shortcut"
+          : "global_copy_shortcut";
+
+        invoke(targetCommand, { shortcutStr })
           .then(() => {
-            localStorage.setItem("global_record_shortcut", shortcutStr);
-            setShortcutText(shortcutStr);
+            localStorage.setItem(storageKey, shortcutStr);
+            isRecordingShortcut
+              ? setShortcutText(shortcutStr)
+              : setCopyShortcutText(shortcutStr);
             setTimeout(() => {
               setIsRecordingShortcut(false);
+              setIsCopyShortcut(false);
               setIsCompleted(false);
             }, 800);
           })
           .catch((err) => {
-            console.error("Failed to register shortcut:", err);
             setIsCompleted(false);
-            setActiveKeys([]);
-            setErrorMessage(
-              shortcutStr.includes("+")
-                ? `System error: ${err}`
-                : "Global shortcuts require a modifier (Cmd, Shift, Alt, etc.) or a Function key (F1-F12).",
-            );
-            setTimeout(() => {
-              setErrorMessage(null);
-            }, 4000);
+            setErrorMessage(`Error: ${err}`);
           });
       } else {
         setActiveKeys(keys);
@@ -710,7 +697,7 @@ export function SettingsView() {
           <Keyboard size={16} className="text-muted" /> Shortcuts
         </h2>
         <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
-          <div className="flex justify-between items-center p-6">
+          <div className="flex justify-between items-center p-6 border-b border-border">
             <div>
               <div className="text-fg font-medium mb-1">
                 Global Record Toggle
@@ -724,6 +711,23 @@ export function SettingsView() {
               className="inline-flex items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
             >
               {formatShortcutDisplay(shortcutText)}
+            </button>
+          </div>
+          <div className="flex justify-between items-center p-6">
+            <div>
+              <div className="text-fg font-medium mb-1">
+                Copy Last Transcription
+              </div>
+              <div className="text-muted text-[13px]">
+                Copy the most recent transcription to clipboard. Click to
+                change.
+              </div>
+            </div>
+            <button
+              onClick={() => setIsCopyShortcut(true)}
+              className="inline-flex items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
+            >
+              {formatShortcutDisplay(copyShortcutText)}
             </button>
           </div>
         </div>
