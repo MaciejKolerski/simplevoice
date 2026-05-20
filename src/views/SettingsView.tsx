@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { ChevronDown, Sparkles, Cpu, Keyboard } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 
 function formatShortcutDisplay(str: string): string {
   if (!str) return "None";
@@ -32,6 +33,7 @@ export function SettingsView() {
   const [vadEnabled, setVadEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
@@ -82,6 +84,8 @@ export function SettingsView() {
 
     const savedLang = localStorage.getItem("asr_language") || "auto";
     setAsrLanguage(savedLang);
+
+    isEnabled().then(setAutostartEnabled);
 
     const syncSettings = () => {
       setRefinerEnabled(localStorage.getItem("refiner_enabled") === "true");
@@ -300,6 +304,15 @@ export function SettingsView() {
     localStorage.setItem("asr_language", val);
   };
 
+  const handleAutostartToggle = async (checked: boolean) => {
+    setAutostartEnabled(checked);
+    if (checked) {
+      await enable();
+    } else {
+      await disable();
+    }
+  };
+
   const saveSecureKey = async (provider: string, val: string) => {
     try {
       if (val === "••••••••••••••••") return;
@@ -442,6 +455,24 @@ export function SettingsView() {
               Forces the model to output text in the selected language. Use
               "Auto-detect" for multilingual support.
             </p>
+          </div>
+
+          <div className="flex justify-between items-center p-6 border-b border-border">
+            <div>
+              <div className="text-fg font-medium mb-1">Launch at Login</div>
+              <div className="text-xs text-muted">
+                Start SimpleVoice automatically when you log in.
+              </div>
+            </div>
+            <label className="toggle cursor-pointer">
+              <input
+                type="checkbox"
+                className="hidden"
+                checked={autostartEnabled}
+                onChange={(e) => handleAutostartToggle(e.target.checked)}
+              />
+              <span className="toggle-bg block w-11 h-6 bg-border rounded-full relative transition-colors duration-200"></span>
+            </label>
           </div>
 
           <div className="flex justify-between items-center p-6 border-b border-border">
