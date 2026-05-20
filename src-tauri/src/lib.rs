@@ -446,6 +446,19 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
 }
 
 #[tauri::command]
+fn copy_last_text(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let controller = app_handle.state::<AudioController>();
+    if let Some(text) = controller.get_last_text() {
+        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        clipboard.set_text(text).map_err(|e| e.to_string())?;
+        play_backend_sound(&app_handle, "done");
+        Ok(())
+    } else {
+        Err("No transcription to copy".to_string())
+    }
+}
+
+#[tauri::command]
 fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
@@ -973,40 +986,72 @@ fn paste_text() -> Result<(), String> {
     }
     Ok(())
 }
+
+fn localStorage_get(app: &tauri::AppHandle, key: &str) -> Option<String> {
+    let app_local_data = app.path().app_local_data_dir().ok()?;
+    let config_path = app_local_data.join("config.json");
+    if !config_path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(config_path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    json.get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn handle_recording_toggle(app: &tauri::AppHandle) {
+    let controller = app.state::<AudioController>();
+    if controller.is_recording() {
+        if let Ok(wav_path) = controller.stop_recording(app) {
+            play_backend_sound(app, "stop");
+            let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
+            let _ = app.emit("recording-stopped", payload);
+        }
+    } else {
+        let stt = app.state::<SttController>();
+        let config = app.state::<AppConfig>();
+        match is_recording_allowed(&config, &stt) {
+            Ok(_) => {
+                if controller.start_recording(app.clone()).is_ok() {
+                    play_backend_sound(app, "start");
+                    let _ = app.emit("recording-started", ());
+                }
+            }
+            Err(reason) => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+                let _ = app.emit("recording-failed-to-start", reason);
+            }
+        }
+    }
+    let _ = rebuild_tray_menu(app);
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
             if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                println!("Global shortcut pressed: {:?}", shortcut);
-                let controller = app.state::<AudioController>();
-                if controller.is_recording() {
-                    if let Ok(wav_path) = controller.stop_recording(app) {
-                        play_backend_sound(app, "stop");
-                        let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
-                        let _ = app.emit("recording-stopped", payload);
-                    }
-                } else {
-                    let stt = app.state::<SttController>();
-                    let config = app.state::<AppConfig>();
-                    match is_recording_allowed(&config, &stt) {
-                        Ok(_) => {
-                            if controller.start_recording(app.clone()).is_ok() {
-                                play_backend_sound(app, "start");
-                                let _ = app.emit("recording-started", ());
-                            }
-                        }
-                        Err(reason) => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.unminimize();
-                                let _ = window.set_focus();
-                            }
-                            let _ = app.emit("recording-failed-to-start", reason);
-                        }
-                    }
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let app_handle = app.clone();
+                let shortcut_str = shortcut.to_string();
+
+                let record_shortcut = localStorage_get(&app_handle, "global_record_shortcut")
+                    .unwrap_or_else(|| "CommandOrControl+Shift+Space".to_string())
+                    .replace("CommandOrControl", "Super");
+
+                let copy_shortcut = localStorage_get(&app_handle, "global_copy_shortcut")
+                    .unwrap_or_else(|| "CommandOrControl+Shift+C".to_string())
+                    .replace("CommandOrControl", "Super");
+
+                if shortcut_str == copy_shortcut {
+                    let _ = copy_last_text(app_handle);
+                } else if shortcut_str == record_shortcut {
+                    handle_recording_toggle(&app_handle);
                 }
-                let _ = rebuild_tray_menu(app);
             }
         })
         .build();
