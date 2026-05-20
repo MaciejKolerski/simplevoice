@@ -248,7 +248,7 @@ export function SettingsView() {
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
     };
-  }, [isRecordingShortcut]);
+  }, [isRecordingShortcut, isCopyShortcut]);
 
   useEffect(() => {
     const loadDevices = async () => {
