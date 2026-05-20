@@ -1,7 +1,7 @@
-use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::{storage::Heap, traits::*, SharedRb};
-use tauri::{Manager, Emitter};
+use std::sync::{Arc, Mutex};
+use tauri::{Emitter, Manager};
 
 pub struct StreamWrapper(pub cpal::Stream);
 unsafe impl Send for StreamWrapper {}
@@ -19,6 +19,7 @@ pub struct AudioState {
     pub vad_threshold: f32,
     pub vad_silence_duration_ms: u32,
     pub last_samples: Vec<f32>,
+    pub last_text: Option<String>,
 }
 
 pub struct AudioController {
@@ -38,10 +39,21 @@ impl AudioController {
                 recording_start: None,
                 vad_enabled: false,
                 vad_threshold: 0.008,
-                vad_silence_duration_ms: 1500,
+                vad_silence_duration_ms: 1000,
                 last_samples: Vec::new(),
+                last_text: None,
             })),
         }
+    }
+
+    pub fn set_last_text(&self, text: String) {
+        let mut s = self.state.lock().unwrap();
+        s.last_text = Some(text);
+    }
+
+    pub fn get_last_text(&self) -> Option<String> {
+        let s = self.state.lock().unwrap();
+        s.last_text.clone()
     }
 
     pub fn list_devices(&self) -> Result<Vec<String>, String> {
@@ -68,7 +80,7 @@ impl AudioController {
         }
 
         let device_name = s.selected_device.clone();
-        
+
         // Resolve device
         let host = cpal::default_host();
         let device = if let Some(name) = &device_name {
@@ -76,7 +88,10 @@ impl AudioController {
             if let Some(d) = devices.find(|d| d.name().map(|n| &n == name).unwrap_or(false)) {
                 d
             } else {
-                println!("Selected device '{}' not found, falling back to default device.", name);
+                println!(
+                    "Selected device '{}' not found, falling back to default device.",
+                    name
+                );
                 host.default_input_device()
                     .ok_or_else(|| "No default input device found".to_string())?
             }
@@ -113,7 +128,12 @@ impl AudioController {
                 // Check state at start of loop iteration
                 let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms) = {
                     let s = state_clone.lock().unwrap();
-                    (s.is_recording, s.vad_enabled, s.vad_threshold, s.vad_silence_duration_ms)
+                    (
+                        s.is_recording,
+                        s.vad_enabled,
+                        s.vad_threshold,
+                        s.vad_silence_duration_ms,
+                    )
                 };
 
                 if !is_recording {
@@ -145,21 +165,26 @@ impl AudioController {
                             silence_samples = 0;
                         } else if has_spoken {
                             silence_samples += read;
-                            let timeout_samples = (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
+                            let timeout_samples =
+                                (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
                             if silence_samples >= timeout_samples {
-                                println!("VAD: Silence detected. Auto-stopping recording after {} ms.", vad_silence_duration_ms);
-                                
+                                println!(
+                                    "VAD: Silence detected. Auto-stopping recording after {} ms.",
+                                    vad_silence_duration_ms
+                                );
+
                                 // Transition recording state to stop
                                 s.is_recording = false;
                                 s.is_saving = true;
                                 if let Some(wrapper) = s.stream.take() {
                                     let _ = wrapper.0.pause();
                                 }
-                                
-                                 s.last_samples = s.buffer.clone();
+
+                                s.last_samples = s.buffer.clone();
                                 let samples = std::mem::take(&mut s.buffer);
-                                let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
-                                
+                                let start_time =
+                                    s.recording_start.take().unwrap_or_else(chrono::Local::now);
+
                                 // Drop the lock before running disk I/O to write file & rebuilding tray (to avoid deadlocks)
                                 drop(s);
 
@@ -169,34 +194,43 @@ impl AudioController {
                                 std::thread::spawn(move || {
                                     let pcm_len = samples.len();
                                     let mut saved_path = None;
-                                     if pcm_len > 0 {
-                                         let app_local_data = app_handle_save_clone
-                                             .path()
-                                             .app_local_data_dir();
-                                         
-                                         if let Ok(app_local_data) = app_local_data {
-                                             let dir_name = start_time.format("%Y-%m-%d_%H-%M-%S").to_string();
-                                             let recordings_dir = app_local_data.join("recordings").join(dir_name);
-                                             let _ = std::fs::create_dir_all(&recordings_dir);
-                                             let wav_path = recordings_dir.join("output.wav");
-                                             let spec = hound::WavSpec {
-                                                 channels: 1,
-                                                 sample_rate: 16000,
-                                                 bits_per_sample: 16,
-                                                 sample_format: hound::SampleFormat::Int,
-                                             };
-                                             if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
-                                                 for sample in samples {
-                                                     let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-                                                     let _ = writer.write_sample(sample_i16);
-                                                 }
-                                                 let _ = writer.finalize();
-                                                 let path_str = wav_path.to_string_lossy().to_string();
-                                                 println!("Saved VAD debug WAV file to {}", path_str);
-                                                 saved_path = Some(path_str);
-                                             }
-                                         }
-                                     }
+                                    if pcm_len > 0 {
+                                        let app_local_data =
+                                            app_handle_save_clone.path().app_local_data_dir();
+
+                                        if let Ok(app_local_data) = app_local_data {
+                                            let dir_name =
+                                                start_time.format("%Y-%m-%d_%H-%M-%S").to_string();
+                                            let recordings_dir =
+                                                app_local_data.join("recordings").join(dir_name);
+                                            let _ = std::fs::create_dir_all(&recordings_dir);
+                                            let wav_path = recordings_dir.join("output.wav");
+                                            let spec = hound::WavSpec {
+                                                channels: 1,
+                                                sample_rate: 16000,
+                                                bits_per_sample: 16,
+                                                sample_format: hound::SampleFormat::Int,
+                                            };
+                                            if let Ok(mut writer) =
+                                                hound::WavWriter::create(&wav_path, spec)
+                                            {
+                                                for sample in samples {
+                                                    let sample_i16 = (sample.clamp(-1.0, 1.0)
+                                                        * i16::MAX as f32)
+                                                        as i16;
+                                                    let _ = writer.write_sample(sample_i16);
+                                                }
+                                                let _ = writer.finalize();
+                                                let path_str =
+                                                    wav_path.to_string_lossy().to_string();
+                                                println!(
+                                                    "Saved VAD debug WAV file to {}",
+                                                    path_str
+                                                );
+                                                saved_path = Some(path_str);
+                                            }
+                                        }
+                                    }
 
                                     {
                                         let mut s = state_save_clone.lock().unwrap();
@@ -205,10 +239,12 @@ impl AudioController {
                                     }
 
                                     let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
-                                    
+
                                     // Emit recording-stopped event with the path
-                                    let payload = saved_path.unwrap_or_else(|| "Recording stopped".to_string());
-                                    let _ = app_handle_save_clone.emit("recording-stopped", payload);
+                                    let payload = saved_path
+                                        .unwrap_or_else(|| "Recording stopped".to_string());
+                                    let _ =
+                                        app_handle_save_clone.emit("recording-stopped", payload);
                                 });
 
                                 break;
@@ -227,50 +263,44 @@ impl AudioController {
         let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
         let stream = match sample_format {
-            cpal::SampleFormat::F32 => {
-                device.build_input_stream(
-                    &stream_config,
-                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                        let mono = downmix(data, channels);
-                        let resampled = resampler.process(&mono);
-                        let _ = producer.push_slice(&resampled);
-                    },
-                    err_fn,
-                    None,
-                )
-            }
-            cpal::SampleFormat::I16 => {
-                device.build_input_stream(
-                    &stream_config,
-                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> = data
-                            .iter()
-                            .map(|&s| cpal::Sample::to_sample::<f32>(s))
-                            .collect();
-                        let mono = downmix(&f32_data, channels);
-                        let resampled = resampler.process(&mono);
-                        let _ = producer.push_slice(&resampled);
-                    },
-                    err_fn,
-                    None,
-                )
-            }
-            cpal::SampleFormat::U16 => {
-                device.build_input_stream(
-                    &stream_config,
-                    move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> = data
-                            .iter()
-                            .map(|&s| cpal::Sample::to_sample::<f32>(s))
-                            .collect();
-                        let mono = downmix(&f32_data, channels);
-                        let resampled = resampler.process(&mono);
-                        let _ = producer.push_slice(&resampled);
-                    },
-                    err_fn,
-                    None,
-                )
-            }
+            cpal::SampleFormat::F32 => device.build_input_stream(
+                &stream_config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    let mono = downmix(data, channels);
+                    let resampled = resampler.process(&mono);
+                    let _ = producer.push_slice(&resampled);
+                },
+                err_fn,
+                None,
+            ),
+            cpal::SampleFormat::I16 => device.build_input_stream(
+                &stream_config,
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    let f32_data: Vec<f32> = data
+                        .iter()
+                        .map(|&s| cpal::Sample::to_sample::<f32>(s))
+                        .collect();
+                    let mono = downmix(&f32_data, channels);
+                    let resampled = resampler.process(&mono);
+                    let _ = producer.push_slice(&resampled);
+                },
+                err_fn,
+                None,
+            ),
+            cpal::SampleFormat::U16 => device.build_input_stream(
+                &stream_config,
+                move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                    let f32_data: Vec<f32> = data
+                        .iter()
+                        .map(|&s| cpal::Sample::to_sample::<f32>(s))
+                        .collect();
+                    let mono = downmix(&f32_data, channels);
+                    let resampled = resampler.process(&mono);
+                    let _ = producer.push_slice(&resampled);
+                },
+                err_fn,
+                None,
+            ),
             _ => return Err("Unsupported sample format".to_string()),
         }
         .map_err(|e| e.to_string())?;
@@ -281,18 +311,23 @@ impl AudioController {
         Ok(())
     }
 
-    fn save_wav_file(&self, app_handle: &tauri::AppHandle, samples: &[f32], start_time: chrono::DateTime<chrono::Local>) -> Result<Option<String>, String> {
+    fn save_wav_file(
+        &self,
+        app_handle: &tauri::AppHandle,
+        samples: &[f32],
+        start_time: chrono::DateTime<chrono::Local>,
+    ) -> Result<Option<String>, String> {
         let pcm_len = samples.len();
         if pcm_len > 0 {
             let app_local_data = app_handle
                 .path()
                 .app_local_data_dir()
                 .map_err(|e| e.to_string())?;
-            
+
             let dir_name = start_time.format("%Y-%m-%d_%H-%M-%S").to_string();
             let recordings_dir = app_local_data.join("recordings").join(dir_name);
             std::fs::create_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
-            
+
             let wav_path = recordings_dir.join("output.wav");
             let spec = hound::WavSpec {
                 channels: 1,
@@ -323,7 +358,7 @@ impl AudioController {
 
             s.is_recording = false;
             s.is_saving = true;
-            
+
             if let Some(wrapper) = s.stream.take() {
                 let _ = wrapper.0.pause();
             }

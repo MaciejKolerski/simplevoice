@@ -38,3 +38,4 @@ sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-native-tls"] }
 tokio = { version = "1.52.3", features = ["full"] }
 enigo = "0.6.1"
 tauri-plugin-autostart = "2.5.1"
+arboard = "3.6.1"
