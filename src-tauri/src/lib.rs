@@ -4,20 +4,25 @@ use std::sync::Mutex;
 mod stt;
 use stt::SttController;
 mod refiner;
-use tauri::{Manager, Emitter};
+use tauri::menu::{
+    CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+};
 use tauri::tray::TrayIconBuilder;
-use tauri::menu::{MenuBuilder, MenuItemBuilder, CheckMenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::{Emitter, Manager};
 
-fn draw_status_dot(base_image: &tauri::image::Image<'_>, color: [u8; 4]) -> tauri::image::Image<'static> {
+fn draw_status_dot(
+    base_image: &tauri::image::Image<'_>,
+    color: [u8; 4],
+) -> tauri::image::Image<'static> {
     let width = base_image.width();
     let height = base_image.height();
     let mut rgba = base_image.rgba().to_vec();
-    
+
     // Draw a status dot twice as large (radius factor 0.24 instead of 0.12)
     let radius = (width as f32 * 0.24).max(4.0) as i32;
     let cx = (width as i32) - radius - 2;
     let cy = (height as i32) - radius - 2;
-    
+
     for y in 0..(height as i32) {
         for x in 0..(width as i32) {
             let dx = x - cx;
@@ -33,17 +38,14 @@ fn draw_status_dot(base_image: &tauri::image::Image<'_>, color: [u8; 4]) -> taur
             }
         }
     }
-    
+
     tauri::image::Image::new_owned(rgba, width, height)
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-fn list_audio_devices(controller: tauri::State<'_, AudioController>) -> Result<Vec<String>, String> {
+fn list_audio_devices(
+    controller: tauri::State<'_, AudioController>,
+) -> Result<Vec<String>, String> {
     controller.list_devices()
 }
 
@@ -68,25 +70,20 @@ pub struct AppConfig {
 }
 
 #[tauri::command]
-fn update_active_config(
-    engine: String,
-    provider: String,
-    config: tauri::State<'_, AppConfig>,
-) {
+fn update_active_config(engine: String, provider: String, config: tauri::State<'_, AppConfig>) {
     let mut c = config.active.lock().unwrap();
     c.engine = engine;
     c.provider = provider;
 }
 
-fn is_recording_allowed(
-    config: &AppConfig,
-    stt: &SttController,
-) -> Result<(), String> {
+fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), String> {
     let c = config.active.lock().unwrap();
     if c.engine == "local" {
         let stt_state = stt.state.lock().unwrap();
         if stt_state.engine.is_none() {
-            return Err("No local model loaded. Please select and load a local model first.".to_string());
+            return Err(
+                "No local model loaded. Please select and load a local model first.".to_string(),
+            );
         }
     } else if c.engine == "openai-cloud" {
         let key_name = format!("api_key_{}", c.provider);
@@ -95,18 +92,104 @@ fn is_recording_allowed(
             Ok(ent) => {
                 if let Ok(password) = ent.get_password() {
                     if password.trim().is_empty() {
-                        return Err(format!("API Key for {} is missing. Please set it in BYOK Config.", c.provider.to_uppercase()));
+                        return Err(format!(
+                            "API Key for {} is missing. Please set it in BYOK Config.",
+                            c.provider.to_uppercase()
+                        ));
                     }
                 } else {
-                    return Err(format!("API Key for {} is missing. Please set it in BYOK Config.", c.provider.to_uppercase()));
+                    return Err(format!(
+                        "API Key for {} is missing. Please set it in BYOK Config.",
+                        c.provider.to_uppercase()
+                    ));
                 }
             }
             Err(_) => {
-                return Err(format!("API Key for {} is missing. Please set it in BYOK Config.", c.provider.to_uppercase()));
+                return Err(format!(
+                    "API Key for {} is missing. Please set it in BYOK Config.",
+                    c.provider.to_uppercase()
+                ));
             }
         }
     }
     Ok(())
+}
+
+fn is_sound_feedback_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let app_local_data = match app_handle.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return true,
+    };
+    let config_path = app_local_data.join("config.json");
+    if !config_path.exists() {
+        return true;
+    }
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(s) => s,
+        Err(_) => return true,
+    };
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return true,
+    };
+    if let Some(val) = json.get("sound_feedback_enabled") {
+        if let Some(s) = val.as_str() {
+            return s != "false";
+        }
+    }
+    true
+}
+
+/// Resolves the sound file for the given event type.
+/// Looks for start.wav / stop.wav / done.wav inside the bundled resources:
+///   <app>.app/Contents/Resources/sounds/  (macOS bundle)
+///   or next to the binary in dev mode.
+/// Falls back to a built-in macOS system sound if the file is not present.
+fn resolve_sound_file(
+    app_handle: &tauri::AppHandle,
+    sound_type: &str,
+) -> Option<std::path::PathBuf> {
+    let fname = match sound_type {
+        "start" => "start.wav",
+        "stop" => "stop.wav",
+        "done" => "done.wav",
+        _ => return None,
+    };
+
+    // Check bundled resources (works in both dev and release builds)
+    if let Ok(res_dir) = app_handle.path().resource_dir() {
+        let bundled = res_dir.join("sounds").join(fname);
+        if bundled.exists() {
+            return Some(bundled);
+        }
+    }
+
+    // Fallback: built-in macOS system sounds
+    #[cfg(target_os = "macos")]
+    {
+        let fallback = match sound_type {
+            "start" => "/System/Library/Sounds/Tink.aiff",
+            "stop" => "/System/Library/Sounds/Pop.aiff",
+            "done" => "/System/Library/Sounds/Glass.aiff",
+            _ => return None,
+        };
+        return Some(std::path::PathBuf::from(fallback));
+    }
+
+    #[allow(unreachable_code)]
+    None
+}
+
+fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
+    if !is_sound_feedback_enabled(app_handle) {
+        return;
+    }
+    if let Some(path) = resolve_sound_file(app_handle, sound_type) {
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("afplay").arg(&path).spawn();
+        }
+    }
 }
 
 #[tauri::command]
@@ -118,6 +201,7 @@ fn start_recording(
 ) -> Result<(), String> {
     is_recording_allowed(&config, &stt)?;
     controller.start_recording(app_handle.clone())?;
+    play_backend_sound(&app_handle, "start");
     let _ = rebuild_tray_menu(&app_handle);
     Ok(())
 }
@@ -128,6 +212,9 @@ fn stop_recording(
     app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
     let res = controller.stop_recording(&app_handle);
+    if res.is_ok() {
+        play_backend_sound(&app_handle, "stop");
+    }
     let _ = rebuild_tray_menu(&app_handle);
     res
 }
@@ -169,60 +256,15 @@ fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn get_recording_status(controller: tauri::State<'_, AudioController>) -> bool {
-    controller.is_recording()
-}
-
-#[tauri::command]
-fn clear_app_files(
-    controller: tauri::State<'_, AudioController>,
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
-    {
-        let mut s = controller.state.lock().unwrap();
-        s.buffer.clear();
-    }
-
-    let app_local_data = app_handle
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?;
-
-    let recordings_dir = app_local_data.join("recordings");
-
-    if recordings_dir.exists() {
-        let mut deleted_count = 0;
-        let entries = std::fs::read_dir(&recordings_dir).map_err(|e| e.to_string())?;
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(ext) = path.extension() {
-                        if ext == "wav" {
-                            if std::fs::remove_file(&path).is_ok() {
-                                deleted_count += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        let _ = rebuild_tray_menu(&app_handle);
-        Ok(format!("Deleted {} recording (.wav) files from disk.", deleted_count))
-    } else {
-        let _ = rebuild_tray_menu(&app_handle);
-        Ok("No recordings found to clear.".to_string())
-    }
-}
-
 pub fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
     let app_handle_clone = app_handle.clone();
-    app_handle.run_on_main_thread(move || {
-        if let Err(e) = rebuild_tray_menu_inner(&app_handle_clone) {
-            eprintln!("Error rebuilding tray menu on main thread: {}", e);
-        }
-    }).map_err(|e| e.to_string())
+    app_handle
+        .run_on_main_thread(move || {
+            if let Err(e) = rebuild_tray_menu_inner(&app_handle_clone) {
+                eprintln!("Error rebuilding tray menu on main thread: {}", e);
+            }
+        })
+        .map_err(|e| e.to_string())
 }
 
 fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> {
@@ -230,25 +272,25 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let is_recording = controller.is_recording();
     let is_saving = controller.is_saving();
     let is_transcribing = controller.is_transcribing();
-    
+
     let base_icon = app_handle.default_window_icon().cloned();
     let tray_icon_img = if let Some(ref img) = base_icon {
         if is_recording {
-            Some(draw_status_dot(img, [255, 59, 48, 255])) // iOS system red
+            Some(draw_status_dot(img, [255, 59, 48, 255])) // Use iOS system red for recording state
         } else if is_saving || is_transcribing {
-            Some(draw_status_dot(img, [0, 122, 255, 255])) // iOS system blue
+            Some(draw_status_dot(img, [0, 122, 255, 255])) // Use iOS system blue for processing state
         } else {
             Some(img.clone())
         }
     } else {
         None
     };
-    
+
     let selected_device = {
         let s = controller.state.lock().unwrap();
         s.selected_device.clone()
     };
-    
+
     let toggle_label = if is_recording {
         "Stop Recording"
     } else {
@@ -258,22 +300,22 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .id("toggle_recording")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
-        
+
     let nav_usage_item = MenuItemBuilder::new("Usage")
         .id("nav_usage")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
-        
+
     let nav_models_item = MenuItemBuilder::new("Models")
         .id("nav_models")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
-        
+
     let nav_history_item = MenuItemBuilder::new("History")
         .id("nav_transcriptions")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
-        
+
     let nav_settings_item = MenuItemBuilder::new("Settings")
         .id("nav_settings")
         .build(app_handle)
@@ -282,7 +324,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let devices = controller.list_devices().unwrap_or_default();
     let mic_menu = {
         let mut builder = SubmenuBuilder::new(app_handle, "Select Microphone");
-        
+
         let is_default_checked = selected_device.is_none();
         let default_mic_item = CheckMenuItemBuilder::new("Default System Microphone")
             .id("mic_default")
@@ -290,9 +332,9 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
             .build(app_handle)
             .map_err(|e| e.to_string())?;
         builder = builder.item(&default_mic_item);
-        
+
         for device_name in devices {
-            let is_checked = selected_device.as_ref().map_or(false, |d| d == &device_name);
+            let is_checked = selected_device.as_ref() == Some(&device_name);
             let id = format!("mic_device:{}", device_name);
             let device_item = CheckMenuItemBuilder::new(&device_name)
                 .id(id)
@@ -303,16 +345,16 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         }
         builder.build().map_err(|e| e.to_string())?
     };
-    
+
     let quit_item = MenuItemBuilder::new("Quit")
         .id("quit")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
-        
+
     let separator = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
     let separator2 = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
     let separator3 = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
-    
+
     let menu = MenuBuilder::new(app_handle)
         .item(&toggle_recording_item)
         .item(&separator)
@@ -326,7 +368,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .item(&quit_item)
         .build()
         .map_err(|e| e.to_string())?;
-        
+
     if let Some(tray) = app_handle.tray_by_id("main-tray") {
         let _ = tray.set_title(None::<&str>);
         if let Some(img) = tray_icon_img {
@@ -346,7 +388,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         }
         let _tray = builder.build(app_handle).map_err(|e| e.to_string())?;
     }
-    
+
     Ok(())
 }
 
@@ -363,7 +405,7 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
             let config = app.state::<AppConfig>();
             match is_recording_allowed(&config, &stt) {
                 Ok(_) => {
-                    if let Ok(_) = controller.start_recording(app.clone()) {
+                    if controller.start_recording(app.clone()).is_ok() {
                         let _ = app.emit("recording-started", ());
                     }
                 }
@@ -403,27 +445,29 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
 }
 
 #[tauri::command]
-fn register_shortcut(
-    shortcut_str: String,
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
-    
+
     let global_shortcut = app_handle.global_shortcut();
-    
+
     let _ = global_shortcut.unregister_all();
-    
+
     if shortcut_str.trim().is_empty() {
         return Ok(());
     }
-    
-    let shortcut: Shortcut = shortcut_str.parse()
+
+    let shortcut: Shortcut = shortcut_str
+        .parse()
         .map_err(|e| format!("Failed to parse shortcut '{}': {}", shortcut_str, e))?;
-        
-    global_shortcut.register(shortcut)
+
+    global_shortcut
+        .register(shortcut)
         .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut_str, e))?;
-        
-    println!("Successfully registered global recording shortcut: {}", shortcut_str);
+
+    println!(
+        "Successfully registered global recording shortcut: {}",
+        shortcut_str
+    );
     Ok(())
 }
 
@@ -435,14 +479,6 @@ fn set_vad_enabled(
     let mut s = controller.state.lock().unwrap();
     s.vad_enabled = enabled;
     Ok(())
-}
-
-#[tauri::command]
-fn get_vad_enabled(
-    controller: tauri::State<'_, AudioController>,
-) -> Result<bool, String> {
-    let s = controller.state.lock().unwrap();
-    Ok(s.vad_enabled)
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -466,7 +502,7 @@ fn scan_models(
         .path()
         .app_local_data_dir()
         .map_err(|e| e.to_string())?;
-    
+
     let models_dir = app_local_data.join("models");
     std::fs::create_dir_all(&models_dir).map_err(|e| e.to_string())?;
 
@@ -477,21 +513,25 @@ fn scan_models(
 
     let mut models = Vec::new();
     let entries = std::fs::read_dir(&models_dir).map_err(|e| e.to_string())?;
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "gguf" || ext == "bin") {
-                let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                
-                let size_formatted = if size_bytes >= 1_073_741_824 {
-                    format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
-                } else {
-                    format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
-                };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .extension()
+                .is_some_and(|ext| ext == "gguf" || ext == "bin")
+        {
+            let filename = path.file_name().unwrap().to_string_lossy().to_string();
+            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
 
-                let filename_lower = filename.to_lowercase();
-                let (quality, speed, name) = if filename_lower.contains("large") || size_bytes > 2_000_000_000 {
+            let size_formatted = if size_bytes >= 1_073_741_824 {
+                format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
+            } else {
+                format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
+            };
+
+            let filename_lower = filename.to_lowercase();
+            let (quality, speed, name) =
+                if filename_lower.contains("large") || size_bytes > 2_000_000_000 {
                     (95, 40, "Whisper Large")
                 } else if filename_lower.contains("medium") || size_bytes > 1_000_000_000 {
                     (85, 60, "Whisper Medium")
@@ -501,6 +541,60 @@ fn scan_models(
                     (65, 90, "Whisper Base")
                 } else {
                     (50, 98, "Whisper Tiny")
+                };
+
+            let display_name = format!("{} ({})", name, filename);
+            let is_active = Some(path.to_string_lossy().to_string()) == active_path;
+
+            models.push(LocalModel {
+                name: display_name,
+                filename,
+                path: path.to_string_lossy().to_string(),
+                size_bytes,
+                size_formatted,
+                quality,
+                speed,
+                is_active,
+            });
+        } else if path.is_dir() {
+            let has_tokens = path.join("tokens.txt").exists();
+            let has_onnx = if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                sub_entries
+                    .filter_map(|e| e.ok())
+                    .any(|e| e.path().extension().is_some_and(|ext| ext == "onnx"))
+            } else {
+                false
+            };
+
+            if has_tokens && has_onnx {
+                let mut size_bytes = 0u64;
+                if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                    for sub_entry in sub_entries.filter_map(|e| e.ok()) {
+                        if sub_entry.path().is_file() {
+                            size_bytes += sub_entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        }
+                    }
+                }
+
+                let size_formatted = if size_bytes >= 1_073_741_824 {
+                    format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
+                } else {
+                    format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
+                };
+
+                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                let filename_lower = filename.to_lowercase();
+
+                let (name, quality, speed) = if filename_lower.contains("moonshine")
+                    || path.join("preprocess.onnx").exists()
+                {
+                    ("Moonshine ASR", 90, 85)
+                } else if filename_lower.contains("canary") {
+                    ("NVIDIA Canary-Qwen", 94, 60)
+                } else if filename_lower.contains("parakeet") || path.join("joiner.onnx").exists() {
+                    ("NVIDIA Parakeet TDT", 88, 92)
+                } else {
+                    ("ONNX Model", 80, 70)
                 };
 
                 let display_name = format!("{} ({})", name, filename);
@@ -516,57 +610,6 @@ fn scan_models(
                     speed,
                     is_active,
                 });
-            } else if path.is_dir() {
-                let has_tokens = path.join("tokens.txt").exists();
-                let has_onnx = if let Ok(sub_entries) = std::fs::read_dir(&path) {
-                    sub_entries.filter_map(|e| e.ok()).any(|e| e.path().extension().map_or(false, |ext| ext == "onnx"))
-                } else {
-                    false
-                };
-
-                if has_tokens && has_onnx {
-                    let mut size_bytes = 0u64;
-                    if let Ok(sub_entries) = std::fs::read_dir(&path) {
-                        for sub_entry in sub_entries.filter_map(|e| e.ok()) {
-                            if sub_entry.path().is_file() {
-                                size_bytes += sub_entry.metadata().map(|m| m.len()).unwrap_or(0);
-                            }
-                        }
-                    }
-
-                    let size_formatted = if size_bytes >= 1_073_741_824 {
-                        format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
-                    } else {
-                        format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
-                    };
-
-                    let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                    let filename_lower = filename.to_lowercase();
-
-                    let (name, quality, speed) = if filename_lower.contains("moonshine") || path.join("preprocess.onnx").exists() {
-                        ("Moonshine ASR", 90, 85)
-                    } else if filename_lower.contains("canary") {
-                        ("NVIDIA Canary-Qwen", 94, 60)
-                    } else if filename_lower.contains("parakeet") || path.join("joiner.onnx").exists() {
-                        ("NVIDIA Parakeet TDT", 88, 92)
-                    } else {
-                        ("ONNX Model", 80, 70)
-                    };
-
-                    let display_name = format!("{} ({})", name, filename);
-                    let is_active = Some(path.to_string_lossy().to_string()) == active_path;
-
-                    models.push(LocalModel {
-                        name: display_name,
-                        filename,
-                        path: path.to_string_lossy().to_string(),
-                        size_bytes,
-                        size_formatted,
-                        quality,
-                        speed,
-                        is_active,
-                    });
-                }
             }
         }
     }
@@ -594,11 +637,10 @@ async fn load_model(
 
     let controller = stt_controller.inner().clone();
     let model_path_clone = model_path.clone();
-    
-    let res = tauri::async_runtime::spawn_blocking(move || {
-        controller.load_model(&model_path_clone)
-    })
-    .await;
+
+    let res =
+        tauri::async_runtime::spawn_blocking(move || controller.load_model(&model_path_clone))
+            .await;
 
     {
         let mut s = stt_controller.state.lock().unwrap();
@@ -649,7 +691,8 @@ fn set_secure_api_key(provider: String, key: String) -> Result<(), String> {
     }
     let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
         .map_err(|e| format!("Failed to access keyring: {}", e))?;
-    entry.set_password(&key)
+    entry
+        .set_password(&key)
         .map_err(|e| format!("Failed to set key in keyring: {}", e))?;
     Ok(())
 }
@@ -727,7 +770,10 @@ async fn refine_transcription(
     tauri::async_runtime::spawn(async move {
         let key = get_secure_api_key(provider.clone())?;
         if key.trim().is_empty() {
-            return Err(format!("API Key for {} is missing or empty. Please set it in preferences.", provider));
+            return Err(format!(
+                "API Key for {} is missing or empty. Please set it in preferences.",
+                provider
+            ));
         }
         crate::refiner::refine_text(&text, &provider, &model, &key, &prompt).await
     })
@@ -778,21 +824,28 @@ struct TranscriptionItem {
     text: String,
     model: String,
     wav_path: Option<String>,
+    duration_sec: Option<f64>,
 }
 
 #[tauri::command]
-fn save_transcription_data(
-    wav_path: String,
-    text: String,
-    model: String,
-) -> Result<(), String> {
+fn save_transcription_data(wav_path: String, text: String, model: String) -> Result<(), String> {
     let wav_path_buf = std::path::PathBuf::from(&wav_path);
-    let parent_dir = wav_path_buf.parent().ok_or("No parent directory for wav file")?;
-    
-    let id = parent_dir.file_name()
+    let parent_dir = wav_path_buf
+        .parent()
+        .ok_or("No parent directory for wav file")?;
+
+    let id = parent_dir
+        .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| chrono::Local::now().timestamp().to_string());
-        
+
+    let duration_sec = if let Ok(reader) = hound::WavReader::open(&wav_path) {
+        let spec = reader.spec();
+        Some(reader.duration() as f64 / spec.sample_rate as f64)
+    } else {
+        None
+    };
+
     let now = chrono::Local::now();
     let item = TranscriptionItem {
         id,
@@ -801,8 +854,9 @@ fn save_transcription_data(
         text,
         model,
         wav_path: Some(wav_path),
+        duration_sec,
     };
-    
+
     let data_json = serde_json::to_string_pretty(&item).map_err(|e| e.to_string())?;
     std::fs::write(parent_dir.join("data.json"), data_json).map_err(|e| e.to_string())?;
     Ok(())
@@ -824,7 +878,7 @@ fn load_history(app_handle: tauri::AppHandle) -> Result<String, String> {
     if !recordings_dir.exists() {
         return Ok("[]".to_string());
     }
-    
+
     let mut items = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&recordings_dir) {
         for entry in entries.filter_map(|e| e.ok()) {
@@ -833,7 +887,22 @@ fn load_history(app_handle: tauri::AppHandle) -> Result<String, String> {
                 let data_json_path = path.join("data.json");
                 if data_json_path.exists() {
                     if let Ok(content) = std::fs::read_to_string(&data_json_path) {
-                        if let Ok(item) = serde_json::from_str::<TranscriptionItem>(&content) {
+                        if let Ok(mut item) = serde_json::from_str::<TranscriptionItem>(&content) {
+                            // If duration_sec is missing (old recording), compute and save it back
+                            if item.duration_sec.is_none() {
+                                if let Some(ref w_path) = item.wav_path {
+                                    if let Ok(reader) = hound::WavReader::open(w_path) {
+                                        let spec = reader.spec();
+                                        let dur =
+                                            reader.duration() as f64 / spec.sample_rate as f64;
+                                        item.duration_sec = Some(dur);
+                                        // Try to save the updated item back to disk
+                                        if let Ok(updated) = serde_json::to_string_pretty(&item) {
+                                            let _ = std::fs::write(&data_json_path, updated);
+                                        }
+                                    }
+                                }
+                            }
                             items.push(item);
                         }
                     }
@@ -841,12 +910,39 @@ fn load_history(app_handle: tauri::AppHandle) -> Result<String, String> {
             }
         }
     }
-    
+
     // Sort items by directory/id name (which is YYYY-MM-DD_HH-mm-ss) descending
     items.sort_by(|a, b| b.id.cmp(&a.id));
-    
+
     let serialized = serde_json::to_string(&items).map_err(|e| e.to_string())?;
     Ok(serialized)
+}
+
+/// Plays the "done" chime to notify the user that transcription text is ready.
+#[tauri::command]
+fn play_done_sound(app_handle: tauri::AppHandle) {
+    play_backend_sound(&app_handle, "done");
+}
+
+/// Simulates Cmd+V in the previously-focused application so the clipboard
+/// text is pasted automatically. Requires macOS Accessibility permission.
+#[tauri::command]
+fn paste_text() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Use osascript to press Cmd+V in whichever app currently has keyboard focus.
+        // A small delay lets the clipboard write from the webview flush first.
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            let script = r#"tell application "System Events" to keystroke "v" using command down"#;
+            let _ = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(script)
+                .output();
+        });
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -871,6 +967,7 @@ pub fn run() {
                 let controller = app.state::<AudioController>();
                 if controller.is_recording() {
                     if let Ok(wav_path) = controller.stop_recording(app) {
+                        play_backend_sound(app, "stop");
                         let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
                         let _ = app.emit("recording-stopped", payload);
                     }
@@ -879,7 +976,8 @@ pub fn run() {
                     let config = app.state::<AppConfig>();
                     match is_recording_allowed(&config, &stt) {
                         Ok(_) => {
-                            if let Ok(_) = controller.start_recording(app.clone()) {
+                            if controller.start_recording(app.clone()).is_ok() {
+                                play_backend_sound(app, "start");
                                 let _ = app.emit("recording-started", ());
                             }
                         }
@@ -903,7 +1001,12 @@ pub fn run() {
         .plugin(global_shortcut_plugin)
         .manage(AudioController::new())
         .manage(SttController::new())
-        .manage(AppConfig { active: Mutex::new(ActiveConfig { engine: "local".to_string(), provider: "openai".to_string() }) })
+        .manage(AppConfig {
+            active: Mutex::new(ActiveConfig {
+                engine: "local".to_string(),
+                provider: "openai".to_string(),
+            }),
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -913,22 +1016,18 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            
+
             let app_handle = app.handle();
             let _ = rebuild_tray_menu(app_handle);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             list_audio_devices,
             set_selected_device,
             start_recording,
             stop_recording,
-            get_recording_status,
-            clear_app_files,
             register_shortcut,
             set_vad_enabled,
-            get_vad_enabled,
             scan_models,
             load_model,
             get_active_model,
@@ -949,7 +1048,9 @@ pub fn run() {
             clear_history_cmd,
             save_transcription_data,
             set_transcribing,
-            get_model_status
+            get_model_status,
+            play_done_sound,
+            paste_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

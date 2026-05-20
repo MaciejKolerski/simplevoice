@@ -57,6 +57,7 @@ export function TranscriptionsView() {
     try {
       await invoke("clear_history_cmd");
       setHistory([]);
+      window.dispatchEvent(new Event("transcription-added"));
     } catch (err) {
       console.error("Failed to clear history:", err);
     }

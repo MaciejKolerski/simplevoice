@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronDown, Sparkles, Cpu } from "lucide-react";
+import { ChevronDown, Sparkles, Cpu, Keyboard } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -30,6 +30,7 @@ function formatKeycapLabel(key: string): string {
 
 export function SettingsView() {
   const [vadEnabled, setVadEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
@@ -67,6 +68,9 @@ export function SettingsView() {
     invoke("set_vad_enabled", { enabled: savedVad }).catch((err) => {
       console.error("Failed to set VAD state on mount:", err);
     });
+
+    const savedSound = localStorage.getItem("sound_feedback_enabled") !== "false";
+    setSoundEnabled(savedSound);
 
     const syncSettings = () => {
       setRefinerEnabled(localStorage.getItem("refiner_enabled") === "true");
@@ -268,6 +272,11 @@ export function SettingsView() {
     }
   };
 
+  const handleSoundToggle = (checked: boolean) => {
+    setSoundEnabled(checked);
+    localStorage.setItem("sound_feedback_enabled", String(checked));
+  };
+
   const saveSecureKey = async (provider: string, val: string) => {
     try {
       if (val === "••••••••••••••••") return;
@@ -347,7 +356,7 @@ export function SettingsView() {
             </div>
           </div>
 
-          <div className="flex justify-between items-center p-6">
+          <div className="flex justify-between items-center p-6 border-b border-border">
             <div>
               <div className="text-fg font-medium mb-1">
                 Voice Activity Detection (VAD)
@@ -361,6 +370,25 @@ export function SettingsView() {
                 type="checkbox"
                 checked={vadEnabled}
                 onChange={(e) => handleVadToggle(e.target.checked)}
+              />
+              <span className="toggle-bg"></span>
+            </label>
+          </div>
+
+          <div className="flex justify-between items-center p-6">
+            <div>
+              <div className="text-fg font-medium mb-1">
+                Sound Effects
+              </div>
+              <div className="text-muted text-[13px]">
+                Play a premium audio cue when starting and stopping recording.
+              </div>
+            </div>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={soundEnabled}
+                onChange={(e) => handleSoundToggle(e.target.checked)}
               />
               <span className="toggle-bg"></span>
             </label>
@@ -512,7 +540,9 @@ export function SettingsView() {
         </div>
 
         {/* SECTION: Shortcuts */}
-        <h2 className="mb-4 text-base text-white font-medium">Shortcuts</h2>
+        <h2 className="mb-4 text-base text-white font-medium flex items-center gap-2">
+          <Keyboard size={16} className="text-muted" /> Shortcuts
+        </h2>
         <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
           <div className="flex justify-between items-center p-6">
             <div>
