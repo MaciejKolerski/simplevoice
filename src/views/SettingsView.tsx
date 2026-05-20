@@ -459,7 +459,7 @@ export function SettingsView() {
 
           <div className="flex justify-between items-center p-6 border-b border-border">
             <div>
-              <div className="text-fg font-medium mb-1">Launch at Login</div>
+              <div className="text-fg font-medium mb-1">Auto-start</div>
               <div className="text-xs text-muted">
                 Start SimpleVoice automatically when you log in.
               </div>
@@ -467,11 +467,10 @@ export function SettingsView() {
             <label className="toggle cursor-pointer">
               <input
                 type="checkbox"
-                className="hidden"
                 checked={autostartEnabled}
                 onChange={(e) => handleAutostartToggle(e.target.checked)}
               />
-              <span className="toggle-bg block w-11 h-6 bg-border rounded-full relative transition-colors duration-200"></span>
+              <span className="toggle-bg"></span>
             </label>
           </div>
 
