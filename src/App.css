@@ -357,3 +357,13 @@
     transform: translateX(1rem);
     background-color: var(--bg);
 }
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+

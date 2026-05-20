@@ -1,6 +1,45 @@
+import { useEffect, useState } from "react";
 import { Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 
 export function UsageView() {
+  const [activeModel, setActiveModel] = useState<string>("None");
+  const [isRunningLocally, setIsRunningLocally] = useState<boolean>(true);
+
+  const updateActiveModel = async () => {
+    try {
+      const engine = localStorage.getItem("asr_engine") || "local";
+      if (engine === "openai-cloud") {
+        const model = localStorage.getItem("asr_model") || "whisper-1";
+        const customModel = localStorage.getItem("asr_custom_model") || "";
+        const finalModel = model === "custom" ? customModel : model;
+        setActiveModel(finalModel || "None");
+        setIsRunningLocally(false);
+      } else {
+        const activeModelPath = await invoke<string | null>("get_active_model");
+        if (activeModelPath) {
+          const parts = activeModelPath.split(/[\/\\]/);
+          const fname = parts[parts.length - 1];
+          setActiveModel(fname);
+        } else {
+          setActiveModel("None");
+        }
+        setIsRunningLocally(true);
+      }
+    } catch (err) {
+      console.error("Failed to query active model:", err);
+      setActiveModel("None");
+    }
+  };
+
+  useEffect(() => {
+    updateActiveModel();
+    window.addEventListener("asr-engine-changed", updateActiveModel);
+    return () => {
+      window.removeEventListener("asr-engine-changed", updateActiveModel);
+    };
+  }, []);
+
   return (
     <div className="flex flex-col w-full">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pr-1">
@@ -55,11 +94,13 @@ export function UsageView() {
             <Cpu size={14} className="opacity-50 shrink-0" />
           </div>
           <div className="text-xl leading-tight pt-1 tracking-tight text-white font-medium truncate">
-            Whisper v3 Large
+            {activeModel}
           </div>
           <div className="muted text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
-            <span className="truncate opacity-70">Running locally</span>
+            <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${activeModel === "None" ? "bg-amber-400" : "bg-emerald-400"}`}></span>
+            <span className="truncate opacity-70">
+              {activeModel === "None" ? "No active model" : isRunningLocally ? "Running locally" : "Running in the cloud"}
+            </span>
           </div>
         </div>
       </div>

@@ -1,55 +1,166 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+
+interface TranscriptionItem {
+  id: string;
+  timestamp: string;
+  date: string;
+  text: string;
+  model: string;
+}
+
 export function TranscriptionsView() {
+  const [history, setHistory] = useState<TranscriptionItem[]>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  const loadHistory = async () => {
+    try {
+      const raw = await invoke<string>("load_history");
+      setHistory(JSON.parse(raw || "[]"));
+    } catch (err) {
+      console.error("Failed to load transcription history:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+
+    const handleNewTranscription = () => {
+      loadHistory();
+    };
+
+    window.addEventListener("transcription-added", handleNewTranscription);
+    return () => {
+      window.removeEventListener("transcription-added", handleNewTranscription);
+    };
+  }, []);
+
+  const handleCopy = async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => {
+        setCopiedId(null);
+      }, 1500);
+    } catch (err) {
+      console.error("Failed to copy text:", err);
+    }
+  };
+
+  const handleClearHistory = () => {
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmClearHistory = async () => {
+    setShowConfirmModal(false);
+    try {
+      await invoke("clear_history_cmd");
+      setHistory([]);
+    } catch (err) {
+      console.error("Failed to clear history:", err);
+    }
+  };
+
   return (
-    <div className="flex flex-col">
-      <h1 className="mb-6 text-2xl font-medium text-white tracking-tight">
-        History
-      </h1>
-
-      <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-        <div className="flex items-start p-5 border-b border-border transition-colors hover:bg-surface-hover">
-          <div className="flex-1">
-            <div className="mb-2 flex gap-3 items-center">
-              <span className="mono text-muted-dark text-xs font-mono">
-                Today, 10:42 AM
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-surface-active text-muted border border-border">
-                Whisper v3 Large
-              </span>
-              <span className="text-muted text-xs">45m 12s</span>
-            </div>
-            <div className="text-fg leading-relaxed text-[13px]">
-              "Alright, let's break down the new architecture. The main concept
-              here is that we're completely decoupling the frontend client from
-              the state management layer. This means we can swap out..."
-            </div>
-          </div>
-          <div className="flex-none text-right pl-4">
-            <button className="btn btn-outline btn-small">Copy</button>
-          </div>
+    <div className="flex flex-col w-full">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6">
+        <div>
+          <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
+            History
+          </h1>
+          <p className="text-xs text-muted mt-1 leading-normal">
+            Your locally recorded and transcribed voice notes.
+          </p>
         </div>
-
-        <div className="flex items-start p-5 transition-colors hover:bg-surface-hover">
-          <div className="flex-1">
-            <div className="mb-2 flex gap-3 items-center">
-              <span className="mono text-muted-dark text-xs font-mono">
-                Yesterday, 2:15 PM
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-surface-active text-muted border border-border">
-                Distil-Whisper
-              </span>
-              <span className="text-muted text-xs">1h 05m</span>
-            </div>
-            <div className="text-fg leading-relaxed text-[13px]">
-              "Initial thoughts on the refactor: it's looking much cleaner. I
-              noticed a few edge cases in the data fetching hooks that we need
-              to address before merging."
-            </div>
-          </div>
-          <div className="flex-none text-right pl-4">
-            <button className="btn btn-outline btn-small">Copy</button>
-          </div>
-        </div>
+        {history.length > 0 && (
+          <button
+            onClick={handleClearHistory}
+            className="btn btn-small btn-outline text-red-400 hover:text-red-300 hover:border-red-400/50 shrink-0 transition-all duration-300 cursor-pointer"
+          >
+            Clear History
+          </button>
+        )}
       </div>
+
+      {history.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
+          <div className="w-12 h-12 rounded-full bg-surface-active flex items-center justify-center text-muted mb-4 opacity-50">
+            "
+          </div>
+          <h3 className="text-white font-medium mb-1">No transcriptions yet</h3>
+          <p className="text-muted text-sm max-w-sm leading-relaxed">
+            Record some audio using your global shortcut to start transcribing speech to text.
+          </p>
+        </div>
+      ) : (
+        <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+          {history.map((item, idx) => {
+            const isCopied = copiedId === item.id;
+            return (
+              <div
+                key={item.id}
+                className={`flex items-start p-5 transition-colors hover:bg-surface-hover gap-6 ${
+                  idx < history.length - 1 ? "border-b border-border" : ""
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="mb-2 flex flex-wrap gap-2.5 items-center">
+                    <span className="mono text-muted-dark text-xs font-mono">
+                      {item.date}, {item.timestamp}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-surface-active text-muted border border-border">
+                      {item.model}
+                    </span>
+                  </div>
+                  <div className="text-fg leading-relaxed text-[13px] break-words select-text">
+                    "{item.text}"
+                  </div>
+                </div>
+                <div className="flex-none text-right pl-4">
+                  <button
+                    onClick={() => handleCopy(item.id, item.text)}
+                    className={`btn btn-small w-20 transition-all ${
+                      isCopied
+                        ? "btn-outline border-emerald-500/30 text-emerald-400"
+                        : "btn-outline"
+                    }`}
+                  >
+                    {isCopied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
+          <div className="bg-secondary border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-medium text-white mb-2">
+              Clear Transcription History?
+            </h3>
+            <p className="text-muted text-[13px] mb-6 leading-relaxed">
+              This will permanently delete all local audio recordings and their transcribed text from your device. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="btn btn-outline px-4 py-2 text-xs rounded-md cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmClearHistory}
+                className="btn bg-red-600 hover:bg-red-500 text-white border-0 px-4 py-2 text-xs font-semibold rounded-md cursor-pointer"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,9 @@
 mod audio;
 use audio::AudioController;
+use std::sync::Mutex;
+mod stt;
+use stt::SttController;
+mod refiner;
 use tauri::{Manager, Emitter};
 use tauri::tray::TrayIconBuilder;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, CheckMenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
@@ -53,11 +57,66 @@ fn set_selected_device(
     let _ = rebuild_tray_menu(&app_handle);
 }
 
+#[derive(Debug, Clone)]
+pub struct ActiveConfig {
+    pub engine: String,
+    pub provider: String,
+}
+
+pub struct AppConfig {
+    pub active: Mutex<ActiveConfig>,
+}
+
+#[tauri::command]
+fn update_active_config(
+    engine: String,
+    provider: String,
+    config: tauri::State<'_, AppConfig>,
+) {
+    let mut c = config.active.lock().unwrap();
+    c.engine = engine;
+    c.provider = provider;
+}
+
+fn is_recording_allowed(
+    config: &AppConfig,
+    stt: &SttController,
+) -> Result<(), String> {
+    let c = config.active.lock().unwrap();
+    if c.engine == "local" {
+        let stt_state = stt.state.lock().unwrap();
+        if stt_state.engine.is_none() {
+            return Err("No local model loaded. Please select and load a local model first.".to_string());
+        }
+    } else if c.engine == "openai-cloud" {
+        let key_name = format!("api_key_{}", c.provider);
+        let entry = keyring::Entry::new("simplevoice", &key_name);
+        match entry {
+            Ok(ent) => {
+                if let Ok(password) = ent.get_password() {
+                    if password.trim().is_empty() {
+                        return Err(format!("API Key for {} is missing. Please set it in BYOK Config.", c.provider.to_uppercase()));
+                    }
+                } else {
+                    return Err(format!("API Key for {} is missing. Please set it in BYOK Config.", c.provider.to_uppercase()));
+                }
+            }
+            Err(_) => {
+                return Err(format!("API Key for {} is missing. Please set it in BYOK Config.", c.provider.to_uppercase()));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn start_recording(
     controller: tauri::State<'_, AudioController>,
+    stt: tauri::State<'_, SttController>,
+    config: tauri::State<'_, AppConfig>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    is_recording_allowed(&config, &stt)?;
     controller.start_recording(app_handle.clone())?;
     let _ = rebuild_tray_menu(&app_handle);
     Ok(())
@@ -71,6 +130,43 @@ fn stop_recording(
     let res = controller.stop_recording(&app_handle);
     let _ = rebuild_tray_menu(&app_handle);
     res
+}
+
+#[tauri::command]
+fn set_transcribing(
+    active: bool,
+    controller: tauri::State<'_, AudioController>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    controller.set_transcribing(active);
+    let _ = rebuild_tray_menu(&app_handle);
+    Ok(())
+}
+
+#[tauri::command]
+fn open_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -93,9 +189,11 @@ fn clear_app_files(
         .app_local_data_dir()
         .map_err(|e| e.to_string())?;
 
-    if app_local_data.exists() {
+    let recordings_dir = app_local_data.join("recordings");
+
+    if recordings_dir.exists() {
         let mut deleted_count = 0;
-        let entries = std::fs::read_dir(&app_local_data).map_err(|e| e.to_string())?;
+        let entries = std::fs::read_dir(&recordings_dir).map_err(|e| e.to_string())?;
         for entry in entries {
             if let Ok(entry) = entry {
                 let path = entry.path();
@@ -131,12 +229,13 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let controller = app_handle.state::<AudioController>();
     let is_recording = controller.is_recording();
     let is_saving = controller.is_saving();
+    let is_transcribing = controller.is_transcribing();
     
     let base_icon = app_handle.default_window_icon().cloned();
     let tray_icon_img = if let Some(ref img) = base_icon {
         if is_recording {
             Some(draw_status_dot(img, [255, 59, 48, 255])) // iOS system red
-        } else if is_saving {
+        } else if is_saving || is_transcribing {
             Some(draw_status_dot(img, [0, 122, 255, 255])) // iOS system blue
         } else {
             Some(img.clone())
@@ -260,8 +359,22 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
                 let _ = app.emit("recording-stopped", payload);
             }
         } else {
-            if let Ok(_) = controller.start_recording(app.clone()) {
-                let _ = app.emit("recording-started", ());
+            let stt = app.state::<SttController>();
+            let config = app.state::<AppConfig>();
+            match is_recording_allowed(&config, &stt) {
+                Ok(_) => {
+                    if let Ok(_) = controller.start_recording(app.clone()) {
+                        let _ = app.emit("recording-started", ());
+                    }
+                }
+                Err(reason) => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                    let _ = app.emit("recording-failed-to-start", reason);
+                }
             }
         }
         let _ = rebuild_tray_menu(app);
@@ -332,6 +445,386 @@ fn get_vad_enabled(
     Ok(s.vad_enabled)
 }
 
+#[derive(serde::Serialize, Clone)]
+struct LocalModel {
+    name: String,
+    filename: String,
+    path: String,
+    size_bytes: u64,
+    size_formatted: String,
+    quality: u8,
+    speed: u8,
+    is_active: bool,
+}
+
+#[tauri::command]
+fn scan_models(
+    app_handle: tauri::AppHandle,
+    stt_controller: tauri::State<'_, SttController>,
+) -> Result<Vec<LocalModel>, String> {
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    
+    let models_dir = app_local_data.join("models");
+    std::fs::create_dir_all(&models_dir).map_err(|e| e.to_string())?;
+
+    let active_path = {
+        let s = stt_controller.state.lock().unwrap();
+        s.active_model_path.clone()
+    };
+
+    let mut models = Vec::new();
+    let entries = std::fs::read_dir(&models_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "gguf" || ext == "bin") {
+                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                
+                let size_formatted = if size_bytes >= 1_073_741_824 {
+                    format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
+                } else {
+                    format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
+                };
+
+                let filename_lower = filename.to_lowercase();
+                let (quality, speed, name) = if filename_lower.contains("large") || size_bytes > 2_000_000_000 {
+                    (95, 40, "Whisper Large")
+                } else if filename_lower.contains("medium") || size_bytes > 1_000_000_000 {
+                    (85, 60, "Whisper Medium")
+                } else if filename_lower.contains("small") || size_bytes > 400_000_000 {
+                    (75, 80, "Whisper Small")
+                } else if filename_lower.contains("base") || size_bytes > 140_000_000 {
+                    (65, 90, "Whisper Base")
+                } else {
+                    (50, 98, "Whisper Tiny")
+                };
+
+                let display_name = format!("{} ({})", name, filename);
+                let is_active = Some(path.to_string_lossy().to_string()) == active_path;
+
+                models.push(LocalModel {
+                    name: display_name,
+                    filename,
+                    path: path.to_string_lossy().to_string(),
+                    size_bytes,
+                    size_formatted,
+                    quality,
+                    speed,
+                    is_active,
+                });
+            } else if path.is_dir() {
+                let has_tokens = path.join("tokens.txt").exists();
+                let has_onnx = if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                    sub_entries.filter_map(|e| e.ok()).any(|e| e.path().extension().map_or(false, |ext| ext == "onnx"))
+                } else {
+                    false
+                };
+
+                if has_tokens && has_onnx {
+                    let mut size_bytes = 0u64;
+                    if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                        for sub_entry in sub_entries.filter_map(|e| e.ok()) {
+                            if sub_entry.path().is_file() {
+                                size_bytes += sub_entry.metadata().map(|m| m.len()).unwrap_or(0);
+                            }
+                        }
+                    }
+
+                    let size_formatted = if size_bytes >= 1_073_741_824 {
+                        format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
+                    } else {
+                        format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
+                    };
+
+                    let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                    let filename_lower = filename.to_lowercase();
+
+                    let (name, quality, speed) = if filename_lower.contains("moonshine") || path.join("preprocess.onnx").exists() {
+                        ("Moonshine ASR", 90, 85)
+                    } else if filename_lower.contains("canary") {
+                        ("NVIDIA Canary-Qwen", 94, 60)
+                    } else if filename_lower.contains("parakeet") || path.join("joiner.onnx").exists() {
+                        ("NVIDIA Parakeet TDT", 88, 92)
+                    } else {
+                        ("ONNX Model", 80, 70)
+                    };
+
+                    let display_name = format!("{} ({})", name, filename);
+                    let is_active = Some(path.to_string_lossy().to_string()) == active_path;
+
+                    models.push(LocalModel {
+                        name: display_name,
+                        filename,
+                        path: path.to_string_lossy().to_string(),
+                        size_bytes,
+                        size_formatted,
+                        quality,
+                        speed,
+                        is_active,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(models)
+}
+
+#[tauri::command]
+async fn load_model(
+    model_path: String,
+    stt_controller: tauri::State<'_, SttController>,
+) -> Result<(), String> {
+    let controller = stt_controller.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        controller.load_model(&model_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn get_active_model(
+    stt_controller: tauri::State<'_, SttController>,
+) -> Result<Option<String>, String> {
+    let s = stt_controller.state.lock().unwrap();
+    Ok(s.active_model_path.clone())
+}
+
+#[tauri::command]
+fn get_models_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    let models_dir = app_local_data.join("models");
+    Ok(models_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn set_secure_api_key(provider: String, key: String) -> Result<(), String> {
+    if key.trim().is_empty() {
+        return delete_secure_api_key(provider);
+    }
+    let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
+        .map_err(|e| format!("Failed to access keyring: {}", e))?;
+    entry.set_password(&key)
+        .map_err(|e| format!("Failed to set key in keyring: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_secure_api_key(provider: String) -> Result<String, String> {
+    let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
+        .map_err(|e| format!("Failed to access keyring: {}", e))?;
+    match entry.get_password() {
+        Ok(pass) => Ok(pass),
+        Err(keyring::Error::NoEntry) => Ok("".to_string()),
+        Err(e) => Err(format!("Failed to retrieve key from keyring: {}", e)),
+    }
+}
+
+#[tauri::command]
+fn delete_secure_api_key(provider: String) -> Result<(), String> {
+    let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
+        .map_err(|e| format!("Failed to access keyring: {}", e))?;
+    match entry.delete_password() {
+        Ok(_) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("Failed to delete key from keyring: {}", e)),
+    }
+}
+
+#[tauri::command]
+fn has_secure_api_key(provider: String) -> Result<bool, String> {
+    let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
+        .map_err(|e| format!("Failed to access keyring: {}", e))?;
+    match entry.get_password() {
+        Ok(pass) => Ok(!pass.trim().is_empty()),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(e) => Err(format!("Failed to check key in keyring: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn transcribe_audio(
+    samples: Vec<f32>,
+    engine: String,
+    provider: Option<String>,
+    model: Option<String>,
+    base_url: Option<String>,
+    stt_controller: tauri::State<'_, SttController>,
+) -> Result<String, String> {
+    let controller = stt_controller.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        if engine == "openai-cloud" {
+            let provider_name = provider.unwrap_or_else(|| "openai".to_string());
+            let key = get_secure_api_key(provider_name.clone())?;
+            if key.trim().is_empty() {
+                return Err(format!("ASR API Key for {} is missing or empty. Please set it in models/engines settings.", provider_name));
+            }
+            crate::stt::cloud::transcribe_cloud(&samples, &key, model.as_deref(), base_url.as_deref()).await
+        } else {
+            tauri::async_runtime::spawn_blocking(move || {
+                controller.transcribe(&samples)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn refine_transcription(
+    text: String,
+    provider: String,
+    model: String,
+    prompt: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn(async move {
+        let key = get_secure_api_key(provider.clone())?;
+        if key.trim().is_empty() {
+            return Err(format!("API Key for {} is missing or empty. Please set it in preferences.", provider));
+        }
+        crate::refiner::refine_text(&text, &provider, &model, &key, &prompt).await
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn get_last_recording_samples(
+    controller: tauri::State<'_, AudioController>,
+) -> Result<Vec<f32>, String> {
+    let s = controller.state.lock().unwrap();
+    Ok(s.last_samples.clone())
+}
+
+#[tauri::command]
+fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), String> {
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
+    let config_path = app_local_data.join("config.json");
+    std::fs::write(&config_path, config).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_config(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    let config_path = app_local_data.join("config.json");
+    if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        Ok(content)
+    } else {
+        Ok("{}".to_string())
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct TranscriptionItem {
+    id: String,
+    timestamp: String,
+    date: String,
+    text: String,
+    model: String,
+    wav_path: Option<String>,
+}
+
+#[tauri::command]
+fn save_transcription_data(
+    wav_path: String,
+    text: String,
+    model: String,
+) -> Result<(), String> {
+    let wav_path_buf = std::path::PathBuf::from(&wav_path);
+    let parent_dir = wav_path_buf.parent().ok_or("No parent directory for wav file")?;
+    
+    let id = parent_dir.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| chrono::Local::now().timestamp().to_string());
+        
+    let now = chrono::Local::now();
+    let item = TranscriptionItem {
+        id,
+        timestamp: now.format("%H:%M").to_string(),
+        date: now.format("%b %e").to_string(),
+        text,
+        model,
+        wav_path: Some(wav_path),
+    };
+    
+    let data_json = serde_json::to_string_pretty(&item).map_err(|e| e.to_string())?;
+    std::fs::write(parent_dir.join("data.json"), data_json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn save_history(_app_handle: tauri::AppHandle, _history: String) -> Result<(), String> {
+    // No-op fallback
+    Ok(())
+}
+
+#[tauri::command]
+fn load_history(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    let recordings_dir = app_local_data.join("recordings");
+    if !recordings_dir.exists() {
+        return Ok("[]".to_string());
+    }
+    
+    let mut items = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&recordings_dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                let data_json_path = path.join("data.json");
+                if data_json_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&data_json_path) {
+                        if let Ok(item) = serde_json::from_str::<TranscriptionItem>(&content) {
+                            items.push(item);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort items by directory/id name (which is YYYY-MM-DD_HH-mm-ss) descending
+    items.sort_by(|a, b| b.id.cmp(&a.id));
+    
+    let serialized = serde_json::to_string(&items).map_err(|e| e.to_string())?;
+    Ok(serialized)
+}
+
+#[tauri::command]
+fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    let recordings_dir = app_local_data.join("recordings");
+    if recordings_dir.exists() {
+        std::fs::remove_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
@@ -345,8 +838,22 @@ pub fn run() {
                         let _ = app.emit("recording-stopped", payload);
                     }
                 } else {
-                    if let Ok(_) = controller.start_recording(app.clone()) {
-                        let _ = app.emit("recording-started", ());
+                    let stt = app.state::<SttController>();
+                    let config = app.state::<AppConfig>();
+                    match is_recording_allowed(&config, &stt) {
+                        Ok(_) => {
+                            if let Ok(_) = controller.start_recording(app.clone()) {
+                                let _ = app.emit("recording-started", ());
+                            }
+                        }
+                        Err(reason) => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                            let _ = app.emit("recording-failed-to-start", reason);
+                        }
                     }
                 }
                 let _ = rebuild_tray_menu(app);
@@ -358,6 +865,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(global_shortcut_plugin)
         .manage(AudioController::new())
+        .manage(SttController::new())
+        .manage(AppConfig { active: Mutex::new(ActiveConfig { engine: "local".to_string(), provider: "openai".to_string() }) })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -382,7 +891,27 @@ pub fn run() {
             clear_app_files,
             register_shortcut,
             set_vad_enabled,
-            get_vad_enabled
+            get_vad_enabled,
+            scan_models,
+            load_model,
+            get_active_model,
+            get_models_dir,
+            transcribe_audio,
+            get_last_recording_samples,
+            refine_transcription,
+            set_secure_api_key,
+            get_secure_api_key,
+            delete_secure_api_key,
+            has_secure_api_key,
+            update_active_config,
+            open_folder,
+            save_config,
+            load_config,
+            save_history,
+            load_history,
+            clear_history_cmd,
+            save_transcription_data,
+            set_transcribing
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

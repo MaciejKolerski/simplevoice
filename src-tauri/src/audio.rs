@@ -10,6 +10,7 @@ unsafe impl Sync for StreamWrapper {}
 pub struct AudioState {
     pub is_recording: bool,
     pub is_saving: bool,
+    pub is_transcribing: bool,
     pub buffer: Vec<f32>,
     pub stream: Option<StreamWrapper>,
     pub selected_device: Option<String>,
@@ -17,6 +18,7 @@ pub struct AudioState {
     pub vad_enabled: bool,
     pub vad_threshold: f32,
     pub vad_silence_duration_ms: u32,
+    pub last_samples: Vec<f32>,
 }
 
 pub struct AudioController {
@@ -29,6 +31,7 @@ impl AudioController {
             state: Arc::new(Mutex::new(AudioState {
                 is_recording: false,
                 is_saving: false,
+                is_transcribing: false,
                 buffer: Vec::new(),
                 stream: None,
                 selected_device: None,
@@ -36,6 +39,7 @@ impl AudioController {
                 vad_enabled: false,
                 vad_threshold: 0.008,
                 vad_silence_duration_ms: 1500,
+                last_samples: Vec::new(),
             })),
         }
     }
@@ -152,6 +156,7 @@ impl AudioController {
                                     let _ = wrapper.0.pause();
                                 }
                                 
+                                 s.last_samples = s.buffer.clone();
                                 let samples = std::mem::take(&mut s.buffer);
                                 let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
                                 
@@ -164,37 +169,39 @@ impl AudioController {
                                 std::thread::spawn(move || {
                                     let pcm_len = samples.len();
                                     let mut saved_path = None;
-                                    if pcm_len > 0 {
-                                        let app_local_data = app_handle_save_clone
-                                            .path()
-                                            .app_local_data_dir();
-                                        
-                                        if let Ok(app_local_data) = app_local_data {
-                                            let _ = std::fs::create_dir_all(&app_local_data);
-                                            let file_name = format!("recording_{}.wav", start_time.format("%Y-%m-%d_%H-%M-%S"));
-                                            let wav_path = app_local_data.join(file_name);
-                                            let spec = hound::WavSpec {
-                                                channels: 1,
-                                                sample_rate: 16000,
-                                                bits_per_sample: 16,
-                                                sample_format: hound::SampleFormat::Int,
-                                            };
-                                            if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
-                                                for sample in samples {
-                                                    let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-                                                    let _ = writer.write_sample(sample_i16);
-                                                }
-                                                let _ = writer.finalize();
-                                                let path_str = wav_path.to_string_lossy().to_string();
-                                                println!("Saved VAD debug WAV file to {}", path_str);
-                                                saved_path = Some(path_str);
-                                            }
-                                        }
-                                    }
+                                     if pcm_len > 0 {
+                                         let app_local_data = app_handle_save_clone
+                                             .path()
+                                             .app_local_data_dir();
+                                         
+                                         if let Ok(app_local_data) = app_local_data {
+                                             let dir_name = start_time.format("%Y-%m-%d_%H-%M-%S").to_string();
+                                             let recordings_dir = app_local_data.join("recordings").join(dir_name);
+                                             let _ = std::fs::create_dir_all(&recordings_dir);
+                                             let wav_path = recordings_dir.join("output.wav");
+                                             let spec = hound::WavSpec {
+                                                 channels: 1,
+                                                 sample_rate: 16000,
+                                                 bits_per_sample: 16,
+                                                 sample_format: hound::SampleFormat::Int,
+                                             };
+                                             if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
+                                                 for sample in samples {
+                                                     let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+                                                     let _ = writer.write_sample(sample_i16);
+                                                 }
+                                                 let _ = writer.finalize();
+                                                 let path_str = wav_path.to_string_lossy().to_string();
+                                                 println!("Saved VAD debug WAV file to {}", path_str);
+                                                 saved_path = Some(path_str);
+                                             }
+                                         }
+                                     }
 
                                     {
                                         let mut s = state_save_clone.lock().unwrap();
                                         s.is_saving = false;
+                                        s.is_transcribing = true;
                                     }
 
                                     let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
@@ -282,10 +289,11 @@ impl AudioController {
                 .app_local_data_dir()
                 .map_err(|e| e.to_string())?;
             
-            std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
+            let dir_name = start_time.format("%Y-%m-%d_%H-%M-%S").to_string();
+            let recordings_dir = app_local_data.join("recordings").join(dir_name);
+            std::fs::create_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
             
-            let file_name = format!("recording_{}.wav", start_time.format("%Y-%m-%d_%H-%M-%S"));
-            let wav_path = app_local_data.join(file_name);
+            let wav_path = recordings_dir.join("output.wav");
             let spec = hound::WavSpec {
                 channels: 1,
                 sample_rate: 16000,
@@ -320,6 +328,7 @@ impl AudioController {
                 let _ = wrapper.0.pause();
             }
 
+            s.last_samples = s.buffer.clone();
             let samples = std::mem::take(&mut s.buffer);
             let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
             (samples, start_time)
@@ -333,10 +342,11 @@ impl AudioController {
         // Run the saving logic in a helper to safely catch early-return errors
         let save_result = self.save_wav_file(app_handle, &samples, start_time);
 
-        // Set is_saving to false
+        // WAV saved - switch to transcribing state (blue dot stays on)
         {
             let mut s = self.state.lock().unwrap();
             s.is_saving = false;
+            s.is_transcribing = true;
         }
 
         let _ = crate::rebuild_tray_menu(app_handle);
@@ -350,6 +360,14 @@ impl AudioController {
 
     pub fn is_saving(&self) -> bool {
         self.state.lock().unwrap().is_saving
+    }
+
+    pub fn is_transcribing(&self) -> bool {
+        self.state.lock().unwrap().is_transcribing
+    }
+
+    pub fn set_transcribing(&self, value: bool) {
+        self.state.lock().unwrap().is_transcribing = value;
     }
 }
 

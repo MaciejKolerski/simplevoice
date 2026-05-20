@@ -27,5 +27,11 @@ ringbuf = "0.4"
 hound = "3.5"
 chrono = "0.4"
 tauri-plugin-global-shortcut = "2"
+whisper-rs = "0.14.0"
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+ort = { version = "2.0.0-rc.9", features = ["ndarray"] }
+ndarray = "0.17"
+keyring = "2.1"
+sherpa-onnx = "1.13.2"
 
 
