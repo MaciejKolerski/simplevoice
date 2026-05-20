@@ -4,6 +4,30 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 
+function ToggleSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="relative inline-flex items-center cursor-pointer">
+      <input
+        type="checkbox"
+        className="hidden"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="w-11 h-6 bg-border rounded-full relative transition-colors duration-200">
+        <span
+          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0"}`}
+        ></span>
+      </span>
+    </label>
+  );
+}
+
 function formatShortcutDisplay(str: string): string {
   if (!str) return "None";
   return str
