@@ -90,7 +90,7 @@ impl super::EngineAdapter for ParakeetEngine {
         Ok(())
     }
 
-    fn transcribe(&self, samples: &[f32]) -> Result<String, String> {
+    fn transcribe(&self, samples: &[f32], _language: Option<&str>) -> Result<String, String> {
         transcribe_parakeet(samples, &self.model_path)
     }
 

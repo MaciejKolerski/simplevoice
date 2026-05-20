@@ -737,6 +737,7 @@ async fn transcribe_audio(
     provider: Option<String>,
     model: Option<String>,
     base_url: Option<String>,
+    language: Option<String>,
     stt_controller: tauri::State<'_, SttController>,
 ) -> Result<String, String> {
     let controller = stt_controller.inner().clone();
@@ -747,10 +748,17 @@ async fn transcribe_audio(
             if key.trim().is_empty() {
                 return Err(format!("ASR API Key for {} is missing or empty. Please set it in models/engines settings.", provider_name));
             }
-            crate::stt::cloud::transcribe_cloud(&samples, &key, model.as_deref(), base_url.as_deref()).await
+            crate::stt::cloud::transcribe_cloud(
+                &samples,
+                &key,
+                model.as_deref(),
+                base_url.as_deref(),
+                language.as_deref(),
+            )
+            .await
         } else {
             tauri::async_runtime::spawn_blocking(move || {
-                controller.transcribe(&samples)
+                controller.transcribe(&samples, language.as_deref())
             })
             .await
             .map_err(|e| e.to_string())?

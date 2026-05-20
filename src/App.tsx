@@ -141,6 +141,7 @@ function App() {
           const asrModel = localStorage.getItem("asr_model") || "whisper-1";
           const asrCustomModel = localStorage.getItem("asr_custom_model") || "";
           const asrBaseUrl = localStorage.getItem("asr_base_url") || "";
+          const asrLanguage = localStorage.getItem("asr_language") || "auto";
           const modelToUse = asrModel === "custom" ? asrCustomModel : asrModel;
 
           // Step 1: Transcribe Audio
@@ -150,6 +151,7 @@ function App() {
             provider: asrProvider,
             model: modelToUse || null,
             baseUrl: asrBaseUrl || null,
+            language: asrLanguage === "auto" ? null : asrLanguage,
           });
 
           if (text && text.trim().length > 0) {

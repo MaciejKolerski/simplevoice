@@ -31,10 +31,13 @@ function formatKeycapLabel(key: string): string {
 export function SettingsView() {
   const [vadEnabled, setVadEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [asrLanguage, setAsrLanguage] = useState("auto");
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
-  const [shortcutText, setShortcutText] = useState("CommandOrControl+Shift+Space");
+  const [shortcutText, setShortcutText] = useState(
+    "CommandOrControl+Shift+Space",
+  );
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -46,10 +49,12 @@ export function SettingsView() {
   const [anthropicKey, setAnthropicKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [refinerEnabled, setRefinerEnabled] = useState(false);
-  const [refinerProvider, setRefinerProvider] = useState<"openai" | "anthropic" | "gemini">("openai");
+  const [refinerProvider, setRefinerProvider] = useState<
+    "openai" | "anthropic" | "gemini"
+  >("openai");
   const [refinerModel, setRefinerModel] = useState("gpt-4o-mini");
   const [refinerPrompt, setRefinerPrompt] = useState(
-    "You are an ASR post-processor. Correct grammar, add punctuation, format code snippets in markdown if appropriate. Do NOT add any conversational filler. Only return the corrected text."
+    "You are an ASR post-processor. Correct grammar, add punctuation, format code snippets in markdown if appropriate. IMPORTANT: Maintain the original language of the transcription. Do NOT translate it under any circumstances. If the input is in Polish, the output must be in Polish. If the input is in English, the output must be in English. Do NOT add any conversational filler. Only return the corrected text.",
   );
 
   useEffect(() => {
@@ -57,7 +62,9 @@ export function SettingsView() {
   }, [isCompleted]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("global_record_shortcut") || "CommandOrControl+Shift+Space";
+    const saved =
+      localStorage.getItem("global_record_shortcut") ||
+      "CommandOrControl+Shift+Space";
     setShortcutText(saved);
     invoke("register_shortcut", { shortcutStr: saved }).catch((err) => {
       console.error("Failed to register shortcut on mount:", err);
@@ -69,31 +76,43 @@ export function SettingsView() {
       console.error("Failed to set VAD state on mount:", err);
     });
 
-    const savedSound = localStorage.getItem("sound_feedback_enabled") !== "false";
+    const savedSound =
+      localStorage.getItem("sound_feedback_enabled") !== "false";
     setSoundEnabled(savedSound);
+
+    const savedLang = localStorage.getItem("asr_language") || "auto";
+    setAsrLanguage(savedLang);
 
     const syncSettings = () => {
       setRefinerEnabled(localStorage.getItem("refiner_enabled") === "true");
-      setRefinerProvider((localStorage.getItem("refiner_provider") as any) || "openai");
+      setRefinerProvider(
+        (localStorage.getItem("refiner_provider") as any) || "openai",
+      );
       setRefinerModel(localStorage.getItem("refiner_model") || "gpt-4o-mini");
       setRefinerPrompt(
         localStorage.getItem("refiner_prompt") ||
-          "You are an ASR post-processor. Correct grammar, add punctuation, format code snippets in markdown if appropriate. Do NOT add any conversational filler. Only return the corrected text."
+          "You are an ASR post-processor. Correct grammar, add punctuation, format code snippets in markdown if appropriate. IMPORTANT: Maintain the original language of the transcription. Do NOT translate it under any circumstances. If the input is in Polish, the output must be in Polish. If the input is in English, the output must be in English. Do NOT add any conversational filler. Only return the corrected text.",
       );
     };
     syncSettings();
 
     const loadSecureKeys = async () => {
       try {
-        const hasOpenai = await invoke<boolean>("has_secure_api_key", { provider: "openai" });
+        const hasOpenai = await invoke<boolean>("has_secure_api_key", {
+          provider: "openai",
+        });
         if (hasOpenai) setOpenaiKey("••••••••••••••••");
         else setOpenaiKey("");
-        
-        const hasAnthropic = await invoke<boolean>("has_secure_api_key", { provider: "anthropic" });
+
+        const hasAnthropic = await invoke<boolean>("has_secure_api_key", {
+          provider: "anthropic",
+        });
         if (hasAnthropic) setAnthropicKey("••••••••••••••••");
         else setAnthropicKey("");
-        
-        const hasGemini = await invoke<boolean>("has_secure_api_key", { provider: "gemini" });
+
+        const hasGemini = await invoke<boolean>("has_secure_api_key", {
+          provider: "gemini",
+        });
         if (hasGemini) setGeminiKey("••••••••••••••••");
         else setGeminiKey("");
       } catch (err) {
@@ -157,7 +176,7 @@ export function SettingsView() {
         setErrorMessage(null);
 
         const shortcutStr = keys.join("+");
-        
+
         invoke("register_shortcut", { shortcutStr: shortcutStr })
           .then(() => {
             localStorage.setItem("global_record_shortcut", shortcutStr);
@@ -174,7 +193,7 @@ export function SettingsView() {
             setErrorMessage(
               shortcutStr.includes("+")
                 ? `System error: ${err}`
-                : "Global shortcuts require a modifier (Cmd, Shift, Alt, etc.) or a Function key (F1-F12)."
+                : "Global shortcuts require a modifier (Cmd, Shift, Alt, etc.) or a Function key (F1-F12).",
             );
             setTimeout(() => {
               setErrorMessage(null);
@@ -216,13 +235,12 @@ export function SettingsView() {
     };
   }, [isRecordingShortcut]);
 
-
   useEffect(() => {
     const loadDevices = async () => {
       try {
         const list = await invoke<string[]>("list_audio_devices");
         setDevices(list);
-        
+
         const saved = localStorage.getItem("selected_audio_device");
         if (saved && list.includes(saved)) {
           setSelectedDevice(saved);
@@ -277,6 +295,11 @@ export function SettingsView() {
     localStorage.setItem("sound_feedback_enabled", String(checked));
   };
 
+  const handleAsrLanguageChange = (val: string) => {
+    setAsrLanguage(val);
+    localStorage.setItem("asr_language", val);
+  };
+
   const saveSecureKey = async (provider: string, val: string) => {
     try {
       if (val === "••••••••••••••••") return;
@@ -287,8 +310,6 @@ export function SettingsView() {
     }
   };
 
-
-
   const updateRefinerToggle = (val: boolean) => {
     setRefinerEnabled(val);
     localStorage.setItem("refiner_enabled", String(val));
@@ -297,7 +318,7 @@ export function SettingsView() {
   const updateRefinerProvider = (val: "openai" | "anthropic" | "gemini") => {
     setRefinerProvider(val);
     localStorage.setItem("refiner_provider", val);
-    
+
     // Set sensible default models
     let defaultModel = "gpt-4o-mini";
     if (val === "anthropic") {
@@ -356,6 +377,73 @@ export function SettingsView() {
             </div>
           </div>
 
+          <div className="flex flex-col p-6 border-b border-border">
+            <label className="text-fg font-medium mb-3 block">
+              Transcription Language
+            </label>
+            <div className="relative w-full">
+              <select
+                value={asrLanguage}
+                onChange={(e) => handleAsrLanguageChange(e.target.value)}
+                className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-3 appearance-none cursor-pointer hover:border-muted transition-colors text-sm font-medium"
+              >
+                <option value="auto">Auto-detect</option>
+                <optgroup label="Popular">
+                  <option value="en">English</option>
+                  <option value="fr">French (Français)</option>
+                  <option value="de">German (Deutsch)</option>
+                  <option value="it">Italian (Italiano)</option>
+                  <option value="pl">Polish (Polski)</option>
+                  <option value="es">Spanish (Español)</option>
+                </optgroup>
+                <optgroup label="Europe">
+                  <option value="bg">Bulgarian (Български)</option>
+                  <option value="hr">Croatian (Hrvatski)</option>
+                  <option value="cs">Czech (Čeština)</option>
+                  <option value="da">Danish (Dansk)</option>
+                  <option value="nl">Dutch (Nederlands)</option>
+                  <option value="fi">Finnish (Suomi)</option>
+                  <option value="el">Greek (Ελληνικά)</option>
+                  <option value="hu">Hungarian (Magyar)</option>
+                  <option value="no">Norwegian (Norsk)</option>
+                  <option value="pt">Portuguese (Português)</option>
+                  <option value="ro">Romanian (Română)</option>
+                  <option value="ru">Russian (Русский)</option>
+                  <option value="sr">Serbian (Српски)</option>
+                  <option value="sk">Slovak (Slovenčina)</option>
+                  <option value="sv">Swedish (Svenska)</option>
+                  <option value="tr">Turkish (Türkçe)</option>
+                  <option value="uk">Ukrainian (Українська)</option>
+                </optgroup>
+                <optgroup label="Asia & Middle East">
+                  <option value="ar">Arabic (العربية)</option>
+                  <option value="zh">Chinese (中文)</option>
+                  <option value="he">Hebrew (עברית)</option>
+                  <option value="hi">Hindi (हिन्दी)</option>
+                  <option value="id">Indonesian (Bahasa Indonesia)</option>
+                  <option value="ja">Japanese (日本語)</option>
+                  <option value="ko">Korean (한국어)</option>
+                  <option value="ms">Malay (Bahasa Melayu)</option>
+                  <option value="fa">Persian (فارسی)</option>
+                  <option value="th">Thai (ไทย)</option>
+                  <option value="vi">Vietnamese (Tiếng Việt)</option>
+                </optgroup>
+                <optgroup label="Other">
+                  <option value="af">Afrikaans</option>
+                  <option value="sw">Swahili (Kiswahili)</option>
+                  <option value="tl">Tagalog</option>
+                </optgroup>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
+                <ChevronDown size={18} />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted mt-2">
+              Forces the model to output text in the selected language. Use
+              "Auto-detect" for multilingual support.
+            </p>
+          </div>
+
           <div className="flex justify-between items-center p-6 border-b border-border">
             <div>
               <div className="text-fg font-medium mb-1">
@@ -377,9 +465,7 @@ export function SettingsView() {
 
           <div className="flex justify-between items-center p-6">
             <div>
-              <div className="text-fg font-medium mb-1">
-                Sound Effects
-              </div>
+              <div className="text-fg font-medium mb-1">Sound Effects</div>
               <div className="text-muted text-[13px]">
                 Play a premium audio cue when starting and stopping recording.
               </div>
@@ -397,7 +483,8 @@ export function SettingsView() {
 
         {/* SECTION: LLM Post-Processing */}
         <h2 className="mb-4 text-base text-white font-medium flex items-center gap-2">
-          <Sparkles size={16} className="text-muted" /> Smart LLM Refiner (Post-Processing)
+          <Sparkles size={16} className="text-muted" /> Smart LLM Refiner
+          (Post-Processing)
         </h2>
         <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
           <div className="flex justify-between items-center p-6 border-b border-border">
@@ -406,7 +493,8 @@ export function SettingsView() {
                 Enable Text Refiner
               </div>
               <div className="text-muted text-[13px]">
-                Post-process raw audio transcripts using a cloud LLM to format, fix spelling, or edit code.
+                Post-process raw audio transcripts using a cloud LLM to format,
+                fix spelling, or edit code.
               </div>
             </div>
             <label className="toggle">
@@ -429,7 +517,9 @@ export function SettingsView() {
                   <div className="relative w-full">
                     <select
                       value={refinerProvider}
-                      onChange={(e) => updateRefinerProvider(e.target.value as any)}
+                      onChange={(e) =>
+                        updateRefinerProvider(e.target.value as any)
+                      }
                       className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
                     >
                       <option value="openai">OpenAI</option>
@@ -454,19 +544,27 @@ export function SettingsView() {
                     >
                       {refinerProvider === "openai" && (
                         <>
-                          <option value="gpt-4o-mini">gpt-4o-mini (Recommended)</option>
+                          <option value="gpt-4o-mini">
+                            gpt-4o-mini (Recommended)
+                          </option>
                           <option value="gpt-4o">gpt-4o</option>
                         </>
                       )}
                       {refinerProvider === "anthropic" && (
                         <>
-                          <option value="claude-3-5-haiku-20241022">claude-3-5-haiku (Recommended)</option>
-                          <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet</option>
+                          <option value="claude-3-5-haiku-20241022">
+                            claude-3-5-haiku (Recommended)
+                          </option>
+                          <option value="claude-3-5-sonnet-20241022">
+                            claude-3-5-sonnet
+                          </option>
                         </>
                       )}
                       {refinerProvider === "gemini" && (
                         <>
-                          <option value="gemini-1.5-flash">gemini-1.5-flash (Recommended)</option>
+                          <option value="gemini-1.5-flash">
+                            gemini-1.5-flash (Recommended)
+                          </option>
                           <option value="gemini-1.5-pro">gemini-1.5-pro</option>
                         </>
                       )}
@@ -481,7 +579,11 @@ export function SettingsView() {
               {/* Contextual API Key Input for selected Provider */}
               <div className="flex flex-col p-6 border-b border-border bg-black/5">
                 <label className="text-fg font-medium mb-2 block text-xs">
-                  {refinerProvider === "openai" ? "OpenAI API Key" : refinerProvider === "anthropic" ? "Anthropic API Key" : "Google Gemini API Key"}
+                  {refinerProvider === "openai"
+                    ? "OpenAI API Key"
+                    : refinerProvider === "anthropic"
+                      ? "Anthropic API Key"
+                      : "Google Gemini API Key"}
                 </label>
                 {refinerProvider === "openai" && (
                   <input
@@ -491,7 +593,9 @@ export function SettingsView() {
                       setOpenaiKey(e.target.value);
                       saveSecureKey("openai", e.target.value);
                     }}
-                    placeholder={openaiKey === "••••••••••••••••" ? "" : "sk-..."}
+                    placeholder={
+                      openaiKey === "••••••••••••••••" ? "" : "sk-..."
+                    }
                     className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
                   />
                 )}
@@ -503,7 +607,9 @@ export function SettingsView() {
                       setAnthropicKey(e.target.value);
                       saveSecureKey("anthropic", e.target.value);
                     }}
-                    placeholder={anthropicKey === "••••••••••••••••" ? "" : "sk-ant-..."}
+                    placeholder={
+                      anthropicKey === "••••••••••••••••" ? "" : "sk-ant-..."
+                    }
                     className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
                   />
                 )}
@@ -515,12 +621,15 @@ export function SettingsView() {
                       setGeminiKey(e.target.value);
                       saveSecureKey("gemini", e.target.value);
                     }}
-                    placeholder={geminiKey === "••••••••••••••••" ? "" : "AIzaSy..."}
+                    placeholder={
+                      geminiKey === "••••••••••••••••" ? "" : "AIzaSy..."
+                    }
                     className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
                   />
                 )}
                 <p className="text-[10px] text-muted mt-2">
-                  This key is stored securely in your operating system's native keychain.
+                  This key is stored securely in your operating system's native
+                  keychain.
                 </p>
               </div>
 
@@ -587,11 +696,13 @@ export function SettingsView() {
                         +
                       </span>
                     )}
-                    <kbd className={`inline-flex items-center justify-center px-3.5 py-2 rounded-lg text-xs font-mono font-bold shadow-xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 ${
-                      isCompleted 
-                        ? "bg-white text-black border-white scale-105 shadow-[0_0_15px_rgba(255,255,255,0.25)]" 
-                        : "bg-white/10 text-white/90 border border-white/10"
-                    }`}>
+                    <kbd
+                      className={`inline-flex items-center justify-center px-3.5 py-2 rounded-lg text-xs font-mono font-bold shadow-xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 ${
+                        isCompleted
+                          ? "bg-white text-black border-white scale-105 shadow-[0_0_15px_rgba(255,255,255,0.25)]"
+                          : "bg-white/10 text-white/90 border border-white/10"
+                      }`}
+                    >
                       {formatKeycapLabel(key)}
                     </kbd>
                   </span>
