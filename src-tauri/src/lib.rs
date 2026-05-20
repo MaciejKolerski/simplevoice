@@ -574,17 +574,43 @@ fn scan_models(
     Ok(models)
 }
 
+#[derive(serde::Serialize, Clone)]
+struct ModelStatus {
+    active: Option<String>,
+    loading: Option<String>,
+}
+
 #[tauri::command]
 async fn load_model(
     model_path: String,
     stt_controller: tauri::State<'_, SttController>,
+    app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    {
+        let mut s = stt_controller.state.lock().unwrap();
+        s.loading_model_path = Some(model_path.clone());
+    }
+    let _ = app_handle.emit("model-status-changed", ());
+
     let controller = stt_controller.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        controller.load_model(&model_path)
+    let model_path_clone = model_path.clone();
+    
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        controller.load_model(&model_path_clone)
     })
-    .await
-    .map_err(|e| e.to_string())?
+    .await;
+
+    {
+        let mut s = stt_controller.state.lock().unwrap();
+        s.loading_model_path = None;
+    }
+    let _ = app_handle.emit("model-status-changed", ());
+
+    match res {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -593,6 +619,17 @@ fn get_active_model(
 ) -> Result<Option<String>, String> {
     let s = stt_controller.state.lock().unwrap();
     Ok(s.active_model_path.clone())
+}
+
+#[tauri::command]
+fn get_model_status(
+    stt_controller: tauri::State<'_, SttController>,
+) -> Result<ModelStatus, String> {
+    let s = stt_controller.state.lock().unwrap();
+    Ok(ModelStatus {
+        active: s.active_model_path.clone(),
+        loading: s.loading_model_path.clone(),
+    })
 }
 
 #[tauri::command]
@@ -911,7 +948,8 @@ pub fn run() {
             load_history,
             clear_history_cmd,
             save_transcription_data,
-            set_transcribing
+            set_transcribing,
+            get_model_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

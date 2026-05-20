@@ -63,6 +63,7 @@ impl EngineAdapter for WhisperEngine {
 
 pub struct SttState {
     pub active_model_path: Option<String>,
+    pub loading_model_path: Option<String>,
     pub engine: Option<Box<dyn EngineAdapter>>,
 }
 
@@ -76,6 +77,7 @@ impl SttController {
         Self {
             state: std::sync::Arc::new(Mutex::new(SttState {
                 active_model_path: None,
+                loading_model_path: None,
                 engine: None,
             })),
         }

@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+
+interface ModelStatus {
+  active: string | null;
+  loading: string | null;
+}
 
 export function UsageView() {
   const [activeModel, setActiveModel] = useState<string>("None");
+  const [loadingModel, setLoadingModel] = useState<string | null>(null);
   const [isRunningLocally, setIsRunningLocally] = useState<boolean>(true);
 
   const updateActiveModel = async () => {
@@ -14,29 +21,46 @@ export function UsageView() {
         const customModel = localStorage.getItem("asr_custom_model") || "";
         const finalModel = model === "custom" ? customModel : model;
         setActiveModel(finalModel || "None");
+        setLoadingModel(null);
         setIsRunningLocally(false);
       } else {
-        const activeModelPath = await invoke<string | null>("get_active_model");
-        if (activeModelPath) {
-          const parts = activeModelPath.split(/[\/\\]/);
+        const status = await invoke<ModelStatus>("get_model_status");
+        if (status.loading) {
+          const parts = status.loading.split(/[\/\\]/);
           const fname = parts[parts.length - 1];
-          setActiveModel(fname);
-        } else {
+          setLoadingModel(fname);
           setActiveModel("None");
+        } else {
+          setLoadingModel(null);
+          if (status.active) {
+            const parts = status.active.split(/[\/\\]/);
+            const fname = parts[parts.length - 1];
+            setActiveModel(fname);
+          } else {
+            setActiveModel("None");
+          }
         }
         setIsRunningLocally(true);
       }
     } catch (err) {
-      console.error("Failed to query active model:", err);
+      console.error("Failed to query active model status:", err);
       setActiveModel("None");
+      setLoadingModel(null);
     }
   };
 
   useEffect(() => {
     updateActiveModel();
     window.addEventListener("asr-engine-changed", updateActiveModel);
+    
+    let unlistenStatus: (() => void) | null = null;
+    listen("model-status-changed", updateActiveModel).then((fn) => {
+      unlistenStatus = fn;
+    });
+
     return () => {
       window.removeEventListener("asr-engine-changed", updateActiveModel);
+      if (unlistenStatus) unlistenStatus();
     };
   }, []);
 
@@ -94,12 +118,24 @@ export function UsageView() {
             <Cpu size={14} className="opacity-50 shrink-0" />
           </div>
           <div className="text-xl leading-tight pt-1 tracking-tight text-white font-medium truncate">
-            {activeModel}
+            {loadingModel ? loadingModel : activeModel}
           </div>
           <div className="muted text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
-            <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${activeModel === "None" ? "bg-amber-400" : "bg-emerald-400"}`}></span>
+            <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+              loadingModel 
+                ? "bg-sky-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.5)]" 
+                : activeModel === "None" 
+                  ? "bg-amber-400" 
+                  : "bg-emerald-400"
+            }`}></span>
             <span className="truncate opacity-70">
-              {activeModel === "None" ? "No active model" : isRunningLocally ? "Running locally" : "Running in the cloud"}
+              {loadingModel 
+                ? "Initializing engine..." 
+                : activeModel === "None" 
+                  ? "No active model" 
+                  : isRunningLocally 
+                    ? "Running locally" 
+                    : "Running in the cloud"}
             </span>
           </div>
         </div>

@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { FolderOpen, RefreshCw, Check, ChevronDown } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+
+interface ModelStatus {
+  active: string | null;
+  loading: string | null;
+}
 
 interface LocalModel {
   name: string;
@@ -21,6 +27,9 @@ export function ModelsView() {
   const [asrEngine, setAsrEngine] = useState<"local" | "openai-cloud">("local");
   const [providerKey, setProviderKey] = useState<string>("••••••••••••••••");
   
+  const [activeModelPath, setActiveModelPath] = useState<string | null>(null);
+  const [loadingModelPath, setLoadingModelPath] = useState<string | null>(null);
+  
   // Custom BYOK states
   const [asrProvider, setAsrProvider] = useState<"openai" | "openrouter" | "anthropic" | "gemini" | "custom">("openai");
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
@@ -31,6 +40,10 @@ export function ModelsView() {
   const loadModelsList = async () => {
     setScanning(true);
     try {
+      const status = await invoke<ModelStatus>("get_model_status");
+      setActiveModelPath(status.active);
+      setLoadingModelPath(status.loading);
+
       const list = await invoke<LocalModel[]>("scan_models");
       setModels(list);
       const dir = await invoke<string>("get_models_dir");
@@ -87,9 +100,18 @@ export function ModelsView() {
 
     window.addEventListener("asr-engine-changed", syncEngine);
     window.addEventListener("api-keys-changed", handleKeyChange);
+
+    let unlistenStatus: (() => void) | null = null;
+    listen("model-status-changed", () => {
+      loadModelsList();
+    }).then((fn) => {
+      unlistenStatus = fn;
+    });
+
     return () => {
       window.removeEventListener("asr-engine-changed", syncEngine);
       window.removeEventListener("api-keys-changed", handleKeyChange);
+      if (unlistenStatus) unlistenStatus();
     };
   }, []);
 
@@ -280,7 +302,8 @@ export function ModelsView() {
         ) : (
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             {models.map((model, idx) => {
-              const isLoading = loadingPath === model.path;
+              const isActive = model.path === activeModelPath;
+              const isLoading = model.path === loadingModelPath || loadingPath === model.path;
               return (
                 <div
                   key={idx}
@@ -293,10 +316,15 @@ export function ModelsView() {
                       <h3 className="m-0 font-medium text-white truncate text-sm">
                         {model.name}
                       </h3>
-                      {model.is_active && (
+                      {isActive && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium text-emerald-400 bg-emerald-400/5 border border-emerald-400/20 shrink-0">
                           <Check size={10} />
                           Active
+                        </span>
+                      )}
+                      {isLoading && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium text-sky-400 bg-sky-400/5 border border-sky-400/20 shrink-0 animate-pulse">
+                          Loading...
                         </span>
                       )}
                     </div>
@@ -336,9 +364,9 @@ export function ModelsView() {
                       <div className="text-xs font-mono text-muted">
                         {model.size_formatted}
                       </div>
-                      {model.is_active ? (
+                      {isActive ? (
                         <button
-                          className="btn btn-outline btn-small disabled opacity-50 cursor-not-allowed w-16"
+                          className="btn btn-outline btn-small disabled opacity-50 cursor-not-allowed w-20"
                           disabled
                         >
                           Loaded
@@ -346,10 +374,17 @@ export function ModelsView() {
                       ) : (
                         <button
                           onClick={() => handleLoadModel(model.path)}
-                          disabled={isLoading || loadingPath !== null}
-                          className="btn btn-primary btn-small w-16 flex items-center justify-center"
+                          disabled={isLoading || loadingModelPath !== null || loadingPath !== null}
+                          className="btn btn-primary btn-small w-20 flex items-center justify-center cursor-pointer"
                         >
-                          {isLoading ? "..." : "Load"}
+                          {isLoading ? (
+                            <span className="flex items-center gap-1.5 justify-center">
+                              <span className="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                              <span>...</span>
+                            </span>
+                          ) : (
+                            "Load"
+                          )}
                         </button>
                       )}
                     </div>
