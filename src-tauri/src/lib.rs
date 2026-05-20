@@ -911,164 +911,6 @@ async fn save_transcription_data(
     Ok(())
 }
 
-async fn run_json_migration(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    let app_dir = app_handle
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?;
-    let db_path = app_dir.join("simplevoice.db");
-    let db_url = format!("sqlite:{}", db_path.to_string_lossy());
-
-    // Ensure parent dir exists (plugin might not have created it yet if we run too early)
-    let _ = std::fs::create_dir_all(&app_dir);
-
-    let pool = sqlx::SqlitePool::connect(&db_url)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let app_local_data = app_handle
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?;
-    let recordings_dir = app_local_data.join("recordings");
-
-    if !recordings_dir.exists() {
-        return Ok(());
-    }
-
-    if let Ok(entries) = std::fs::read_dir(&recordings_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let data_json_path = path.join("data.json");
-                if data_json_path.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&data_json_path) {
-                        if let Ok(item) = serde_json::from_str::<TranscriptionItem>(&content) {
-                            let word_count = item.text.split_whitespace().count() as i32;
-                            let dur_val = item.duration_sec.unwrap_or(0.0);
-                            let date_val = if item.date.len() > 10 {
-                                &item.date[0..10]
-                            } else {
-                                &item.date
-                            };
-
-                            let _ = sqlx::query(
-                                "INSERT OR IGNORE INTO transcriptions (id, timestamp, date, text, model, wav_path, duration_sec) VALUES (?, ?, ?, ?, ?, ?, ?)"
-                            )
-                            .bind(&item.id)
-                            .bind(&item.timestamp)
-                            .bind(&item.date)
-                            .bind(&item.text)
-                            .bind(&item.model)
-                            .bind(&item.wav_path)
-                            .bind(dur_val)
-                            .execute(&pool)
-                            .await;
-
-                            let _ = sqlx::query(
-                                "INSERT INTO daily_usage (date, words_generated, time_transcribed_sec)
-                                 VALUES (?, ?, ?)
-                                 ON CONFLICT(date) DO UPDATE SET
-                                 words_generated = words_generated + excluded.words_generated,
-                                 time_transcribed_sec = time_transcribed_sec + excluded.time_transcribed_sec"
-                            )
-                            .bind(date_val)
-                            .bind(word_count)
-                            .bind(dur_val)
-                            .execute(&pool)
-                            .await;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn save_history(_app_handle: tauri::AppHandle, _history: String) -> Result<(), String> {
-    // No-op fallback
-    Ok(())
-}
-
-#[tauri::command]
-fn load_history(app_handle: tauri::AppHandle) -> Result<String, String> {
-    let app_local_data = app_handle
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?;
-    let recordings_dir = app_local_data.join("recordings");
-    if !recordings_dir.exists() {
-        return Ok("[]".to_string());
-    }
-
-    let mut items = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&recordings_dir) {
-        for entry in entries.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.is_dir() {
-                let data_json_path = path.join("data.json");
-                if data_json_path.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&data_json_path) {
-                        if let Ok(mut item) = serde_json::from_str::<TranscriptionItem>(&content) {
-                            // If duration_sec is missing (old recording), compute and save it back
-                            if item.duration_sec.is_none() {
-                                if let Some(ref w_path) = item.wav_path {
-                                    if let Ok(reader) = hound::WavReader::open(w_path) {
-                                        let spec = reader.spec();
-                                        let dur =
-                                            reader.duration() as f64 / spec.sample_rate as f64;
-                                        item.duration_sec = Some(dur);
-                                        // Try to save the updated item back to disk
-                                        if let Ok(updated) = serde_json::to_string_pretty(&item) {
-                                            let _ = std::fs::write(&data_json_path, updated);
-                                        }
-                                    }
-                                }
-                            }
-                            items.push(item);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Sort items by directory/id name (which is YYYY-MM-DD_HH-mm-ss) descending
-    items.sort_by(|a, b| b.id.cmp(&a.id));
-
-    let serialized = serde_json::to_string(&items).map_err(|e| e.to_string())?;
-    Ok(serialized)
-}
-
-/// Plays the "done" chime to notify the user that transcription text is ready.
-#[tauri::command]
-fn play_done_sound(app_handle: tauri::AppHandle) {
-    play_backend_sound(&app_handle, "done");
-}
-
-/// Simulates Cmd+V in the previously-focused application so the clipboard
-/// text is pasted automatically. Requires macOS Accessibility permission.
-#[tauri::command]
-fn paste_text() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        // Use osascript to press Cmd+V in whichever app currently has keyboard focus.
-        // A small delay lets the clipboard write from the webview flush first.
-        std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(80));
-            let script = r#"tell application "System Events" to keystroke "v" using command down"#;
-            let _ = std::process::Command::new("osascript")
-                .arg("-e")
-                .arg(script)
-                .output();
-        });
-    }
-
-    Ok(())
-}
-
 #[tauri::command]
 fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
     let app_local_data = app_handle
@@ -1092,6 +934,27 @@ fn delete_file_cmd(path: String) -> Result<(), String> {
         if let Some(parent) = p.parent() {
             let _ = std::fs::remove_dir(parent); // We ignore errors here in case it's not empty
         }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn play_done_sound(app_handle: tauri::AppHandle) {
+    play_backend_sound(&app_handle, "done");
+}
+
+#[tauri::command]
+fn paste_text() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            let script = r#"tell application "System Events" to keystroke "v" using command down"#;
+            let _ = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(script)
+                .output();
+        });
     }
     Ok(())
 }
@@ -1167,11 +1030,6 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = run_json_migration(&app_handle).await;
-            });
-
             let app_handle = app.handle();
             let _ = rebuild_tray_menu(app_handle);
             Ok(())
@@ -1198,8 +1056,6 @@ pub fn run() {
             open_folder,
             save_config,
             load_config,
-            save_history,
-            load_history,
             clear_history_cmd,
             delete_file_cmd,
             save_transcription_data,

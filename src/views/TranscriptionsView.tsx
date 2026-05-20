@@ -26,13 +26,6 @@ export function TranscriptionsView() {
       setHistory(result);
     } catch (err) {
       console.error("Failed to load transcription history from DB:", err);
-      // Fallback to legacy loader if DB fails or during migration
-      try {
-        const raw = await invoke<string>("load_history");
-        setHistory(JSON.parse(raw || "[]"));
-      } catch (innerErr) {
-        console.error("Legacy load failed too:", innerErr);
-      }
     }
   };
 

@@ -83,12 +83,6 @@ export function UsageView() {
         "Failed to load transcription history for stats from DB:",
         err,
       );
-      try {
-        const raw = await invoke<string>("load_history");
-        setHistory(JSON.parse(raw || "[]"));
-      } catch (innerErr) {
-        console.error("Legacy load failed too:", innerErr);
-      }
     }
   };
 

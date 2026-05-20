@@ -19,7 +19,7 @@ localStorage.setItem = function (key: string, value: string) {
         }
       }
       invoke("save_config", { config: JSON.stringify(config) }).catch((err) =>
-        console.error("Failed to save config to JSON file:", err)
+        console.error("Failed to save config to JSON file:", err),
       );
     }
   }
@@ -39,7 +39,7 @@ localStorage.removeItem = function (key: string) {
         }
       }
       invoke("save_config", { config: JSON.stringify(config) }).catch((err) =>
-        console.error("Failed to save config to JSON file:", err)
+        console.error("Failed to save config to JSON file:", err),
       );
     }
   }
@@ -50,13 +50,8 @@ async function initLocalStorage() {
     const configStr = await invoke<string>("load_config");
     const config = JSON.parse(configStr || "{}");
     for (const [key, value] of Object.entries(config)) {
-      if (key !== "transcription_history") {
-        originalSetItem.call(localStorage, key, String(value));
-      }
+      originalSetItem.call(localStorage, key, String(value));
     }
-
-    const historyStr = await invoke<string>("load_history");
-    originalSetItem.call(localStorage, "transcription_history", historyStr || "[]");
   } catch (err) {
     console.error("Failed to pre-load settings from JSON files:", err);
   } finally {
@@ -71,4 +66,3 @@ initLocalStorage().finally(() => {
     </React.StrictMode>,
   );
 });
-
