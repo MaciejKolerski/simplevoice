@@ -3,6 +3,9 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ringbuf::{storage::Heap, traits::*, SharedRb};
 use tauri::{Manager, Emitter};
 
+#[cfg(target_os = "macos")]
+use media_remote::{send_command, get_now_playing_application_is_playing, Command};
+
 pub struct StreamWrapper(pub cpal::Stream);
 unsafe impl Send for StreamWrapper {}
 unsafe impl Sync for StreamWrapper {}
@@ -19,6 +22,7 @@ pub struct AudioState {
     pub vad_threshold: f32,
     pub vad_silence_duration_ms: u32,
     pub last_samples: Vec<f32>,
+    pub was_media_playing: bool,
 }
 
 pub struct AudioController {
@@ -40,6 +44,7 @@ impl AudioController {
                 vad_threshold: 0.008,
                 vad_silence_duration_ms: 1500,
                 last_samples: Vec::new(),
+                was_media_playing: false,
             })),
         }
     }
@@ -61,10 +66,25 @@ impl AudioController {
         s.selected_device = device_name;
     }
 
-    pub fn start_recording(&self, app_handle: tauri::AppHandle) -> Result<(), String> {
+    pub fn start_recording(&self, app_handle: tauri::AppHandle, pause_audio: bool) -> Result<(), String> {
         let mut s = self.state.lock().unwrap();
         if s.is_recording {
             return Err("Already recording".to_string());
+        }
+
+        #[cfg(target_os = "macos")]
+        if pause_audio {
+            // Check if media is playing
+            if get_now_playing_application_is_playing() == Some(true) {
+                // Pause it
+                if send_command(Command::Pause) {
+                    s.was_media_playing = true;
+                }
+            } else {
+                s.was_media_playing = false;
+            }
+        } else {
+            s.was_media_playing = false;
         }
 
         let device_name = s.selected_device.clone();
@@ -323,6 +343,12 @@ impl AudioController {
 
             s.is_recording = false;
             s.is_saving = true;
+
+            #[cfg(target_os = "macos")]
+            if s.was_media_playing {
+                let _ = send_command(Command::Play);
+                s.was_media_playing = false;
+            }
             
             if let Some(wrapper) = s.stream.take() {
                 let _ = wrapper.0.pause();

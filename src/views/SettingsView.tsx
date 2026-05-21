@@ -32,6 +32,7 @@ function formatKeycapLabel(key: string): string {
 export function SettingsView() {
   const [vadEnabled, setVadEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [asrLanguage, setAsrLanguage] = useState("auto");
   const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [devices, setDevices] = useState<string[]>([]);
@@ -89,6 +90,9 @@ export function SettingsView() {
     const savedSound =
       localStorage.getItem("sound_feedback_enabled") !== "false";
     setSoundEnabled(savedSound);
+
+    const savedPauseAudio = localStorage.getItem("pause_audio_on_record") === "true";
+    setPauseAudioEnabled(savedPauseAudio);
 
     const savedLang = localStorage.getItem("asr_language") || "auto";
     setAsrLanguage(savedLang);
@@ -293,6 +297,11 @@ export function SettingsView() {
     localStorage.setItem("sound_feedback_enabled", String(checked));
   };
 
+  const handlePauseAudioToggle = (checked: boolean) => {
+    setPauseAudioEnabled(checked);
+    localStorage.setItem("pause_audio_on_record", String(checked));
+  };
+
   const handleAsrLanguageChange = (val: string) => {
     setAsrLanguage(val);
     localStorage.setItem("asr_language", val);
@@ -461,6 +470,24 @@ export function SettingsView() {
                 type="checkbox"
                 checked={soundEnabled}
                 onChange={(e) => handleSoundToggle(e.target.checked)}
+              />
+              <span className="toggle-bg"></span>
+            </label>
+          </div>
+
+          <div className="flex justify-between items-center p-6">
+            <div>
+              <div className="text-fg font-medium mb-1">Pause System Audio</div>
+              <div className="text-muted text-[13px]">
+                Automatically pause music or videos while recording and resume afterwards.
+              </div>
+            </div>
+
+            <label className="toggle cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pauseAudioEnabled}
+                onChange={(e) => handlePauseAudioToggle(e.target.checked)}
               />
               <span className="toggle-bg"></span>
             </label>

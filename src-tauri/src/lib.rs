@@ -163,6 +163,31 @@ fn is_sound_feedback_enabled(app_handle: &tauri::AppHandle) -> bool {
     true
 }
 
+fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let app_local_data = match app_handle.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return false,
+    };
+    let config_path = app_local_data.join("config.json");
+    if !config_path.exists() {
+        return false;
+    }
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    if let Some(val) = json.get("pause_audio_on_record") {
+        if let Some(s) = val.as_str() {
+            return s == "true";
+        }
+    }
+    false
+}
+
 /// Resolves the sound file for the given event type.
 /// Looks for start.wav / stop.wav / done.wav inside the bundled resources:
 ///   <app>.app/Contents/Resources/sounds/  (macOS bundle)
@@ -223,7 +248,8 @@ fn start_recording(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     is_recording_allowed(&config, &stt)?;
-    controller.start_recording(app_handle.clone())?;
+    let pause_audio = is_pause_audio_enabled(&app_handle);
+    controller.start_recording(app_handle.clone(), pause_audio)?;
     play_backend_sound(&app_handle, "start");
     let _ = rebuild_tray_menu(&app_handle);
     Ok(())
@@ -439,7 +465,8 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
             let config = app.state::<AppConfig>();
             match is_recording_allowed(&config, &stt) {
                 Ok(_) => {
-                    if controller.start_recording(app.clone()).is_ok() {
+                    let pause_audio = is_pause_audio_enabled(app);
+                    if controller.start_recording(app.clone(), pause_audio).is_ok() {
                         let _ = app.emit("recording-started", ());
                     }
                 }
@@ -1269,7 +1296,8 @@ pub fn run() {
                             let config = app.state::<AppConfig>();
                             match is_recording_allowed(&config, &stt) {
                                 Ok(_) => {
-                                    if controller.start_recording(app.clone()).is_ok() {
+                                    let pause_audio = is_pause_audio_enabled(app);
+                                    if controller.start_recording(app.clone(), pause_audio).is_ok() {
                                         play_backend_sound(app, "start");
                                         let _ = app.emit("recording-started", ());
                                     }
