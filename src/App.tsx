@@ -123,8 +123,8 @@ function App() {
       invoke("set_transcribing", { active: true }).catch(() => {});
 
       try {
-        const samples = await invoke<number[]>("get_last_recording_samples");
-        if (samples && samples.length > 0) {
+        const hasSamples = await invoke<boolean>("has_last_recording_samples");
+        if (hasSamples) {
           // Read settings from localStorage
           const asrEngine = localStorage.getItem("asr_engine") || "local";
 
@@ -158,7 +158,7 @@ function App() {
 
           // Step 1: Transcribe Audio
           let text = await invoke<string>("transcribe_audio", {
-            samples,
+            samples: null,
             engine: asrEngine,
             provider: asrProvider,
             model: modelToUse || null,

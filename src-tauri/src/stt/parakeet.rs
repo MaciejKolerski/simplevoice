@@ -86,7 +86,7 @@ impl ParakeetEngine {
 }
 
 impl super::EngineAdapter for ParakeetEngine {
-    fn initialize(&mut self, _model_path: &str) -> Result<(), String> {
+    fn initialize(&mut self, _model_path: &str, _use_gpu: bool) -> Result<(), String> {
         Ok(())
     }
 
@@ -94,7 +94,4 @@ impl super::EngineAdapter for ParakeetEngine {
         transcribe_parakeet(samples, &self.model_path)
     }
 
-    fn shutdown(&mut self) -> Result<(), String> {
-        Ok(())
-    }
 }

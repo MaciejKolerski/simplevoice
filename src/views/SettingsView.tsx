@@ -35,6 +35,7 @@ export function SettingsView() {
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [asrLanguage, setAsrLanguage] = useState("auto");
   const [autostartEnabled, setAutostartEnabled] = useState(false);
+
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
@@ -550,6 +551,26 @@ export function SettingsView() {
             >
               {formatShortcutDisplay(copyShortcutText)}
             </button>
+          </div>
+        </div>
+
+
+              <div className="text-muted text-[13px]">
+                Use your NVIDIA GPU (RTX 3060 Ti) for much faster transcription.
+                <br />
+                Requires CUDA Toolkit installed. Disable if you have stability
+                issues.
+              </div>
+            </div>
+
+            <label className="toggle cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useGpu}
+                onChange={(e) => handleUseGpuToggle(e.target.checked)}
+              />
+              <span className="toggle-bg"></span>
+            </label>
           </div>
         </div>
 

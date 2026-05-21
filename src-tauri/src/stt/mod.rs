@@ -8,7 +8,6 @@ pub mod sherpa;
 pub trait EngineAdapter: Send + Sync {
     fn initialize(&mut self, model_path: &str) -> Result<(), String>;
     fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String>;
-    fn shutdown(&mut self) -> Result<(), String>;
 }
 
 pub struct WhisperEngine {
@@ -23,7 +22,11 @@ impl WhisperEngine {
 
 impl EngineAdapter for WhisperEngine {
     fn initialize(&mut self, model_path: &str) -> Result<(), String> {
-        let ctx = WhisperContext::new_with_params(model_path, WhisperContextParameters::default())
+        let mut params = WhisperContextParameters::default();
+        params.use_gpu = false;
+        params.flash_attn = false;
+
+        let ctx = WhisperContext::new_with_params(model_path, params)
             .map_err(|e| {
                 format!(
                     "Failed to initialize Whisper context from {}: {}",
@@ -34,7 +37,7 @@ impl EngineAdapter for WhisperEngine {
         Ok(())
     }
 
-    fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
+    fn transcribe(&self, samples: &[f32], _language: Option<&str>) -> Result<String, String> {
         let ctx = self
             .context
             .as_ref()
@@ -46,51 +49,47 @@ impl EngineAdapter for WhisperEngine {
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_temperature(0.0);
-
-        // Use a language-specific initial prompt to nudge the model toward the correct output language
-        let initial_prompt = match language {
-            Some("pl") => "Poniżej znajduje się transkrypcja instrukcji głosowych, notatek, myśli oraz fragmentów kodu programistycznego.",
-            Some("de") => "Nachfolgend finden Sie eine Transkription von Sprachanweisungen, Notizen, Gedanken und Programmiercode-Ausschnitten.",
-            Some("fr") => "Ce qui suit est une transcription d'instructions vocales, de notes, de pensées et de fragments de code de programmation.",
-            Some("es") => "A continuación se presenta una transcripción de instrucciones de voz, notas, pensamientos y fragmentos de código de programación.",
-            _ => "The following is a transcription of voice instructions, notes, thoughts, and programming code snippets."
-        };
-        params.set_initial_prompt(initial_prompt);
-
-        if let Some(lang) = language {
-            if !lang.is_empty() && lang != "auto" {
-                params.set_language(Some(lang));
-            }
-        }
+        params.set_n_threads(8);
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_suppress_blank(false);
+        params.set_suppress_nst(false);
+        params.set_no_timestamps(false);
+        params.set_logprob_thold(-1.0);
+        params.set_no_speech_thold(0.6);
+        params.set_single_segment(true);
 
         state
             .full(params, samples)
             .map_err(|e| format!("Whisper inference run failed: {}", e))?;
 
         let mut text = String::new();
-        let num_segments = state
-            .full_n_segments()
-            .map_err(|e| format!("Failed to query number of segments: {}", e))?;
+        let num_segments = state.full_n_segments();
 
         for i in 0..num_segments {
-            if let Ok(segment_text) = state.full_get_segment_text(i) {
-                text.push_str(&segment_text);
+            if let Some(segment) = state.get_segment(i) {
+                if let Ok(segment_text) = segment.to_str() {
+                    text.push_str(segment_text);
+                }
             }
         }
 
         Ok(text.trim().to_string())
     }
 
-    fn shutdown(&mut self) -> Result<(), String> {
-        self.context = None;
-        Ok(())
+            }
+        }
+
+        println!("DEBUG: [transcribe] finished processing text of length {}", text.len());
+        Ok(text.trim().to_string())
     }
+
 }
 
 pub struct SttState {
     pub active_model_path: Option<String>,
     pub loading_model_path: Option<String>,
-    pub engine: Option<Box<dyn EngineAdapter>>,
+    pub engine: Option<std::sync::Arc<Box<dyn EngineAdapter>>>,
 }
 
 #[derive(Clone)]
@@ -110,6 +109,16 @@ impl SttController {
     }
 
     pub fn load_model(&self, model_path: &str) -> Result<(), String> {
+        {
+            let s = self.state.lock().unwrap();
+
+            if let Some(ref active) = s.active_model_path {
+                if active == model_path {
+                    return Ok(());
+                }
+            }
+        }
+
         let path = std::path::Path::new(model_path);
 
         let engine: Box<dyn EngineAdapter> = if path.is_dir() {
@@ -124,11 +133,7 @@ impl SttController {
         };
 
         let mut s = self.state.lock().unwrap();
-        if let Some(mut old_engine) = s.engine.take() {
-            let _ = old_engine.shutdown();
-        }
-
-        s.engine = Some(engine);
+        s.engine = Some(std::sync::Arc::new(engine));
         s.active_model_path = Some(model_path.to_string());
 
         println!("Successfully loaded model: {}", model_path);
@@ -136,11 +141,12 @@ impl SttController {
     }
 
     pub fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
-        let s = self.state.lock().unwrap();
-        let engine = s
-            .engine
-            .as_ref()
-            .ok_or("No speech-to-text model loaded. Please load a model first.")?;
+        let engine_arc = {
+            let s = self.state.lock().unwrap();
+            s.engine.clone()
+        };
+
+        let engine = engine_arc.ok_or("No speech-to-text model loaded. Please load a model first.")?;
         engine.transcribe(samples, language)
     }
 }

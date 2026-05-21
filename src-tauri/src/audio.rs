@@ -22,6 +22,7 @@ pub struct AudioState {
     /// Identifiers of media sessions paused on recording start (cross-platform).
     /// Used to selectively resume only what *we* paused.
     pub paused_media_apps: Vec<String>,
+    pub cached_devices: Vec<String>,
 }
 
 pub struct AudioController {
@@ -44,11 +45,12 @@ impl AudioController {
                 vad_silence_duration_ms: 1500,
                 last_samples: Vec::new(),
                 paused_media_apps: Vec::new(),
+                cached_devices: Vec::new(),
             })),
         }
     }
 
-    pub fn list_devices(&self) -> Result<Vec<String>, String> {
+    pub fn refresh_devices(&self) -> Result<(), String> {
         let host = cpal::default_host();
         let devices = host.input_devices().map_err(|e| e.to_string())?;
         let mut names = Vec::new();
@@ -57,7 +59,19 @@ impl AudioController {
                 names.push(name);
             }
         }
-        Ok(names)
+        let mut s = self.state.lock().unwrap();
+        s.cached_devices = names;
+        Ok(())
+    }
+
+    pub fn list_devices(&self) -> Result<Vec<String>, String> {
+        let s = self.state.lock().unwrap();
+        if s.cached_devices.is_empty() {
+            drop(s);
+            let _ = self.refresh_devices();
+            return Ok(self.state.lock().unwrap().cached_devices.clone());
+        }
+        Ok(s.cached_devices.clone())
     }
 
     pub fn set_selected_device(&self, device_name: Option<String>) {
@@ -377,7 +391,7 @@ impl AudioController {
                 crate::media_control::resume_system_media(&paused_apps_stop);
             }
 
-            if let Some(wrapper) = s.stream.take() {
+            if let Some(wrapper) = s.stream.as_ref() {
                 let _ = wrapper.0.pause();
             }
 

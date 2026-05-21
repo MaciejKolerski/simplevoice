@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+default-run = "simplevoice-app"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,7 +30,7 @@ hound = "3.5"
 chrono = "0.4"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-whisper-rs = "0.14.0"
+whisper-rs = "0.16.0"
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 ort = { version = "2.0.0-rc.9", features = ["ndarray"] }
 ndarray = "0.17"
@@ -40,7 +42,6 @@ enigo = "0.6.1"
 tauri-plugin-autostart = "2.5.1"
 arboard = "3"
 tauri-plugin-dialog = "2.7.1"
-media-remote = "0.3.7"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 macos-accessibility-client = "0.0.1"
@@ -48,3 +49,6 @@ macos-accessibility-client = "0.0.1"
 [target.'cfg(target_os="macos")'.dependencies]
 core-graphics = "0.25.0"
 media-remote = "0.3.7"
+
+
+

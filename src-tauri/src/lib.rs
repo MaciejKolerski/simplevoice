@@ -70,6 +70,7 @@ fn draw_status_dot(
 fn list_audio_devices(
     controller: tauri::State<'_, AudioController>,
 ) -> Result<Vec<String>, String> {
+    let _ = controller.refresh_devices();
     controller.list_devices()
 }
 
@@ -236,7 +237,7 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
     if !is_sound_feedback_enabled(app_handle) {
         return;
     }
-    if let Some(path) = resolve_sound_file(app_handle, sound_type) {
+    if let Some(_path) = resolve_sound_file(app_handle, sound_type) {
         #[cfg(target_os = "macos")]
         {
             let _ = std::process::Command::new("afplay").arg(&path).spawn();
@@ -888,48 +889,54 @@ fn has_secure_api_key(provider: String) -> Result<bool, String> {
 
 #[tauri::command]
 async fn transcribe_audio(
-    samples: Vec<f32>,
+    samples: Option<Vec<f32>>,
     engine: String,
     provider: Option<String>,
     model: Option<String>,
     base_url: Option<String>,
     language: Option<String>,
     stt_controller: tauri::State<'_, SttController>,
+    audio_controller: tauri::State<'_, AudioController>,
 ) -> Result<String, String> {
     let controller = stt_controller.inner().clone();
-    tauri::async_runtime::spawn(async move {
-        if engine == "openai-cloud" {
-            let provider_name = provider.unwrap_or_else(|| "openai".to_string());
-            let key = get_secure_api_key(provider_name.clone())?;
-            if key.trim().is_empty() {
-                return Err(format!("ASR API Key for {} is missing or empty. Please set it in models/engines settings.", provider_name));
-            }
-            crate::stt::cloud::transcribe_cloud(
-                &samples,
-                &key,
-                model.as_deref(),
-                base_url.as_deref(),
-                language.as_deref(),
-            )
-            .await
-        } else {
-            tauri::async_runtime::spawn_blocking(move || {
-                controller.transcribe(&samples, language.as_deref())
-            })
-            .await
-            .map_err(|e| e.to_string())?
+    
+    let final_samples = samples.unwrap_or_else(|| {
+        let s = audio_controller.state.lock().unwrap();
+        s.last_samples.clone()
+    });
+
+    if engine == "openai-cloud" {
+        let provider_name = provider.unwrap_or_else(|| "openai".to_string());
+        let key = get_secure_api_key(provider_name.clone())?;
+        if key.trim().is_empty() {
+            return Err(format!("ASR API Key for {} is missing or empty. Please set it in models/engines settings.", provider_name));
         }
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        crate::stt::cloud::transcribe_cloud(
+            &final_samples,
+            &key,
+            model.as_deref(),
+            base_url.as_deref(),
+            language.as_deref(),
+        )
+        .await
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            controller.transcribe(&final_samples, language.as_deref())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
+
+
 }
 
 #[tauri::command]
-fn get_last_recording_samples(
+fn has_last_recording_samples(
     controller: tauri::State<'_, AudioController>,
-) -> Result<Vec<f32>, String> {
+) -> Result<bool, String> {
     let s = controller.state.lock().unwrap();
-    Ok(s.last_samples.clone())
+    Ok(!s.last_samples.is_empty())
 }
 
 #[tauri::command]
@@ -966,6 +973,8 @@ async fn save_transcription_data(
     model: String,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    println!("DEBUG: save_transcription_data called with wav_path='{}', text='{}' (len={})", wav_path, text, text.len());
+
     let wav_path_buf = std::path::PathBuf::from(&wav_path);
     let parent_dir = wav_path_buf
         .parent()
@@ -1029,10 +1038,12 @@ async fn save_transcription_data(
     .bind(dur_val)
     .execute(&pool)
     .await
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
+    println!("DEBUG: save_transcription_data completed successfully for id={}", id);
     Ok(())
 }
+
 
 #[tauri::command]
 async fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -1207,6 +1218,10 @@ fn check_permissions_status() -> PermissionsStatus {
 #[tauri::command]
 fn paste_text() -> Result<(), String> {
     use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        return Err("Auto-paste is not natively supported on Wayland. The text has been copied to your clipboard!".into());
+    }
 
     let settings = Settings::default();
     let mut enigo = Enigo::new(&settings).map_err(|e| {
@@ -1393,7 +1408,7 @@ pub fn run() {
             get_active_model,
             get_models_dir,
             transcribe_audio,
-            get_last_recording_samples,
+            has_last_recording_samples,
             set_secure_api_key,
             get_secure_api_key,
             delete_secure_api_key,
