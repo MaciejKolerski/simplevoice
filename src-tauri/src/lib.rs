@@ -1026,7 +1026,8 @@ async fn save_transcription_data(
 }
 
 #[tauri::command]
-fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
+async fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
+    // 1. Delete recordings from disk
     let app_local_data = app_handle
         .path()
         .app_local_data_dir()
@@ -1035,20 +1036,68 @@ fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
     if recordings_dir.exists() {
         std::fs::remove_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
     }
+
+    // 2. Clear SQL database
+    let app_dir = app_handle
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?;
+    let db_path = app_dir.join("simplevoice.db");
+    let db_url = format!("sqlite:{}", db_path.to_string_lossy());
+
+    let pool = sqlx::SqlitePool::connect(&db_url)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM transcriptions")
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM daily_usage")
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command]
-fn delete_file_cmd(path: String) -> Result<(), String> {
-    let p = std::path::Path::new(&path);
-    if p.exists() && p.is_file() {
-        std::fs::remove_file(p).map_err(|e| e.to_string())?;
-
-        // Also try to remove the parent directory if it's empty (to clean up the timestamp folder)
-        if let Some(parent) = p.parent() {
-            let _ = std::fs::remove_dir(parent); // We ignore errors here in case it's not empty
+async fn delete_transcription_cmd(
+    id: String,
+    path: Option<String>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // 1. Delete physical file if path is provided
+    if let Some(wav_path) = path {
+        let p = std::path::Path::new(&wav_path);
+        if p.exists() && p.is_file() {
+            let _ = std::fs::remove_file(p);
+            // Try to remove parent dir if empty
+            if let Some(parent) = p.parent() {
+                let _ = std::fs::remove_dir(parent);
+            }
         }
     }
+
+    // 2. Delete from database
+    let app_dir = app_handle
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?;
+    let db_path = app_dir.join("simplevoice.db");
+    let db_url = format!("sqlite:{}", db_path.to_string_lossy());
+
+    let pool = sqlx::SqlitePool::connect(&db_url)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM transcriptions WHERE id = ?")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -1273,6 +1322,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(global_shortcut_plugin)
         .plugin(
             tauri_plugin_sql::Builder::default()
@@ -1334,7 +1384,7 @@ pub fn run() {
             save_config,
             load_config,
             clear_history_cmd,
-            delete_file_cmd,
+            delete_transcription_cmd,
             save_transcription_data,
             set_transcribing,
             get_model_status,

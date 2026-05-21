@@ -11,6 +11,8 @@
     "core:window:allow-minimize",
     "core:window:allow-maximize",
     "core:window:allow-close",
-    "core:window:allow-set-title"
+    "core:window:allow-set-title",
+    "dialog:allow-ask",
+    "dialog:allow-message"
   ]
 }

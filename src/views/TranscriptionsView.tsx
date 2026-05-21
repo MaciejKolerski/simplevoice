@@ -15,6 +15,7 @@ export function TranscriptionsView() {
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<TranscriptionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const loadHistory = async () => {
@@ -61,27 +62,36 @@ export function TranscriptionsView() {
   const handleConfirmClearHistory = async () => {
     setShowConfirmModal(false);
     try {
-      const db = await Database.load("sqlite:simplevoice.db");
-      await db.execute("DELETE FROM transcriptions");
-      await db.execute("DELETE FROM daily_usage");
-
+      // The backend command now handles both disk cleanup AND database clearing
       await invoke("clear_history_cmd");
+      
       setHistory([]);
+      // Dispatch event to update other views (like UsageView charts)
       window.dispatchEvent(new Event("transcription-added"));
     } catch (err) {
       console.error("Failed to clear history:", err);
     }
   };
 
-  const deleteItem = async (item: TranscriptionItem) => {
+  const deleteItem = (item: TranscriptionItem) => {
+    setShowDeleteModal(item);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!showDeleteModal) return;
+    const item = showDeleteModal;
+    setShowDeleteModal(null);
+    
     setIsDeleting(item.id);
     try {
-      const db = await Database.load("sqlite:simplevoice.db");
-      await db.execute("DELETE FROM transcriptions WHERE id = ?", [item.id]);
-      if (item.wav_path) {
-        await invoke("delete_file_cmd", { path: item.wav_path });
-      }
+      // Use the new backend command that handles both DB and File deletion
+      await invoke("delete_transcription_cmd", { 
+        id: item.id, 
+        path: item.wav_path 
+      });
+      
       await loadHistory();
+      // Dispatch event to update other views (like UsageView charts)
       window.dispatchEvent(new Event("transcription-added"));
     } catch (err) {
       console.error("Failed to delete item:", err);
@@ -190,6 +200,35 @@ export function TranscriptionsView() {
         </div>
       )}
 
+      {/* MODAL: Confirm Delete Single Item */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
+          <div className="bg-secondary border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-medium text-white mb-2">
+              Delete Transcription?
+            </h3>
+            <p className="text-muted text-[13px] mb-6 leading-relaxed">
+              Are you sure you want to delete this transcription? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteModal(null)}
+                className="btn btn-outline px-4 py-2 text-xs rounded-md cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="btn bg-red-600 hover:bg-red-500 text-white border-0 px-4 py-2 text-xs font-semibold rounded-md cursor-pointer"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Confirm Clear All History */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
           <div className="bg-secondary border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
