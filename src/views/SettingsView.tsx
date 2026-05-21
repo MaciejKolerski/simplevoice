@@ -526,7 +526,7 @@ export function SettingsView() {
                 setShortcutTarget("record");
                 setIsRecordingShortcut(true);
               }}
-              className="inline-flex items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
+              className="inline-flex whitespace-nowrap shrink-0 items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
             >
               {formatShortcutDisplay(shortcutText)}
             </button>
@@ -546,7 +546,7 @@ export function SettingsView() {
                 setShortcutTarget("copy");
                 setIsRecordingShortcut(true);
               }}
-              className="inline-flex items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
+              className="inline-flex whitespace-nowrap shrink-0 items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
             >
               {formatShortcutDisplay(copyShortcutText)}
             </button>
