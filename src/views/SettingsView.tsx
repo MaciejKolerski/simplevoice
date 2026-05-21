@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronDown, Sparkles, Cpu, Keyboard, Shield, ExternalLink } from "lucide-react";
+import { ChevronDown, Cpu, Keyboard, Shield, ExternalLink } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
@@ -55,19 +55,6 @@ export function SettingsView() {
   const [accessibilityGranted, setAccessibilityGranted] = useState(true);
   const [platform, setPlatform] = useState("unknown");
 
-  // Multi-engine & BYOK API settings states
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [anthropicKey, setAnthropicKey] = useState("");
-  const [geminiKey, setGeminiKey] = useState("");
-  const [refinerEnabled, setRefinerEnabled] = useState(false);
-  const [refinerProvider, setRefinerProvider] = useState<
-    "openai" | "anthropic" | "gemini"
-  >("openai");
-  const [refinerModel, setRefinerModel] = useState("gpt-4o-mini");
-  const [refinerPrompt, setRefinerPrompt] = useState(
-    "You are an ASR post-processor. Correct grammar, add punctuation, format code snippets in markdown if appropriate. IMPORTANT: Maintain the original language of the transcription. Do NOT translate it under any circumstances. If the input is in Polish, the output must be in Polish. If the input is in English, the output must be in English. Do NOT add any conversational filler. Only return the corrected text.",
-  );
-
   useEffect(() => {
     isCompletedRef.current = isCompleted;
   }, [isCompleted]);
@@ -107,49 +94,6 @@ export function SettingsView() {
     setAsrLanguage(savedLang);
 
     isEnabled().then(setAutostartEnabled);
-
-    const syncSettings = () => {
-      setRefinerEnabled(localStorage.getItem("refiner_enabled") === "true");
-      setRefinerProvider(
-        (localStorage.getItem("refiner_provider") as any) || "openai",
-      );
-      setRefinerModel(localStorage.getItem("refiner_model") || "gpt-4o-mini");
-      setRefinerPrompt(
-        localStorage.getItem("refiner_prompt") ||
-          "You are an ASR post-processor. Correct grammar, add punctuation, format code snippets in markdown if appropriate. IMPORTANT: Maintain the original language of the transcription. Do NOT translate it under any circumstances. If the input is in Polish, the output must be in Polish. If the input is in English, the output must be in English. Do NOT add any conversational filler. Only return the corrected text.",
-      );
-    };
-    syncSettings();
-
-    const loadSecureKeys = async () => {
-      try {
-        const hasOpenai = await invoke<boolean>("has_secure_api_key", {
-          provider: "openai",
-        });
-        if (hasOpenai) setOpenaiKey("••••••••••••••••");
-        else setOpenaiKey("");
-
-        const hasAnthropic = await invoke<boolean>("has_secure_api_key", {
-          provider: "anthropic",
-        });
-        if (hasAnthropic) setAnthropicKey("••••••••••••••••");
-        else setAnthropicKey("");
-
-        const hasGemini = await invoke<boolean>("has_secure_api_key", {
-          provider: "gemini",
-        });
-        if (hasGemini) setGeminiKey("••••••••••••••••");
-        else setGeminiKey("");
-      } catch (err) {
-        console.error("Failed to query keyring:", err);
-      }
-    };
-    loadSecureKeys();
-
-    window.addEventListener("api-keys-changed", loadSecureKeys);
-    return () => {
-      window.removeEventListener("api-keys-changed", loadSecureKeys);
-    };
   }, []);
 
   // Check system permissions on mount and periodically
@@ -363,46 +307,6 @@ export function SettingsView() {
     }
   };
 
-  const saveSecureKey = async (provider: string, val: string) => {
-    try {
-      if (val === "••••••••••••••••") return;
-      await invoke("set_secure_api_key", { provider, key: val });
-      window.dispatchEvent(new Event("api-keys-changed"));
-    } catch (err) {
-      console.error(`Failed to save secure key for ${provider}:`, err);
-    }
-  };
-
-  const updateRefinerToggle = (val: boolean) => {
-    setRefinerEnabled(val);
-    localStorage.setItem("refiner_enabled", String(val));
-  };
-
-  const updateRefinerProvider = (val: "openai" | "anthropic" | "gemini") => {
-    setRefinerProvider(val);
-    localStorage.setItem("refiner_provider", val);
-
-    // Set sensible default models
-    let defaultModel = "gpt-4o-mini";
-    if (val === "anthropic") {
-      defaultModel = "claude-3-5-haiku-20241022";
-    } else if (val === "gemini") {
-      defaultModel = "gemini-1.5-flash";
-    }
-    setRefinerModel(defaultModel);
-    localStorage.setItem("refiner_model", defaultModel);
-  };
-
-  const updateRefinerModel = (val: string) => {
-    setRefinerModel(val);
-    localStorage.setItem("refiner_model", val);
-  };
-
-  const updateRefinerPrompt = (val: string) => {
-    setRefinerPrompt(val);
-    localStorage.setItem("refiner_prompt", val);
-  };
-
   return (
     <div className="flex flex-col">
       <div className="mb-6">
@@ -561,174 +465,6 @@ export function SettingsView() {
               <span className="toggle-bg"></span>
             </label>
           </div>
-        </div>
-
-        {/* SECTION: LLM Post-Processing */}
-        <h2 className="mb-4 text-base text-white font-medium flex items-center gap-2">
-          <Sparkles size={16} className="text-muted" /> Smart LLM Refiner
-          (Post-Processing)
-        </h2>
-        <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
-          <div className="flex justify-between items-center p-6 border-b border-border">
-            <div>
-              <div className="text-fg font-medium mb-1">
-                Enable Text Refiner
-              </div>
-              <div className="text-muted text-[13px]">
-                Post-process raw audio transcripts using a cloud LLM to format,
-                fix spelling, or edit code.
-              </div>
-            </div>
-
-            <label className="toggle cursor-pointer">
-              <input
-                type="checkbox"
-                checked={refinerEnabled}
-                onChange={(e) => updateRefinerToggle(e.target.checked)}
-              />
-              <span className="toggle-bg"></span>
-            </label>
-          </div>
-
-          {refinerEnabled && (
-            <>
-              <div className="flex flex-col sm:flex-row p-6 gap-6 border-b border-border bg-black/10">
-                <div className="flex-1">
-                  <label className="text-fg font-medium mb-2.5 block text-xs">
-                    LLM Provider
-                  </label>
-                  <div className="relative w-full">
-                    <select
-                      value={refinerProvider}
-                      onChange={(e) =>
-                        updateRefinerProvider(e.target.value as any)
-                      }
-                      className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="anthropic">Anthropic Claude</option>
-                      <option value="gemini">Google Gemini</option>
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                      <ChevronDown size={14} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex-1">
-                  <label className="text-fg font-medium mb-2.5 block text-xs">
-                    Model
-                  </label>
-                  <div className="relative w-full">
-                    <select
-                      value={refinerModel}
-                      onChange={(e) => updateRefinerModel(e.target.value)}
-                      className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
-                    >
-                      {refinerProvider === "openai" && (
-                        <>
-                          <option value="gpt-4o-mini">
-                            gpt-4o-mini (Recommended)
-                          </option>
-                          <option value="gpt-4o">gpt-4o</option>
-                        </>
-                      )}
-                      {refinerProvider === "anthropic" && (
-                        <>
-                          <option value="claude-3-5-haiku-20241022">
-                            claude-3-5-haiku (Recommended)
-                          </option>
-                          <option value="claude-3-5-sonnet-20241022">
-                            claude-3-5-sonnet
-                          </option>
-                        </>
-                      )}
-                      {refinerProvider === "gemini" && (
-                        <>
-                          <option value="gemini-1.5-flash">
-                            gemini-1.5-flash (Recommended)
-                          </option>
-                          <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                        </>
-                      )}
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                      <ChevronDown size={14} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Contextual API Key Input for selected Provider */}
-              <div className="flex flex-col p-6 border-b border-border bg-black/5">
-                <label className="text-fg font-medium mb-2 block text-xs">
-                  {refinerProvider === "openai"
-                    ? "OpenAI API Key"
-                    : refinerProvider === "anthropic"
-                      ? "Anthropic API Key"
-                      : "Google Gemini API Key"}
-                </label>
-                {refinerProvider === "openai" && (
-                  <input
-                    type="password"
-                    value={openaiKey}
-                    onChange={(e) => {
-                      setOpenaiKey(e.target.value);
-                      saveSecureKey("openai", e.target.value);
-                    }}
-                    placeholder={
-                      openaiKey === "••••••••••••••••" ? "" : "sk-..."
-                    }
-                    className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
-                  />
-                )}
-                {refinerProvider === "anthropic" && (
-                  <input
-                    type="password"
-                    value={anthropicKey}
-                    onChange={(e) => {
-                      setAnthropicKey(e.target.value);
-                      saveSecureKey("anthropic", e.target.value);
-                    }}
-                    placeholder={
-                      anthropicKey === "••••••••••••••••" ? "" : "sk-ant-..."
-                    }
-                    className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
-                  />
-                )}
-                {refinerProvider === "gemini" && (
-                  <input
-                    type="password"
-                    value={geminiKey}
-                    onChange={(e) => {
-                      setGeminiKey(e.target.value);
-                      saveSecureKey("gemini", e.target.value);
-                    }}
-                    placeholder={
-                      geminiKey === "••••••••••••••••" ? "" : "AIzaSy..."
-                    }
-                    className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
-                  />
-                )}
-                <p className="text-[10px] text-muted mt-2">
-                  This key is stored securely in your operating system's native
-                  keychain.
-                </p>
-              </div>
-
-              <div className="flex flex-col p-6 bg-black/15">
-                <label className="text-fg font-medium mb-2.5 block text-xs">
-                  Refining System Prompt Instructions
-                </label>
-                <textarea
-                  value={refinerPrompt}
-                  onChange={(e) => updateRefinerPrompt(e.target.value)}
-                  className="input w-full bg-black border-border rounded-md p-4 h-24 resize-none text-xs font-normal focus:border-muted transition-colors leading-relaxed"
-                  placeholder="Define instructions for transcription formatting..."
-                />
-              </div>
-            </>
-          )}
         </div>
 
         {/* SECTION: Shortcuts */}

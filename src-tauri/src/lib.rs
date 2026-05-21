@@ -3,7 +3,6 @@ use audio::AudioController;
 use std::sync::Mutex;
 mod stt;
 use stt::SttController;
-mod refiner;
 use tauri::menu::{
     CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
@@ -895,27 +894,6 @@ async fn transcribe_audio(
 }
 
 #[tauri::command]
-async fn refine_transcription(
-    text: String,
-    provider: String,
-    model: String,
-    prompt: String,
-) -> Result<String, String> {
-    tauri::async_runtime::spawn(async move {
-        let key = get_secure_api_key(provider.clone())?;
-        if key.trim().is_empty() {
-            return Err(format!(
-                "API Key for {} is missing or empty. Please set it in preferences.",
-                provider
-            ));
-        }
-        crate::refiner::refine_text(&text, &provider, &model, &key, &prompt).await
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
 fn get_last_recording_samples(
     controller: tauri::State<'_, AudioController>,
 ) -> Result<Vec<f32>, String> {
@@ -1374,7 +1352,6 @@ pub fn run() {
             get_models_dir,
             transcribe_audio,
             get_last_recording_samples,
-            refine_transcription,
             set_secure_api_key,
             get_secure_api_key,
             delete_secure_api_key,

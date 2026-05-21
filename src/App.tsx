@@ -163,35 +163,7 @@ function App() {
           });
 
           if (text && text.trim().length > 0) {
-            // Step 2: Post-process using LLM Refiner if enabled
-            const refinerEnabled =
-              localStorage.getItem("refiner_enabled") === "true";
-            if (refinerEnabled) {
-              const provider =
-                localStorage.getItem("refiner_provider") || "openai";
-              const model =
-                localStorage.getItem("refiner_model") || "gpt-4o-mini";
-              const prompt = localStorage.getItem("refiner_prompt") || "";
-
-              try {
-                const refined = await invoke<string>("refine_transcription", {
-                  text,
-                  provider,
-                  model,
-                  prompt,
-                });
-                if (refined && refined.trim().length > 0) {
-                  text = refined;
-                }
-              } catch (refineErr) {
-                console.error(
-                  "Refinement failed, copying raw transcription:",
-                  refineErr,
-                );
-              }
-            }
-
-            // Step 3: Copy to clipboard, play done chime, and auto-paste
+            // Step 2: Copy to clipboard, play done chime, and auto-paste
             await navigator.clipboard.writeText(text);
 
             try {
