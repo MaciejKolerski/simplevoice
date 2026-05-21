@@ -26,16 +26,20 @@ export function ModelsView() {
   const [scanning, setScanning] = useState<boolean>(false);
   const [asrEngine, setAsrEngine] = useState<"local" | "openai-cloud">("local");
   const [providerKey, setProviderKey] = useState<string>("••••••••••••••••");
-  
+
   const [activeModelPath, setActiveModelPath] = useState<string | null>(null);
   const [loadingModelPath, setLoadingModelPath] = useState<string | null>(null);
-  
+
   // Custom BYOK states
-  const [asrProvider, setAsrProvider] = useState<"openai" | "openrouter" | "anthropic" | "gemini" | "custom">("openai");
+  const [asrProvider, setAsrProvider] = useState<
+    "openai" | "openrouter" | "anthropic" | "gemini" | "custom"
+  >("openai");
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [asrModel, setAsrModel] = useState<string>("whisper-1");
   const [asrCustomModel, setAsrCustomModel] = useState<string>("");
-  const [asrBaseUrl, setAsrBaseUrl] = useState<string>("https://api.openai.com/v1");
+  const [asrBaseUrl, setAsrBaseUrl] = useState<string>(
+    "https://api.openai.com/v1",
+  );
 
   const loadModelsList = async () => {
     setScanning(true);
@@ -80,15 +84,19 @@ export function ModelsView() {
 
   useEffect(() => {
     loadModelsList();
-    
+
     const syncEngine = () => {
-      const savedEngine = (localStorage.getItem("asr_engine") as any) || "local";
+      const savedEngine =
+        (localStorage.getItem("asr_engine") as any) || "local";
       setAsrEngine(savedEngine);
-      const savedProvider = (localStorage.getItem("asr_provider") as any) || "openai";
+      const savedProvider =
+        (localStorage.getItem("asr_provider") as any) || "openai";
       setAsrProvider(savedProvider);
       setAsrModel(localStorage.getItem("asr_model") || "whisper-1");
       setAsrCustomModel(localStorage.getItem("asr_custom_model") || "");
-      setAsrBaseUrl(localStorage.getItem("asr_base_url") || "https://api.openai.com/v1");
+      setAsrBaseUrl(
+        localStorage.getItem("asr_base_url") || "https://api.openai.com/v1",
+      );
       loadSecureKeysForProvider(savedProvider);
     };
     syncEngine();
@@ -115,7 +123,9 @@ export function ModelsView() {
     };
   }, []);
 
-  const handleProviderChange = (provider: "openai" | "openrouter" | "anthropic" | "gemini" | "custom") => {
+  const handleProviderChange = (
+    provider: "openai" | "openrouter" | "anthropic" | "gemini" | "custom",
+  ) => {
     setAsrProvider(provider);
     localStorage.setItem("asr_provider", provider);
 
@@ -138,7 +148,10 @@ export function ModelsView() {
       setAsrModel("gemini-1.5-flash");
       localStorage.setItem("asr_model", "gemini-1.5-flash");
       setAsrBaseUrl("https://generativelanguage.googleapis.com/v1beta");
-      localStorage.setItem("asr_base_url", "https://generativelanguage.googleapis.com/v1beta");
+      localStorage.setItem(
+        "asr_base_url",
+        "https://generativelanguage.googleapis.com/v1beta",
+      );
     } else if (provider === "custom") {
       setAsrModel("custom");
       localStorage.setItem("asr_model", "custom");
@@ -204,7 +217,8 @@ export function ModelsView() {
             Models & Engines
           </h1>
           <p className="text-xs text-muted mt-1 leading-normal">
-            Choose whether to use local Whisper/Parakeet model files or high-speed cloud speech recognition.
+            Choose whether to use local Whisper/Parakeet model files or
+            high-speed cloud speech recognition.
           </p>
         </div>
         {asrEngine === "local" && (
@@ -252,19 +266,34 @@ export function ModelsView() {
         </button>
       </div>
 
-
       {asrEngine === "openai-cloud" && (
-        <div className={`mb-6 p-4 rounded-xl border flex items-center gap-3 transition-all duration-300 ${
-          providerKey && providerKey !== ""
-            ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400" 
-            : "bg-amber-500/5 border-amber-500/20 text-amber-400"
-        }`}>
-          <div className={`w-2 h-2 rounded-full ${providerKey && providerKey !== "" ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-bounce"}`} />
+        <div
+          className={`mb-6 p-4 rounded-xl border flex items-center gap-3 transition-all duration-300 ${
+            providerKey && providerKey !== ""
+              ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400"
+              : "bg-amber-500/5 border-amber-500/20 text-amber-400"
+          }`}
+        >
+          <div
+            className={`w-2 h-2 rounded-full ${providerKey && providerKey !== "" ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-bounce"}`}
+          />
           <div className="flex-1 text-xs">
             {providerKey && providerKey !== "" ? (
-              <span><strong>Active Cloud Engine (BYOK):</strong> Configured for <strong>{asrProvider.toUpperCase()}</strong> (Model: <code>{asrModel === "custom" ? asrCustomModel || "None" : asrModel}</code>). Ready for cloud transcription.</span>
+              <span>
+                <strong>Active Cloud Engine (BYOK):</strong> Configured for{" "}
+                <strong>{asrProvider.toUpperCase()}</strong> (Model:{" "}
+                <code>
+                  {asrModel === "custom" ? asrCustomModel || "None" : asrModel}
+                </code>
+                ). Ready for cloud transcription.
+              </span>
             ) : (
-              <span><strong>Missing API Key for {asrProvider.toUpperCase()}:</strong> Please enter your API Key below to activate cloud transcription.</span>
+              <span>
+                <strong>
+                  Missing API Key for {asrProvider.toUpperCase()}:
+                </strong>{" "}
+                Please enter your API Key below to activate cloud transcription.
+              </span>
             )}
           </div>
         </div>
@@ -274,15 +303,26 @@ export function ModelsView() {
         models.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
             <FolderOpen size={48} className="text-muted mb-4 opacity-50" />
-            <h3 className="text-white font-medium mb-2">No local models found</h3>
+            <h3 className="text-white font-medium mb-2">
+              No local models found
+            </h3>
             <p className="text-muted text-sm max-w-md mb-6 leading-relaxed">
-              Place your Whisper model files (with <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">.bin</code> or <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">.gguf</code> extension) or NVIDIA Parakeet <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">.onnx</code> files inside the application models folder.
+              Place your Whisper model files (with{" "}
+              <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">
+                .bin
+              </code>{" "}
+              or{" "}
+              <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">
+                .gguf
+              </code>{" "}
+              extension) or NVIDIA Parakeet{" "}
+              <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">
+                .onnx
+              </code>{" "}
+              files inside the application models folder.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 items-center w-full justify-center">
-              <button
-                onClick={handleOpenFolder}
-                className="btn btn-outline"
-              >
+              <button onClick={handleOpenFolder} className="btn btn-outline">
                 Open Models Folder
               </button>
               <button
@@ -303,7 +343,8 @@ export function ModelsView() {
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             {models.map((model, idx) => {
               const isActive = model.path === activeModelPath;
-              const isLoading = model.path === loadingModelPath || loadingPath === model.path;
+              const isLoading =
+                model.path === loadingModelPath || loadingPath === model.path;
               return (
                 <div
                   key={idx}
@@ -329,7 +370,10 @@ export function ModelsView() {
                       )}
                     </div>
                     <div className="text-muted text-xs truncate max-w-md">
-                      File: <span className="font-mono text-[11px] text-fg/80">{model.filename}</span>
+                      File:{" "}
+                      <span className="font-mono text-[11px] text-fg/80">
+                        {model.filename}
+                      </span>
                     </div>
                   </div>
 
@@ -337,7 +381,9 @@ export function ModelsView() {
                     <div className="flex flex-col gap-2 w-full sm:w-[150px]">
                       <div className="text-[10px] text-muted-dark font-semibold uppercase tracking-wider flex justify-between items-center">
                         <span>Quality</span>
-                        <span className="text-white font-mono">{model.quality}%</span>
+                        <span className="text-white font-mono">
+                          {model.quality}%
+                        </span>
                       </div>
                       <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
                         <div
@@ -350,12 +396,16 @@ export function ModelsView() {
                     <div className="flex flex-col gap-2 w-full sm:w-[150px]">
                       <div className="text-[10px] text-muted-dark font-semibold uppercase tracking-wider flex justify-between items-center">
                         <span>Speed</span>
-                        <span className="text-white font-mono">{model.speed}x</span>
+                        <span className="text-white font-mono">
+                          {model.speed}x
+                        </span>
                       </div>
                       <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
                         <div
                           className="h-full bg-white rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(model.speed * 20, 100)}%` }}
+                          style={{
+                            width: `${Math.min(model.speed * 20, 100)}%`,
+                          }}
                         />
                       </div>
                     </div>
@@ -374,7 +424,11 @@ export function ModelsView() {
                       ) : (
                         <button
                           onClick={() => handleLoadModel(model.path)}
-                          disabled={isLoading || loadingModelPath !== null || loadingPath !== null}
+                          disabled={
+                            isLoading ||
+                            loadingModelPath !== null ||
+                            loadingPath !== null
+                          }
                           className="btn btn-primary btn-small w-20 flex items-center justify-center cursor-pointer"
                         >
                           {isLoading ? (
@@ -402,14 +456,18 @@ export function ModelsView() {
                 BYOK Config
               </h3>
               <p className="text-muted text-[13px] max-w-xl leading-relaxed">
-                Configure your cloud-based Speech-to-Text provider. All API requests are sent directly from your client machine to the designated endpoint.
+                Configure your cloud-based Speech-to-Text provider. All API
+                requests are sent directly from your client machine to the
+                designated endpoint.
               </p>
             </div>
           </div>
 
           <div className="max-w-xl space-y-6">
             <div className="flex flex-col">
-              <label className="text-fg font-medium text-xs mb-2">Provider Preset</label>
+              <label className="text-fg font-medium text-xs mb-2">
+                Provider Preset
+              </label>
               <div className="relative w-full">
                 <select
                   value={asrProvider}
@@ -429,7 +487,9 @@ export function ModelsView() {
             </div>
 
             <div className="flex flex-col">
-              <label className="text-fg font-medium text-xs mb-2">API Key ({asrProvider.toUpperCase()})</label>
+              <label className="text-fg font-medium text-xs mb-2">
+                API Key ({asrProvider.toUpperCase()})
+              </label>
               <div className="flex gap-2">
                 <input
                   type={showApiKey ? "text" : "password"}
@@ -438,7 +498,11 @@ export function ModelsView() {
                     setProviderKey(e.target.value);
                     saveProviderKey(asrProvider, e.target.value);
                   }}
-                  placeholder={providerKey === "••••••••••••••••" ? "" : `Enter API Key for ${asrProvider.toUpperCase()}...`}
+                  placeholder={
+                    providerKey === "••••••••••••••••"
+                      ? ""
+                      : `Enter API Key for ${asrProvider.toUpperCase()}...`
+                  }
                   className="input flex-1 bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
                 />
                 <button
@@ -468,24 +532,40 @@ export function ModelsView() {
                   )}
                   {asrProvider === "openrouter" && (
                     <>
-                      <option value="openai/whisper-large-v3">openai/whisper-large-v3</option>
-                      <option value="meta-llama/llama-3.2-11b-vision-instruct:free">meta-llama/llama-3.2-11b-vision-instruct:free</option>
-                      <option value="deepseek/deepseek-chat">deepseek/deepseek-chat</option>
-                      <option value="google/gemini-2.0-flash-exp:free">google/gemini-2.0-flash-exp:free</option>
+                      <option value="openai/whisper-large-v3">
+                        openai/whisper-large-v3
+                      </option>
+                      <option value="meta-llama/llama-3.2-11b-vision-instruct:free">
+                        meta-llama/llama-3.2-11b-vision-instruct:free
+                      </option>
+                      <option value="deepseek/deepseek-chat">
+                        deepseek/deepseek-chat
+                      </option>
+                      <option value="google/gemini-2.0-flash-exp:free">
+                        google/gemini-2.0-flash-exp:free
+                      </option>
                     </>
                   )}
                   {asrProvider === "anthropic" && (
                     <>
-                      <option value="claude-3-5-haiku-20241022">claude-3-5-haiku-20241022</option>
-                      <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
-                      <option value="claude-3-opus-20240229">claude-3-opus-20240229</option>
+                      <option value="claude-3-5-haiku-20241022">
+                        claude-3-5-haiku-20241022
+                      </option>
+                      <option value="claude-3-5-sonnet-20241022">
+                        claude-3-5-sonnet-20241022
+                      </option>
+                      <option value="claude-3-opus-20240229">
+                        claude-3-opus-20240229
+                      </option>
                     </>
                   )}
                   {asrProvider === "gemini" && (
                     <>
                       <option value="gemini-1.5-flash">gemini-1.5-flash</option>
                       <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                      <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
+                      <option value="gemini-2.0-flash-exp">
+                        gemini-2.0-flash-exp
+                      </option>
                     </>
                   )}
                   <option value="custom">Custom (type below)...</option>
@@ -495,13 +575,29 @@ export function ModelsView() {
                 </div>
               </div>
               <p className="text-[11px] text-muted-dark mt-1.5">
-                These are suggested models for this provider. Your API endpoint might support other models.
+                These are suggested models for this provider. Your API endpoint
+                might support other models.
               </p>
             </div>
 
-            {(asrModel === "custom" || (asrModel !== "whisper-1" && asrModel !== "gpt-4o-mini" && asrModel !== "gpt-4o" && asrModel !== "openai/whisper-large-v3" && asrModel !== "meta-llama/llama-3.2-11b-vision-instruct:free" && asrModel !== "deepseek/deepseek-chat" && asrModel !== "google/gemini-2.0-flash-exp:free" && asrModel !== "claude-3-5-haiku-20241022" && asrModel !== "claude-3-5-sonnet-20241022" && asrModel !== "claude-3-opus-20240229" && asrModel !== "gemini-1.5-flash" && asrModel !== "gemini-1.5-pro" && asrModel !== "gemini-2.0-flash-exp")) && (
+            {(asrModel === "custom" ||
+              (asrModel !== "whisper-1" &&
+                asrModel !== "gpt-4o-mini" &&
+                asrModel !== "gpt-4o" &&
+                asrModel !== "openai/whisper-large-v3" &&
+                asrModel !== "meta-llama/llama-3.2-11b-vision-instruct:free" &&
+                asrModel !== "deepseek/deepseek-chat" &&
+                asrModel !== "google/gemini-2.0-flash-exp:free" &&
+                asrModel !== "claude-3-5-haiku-20241022" &&
+                asrModel !== "claude-3-5-sonnet-20241022" &&
+                asrModel !== "claude-3-opus-20240229" &&
+                asrModel !== "gemini-1.5-flash" &&
+                asrModel !== "gemini-1.5-pro" &&
+                asrModel !== "gemini-2.0-flash-exp")) && (
               <div className="flex flex-col">
-                <label className="text-fg font-medium text-xs mb-2">Custom Model ID</label>
+                <label className="text-fg font-medium text-xs mb-2">
+                  Custom Model ID
+                </label>
                 <input
                   type="text"
                   value={asrModel === "custom" ? asrCustomModel : asrModel}
@@ -519,7 +615,9 @@ export function ModelsView() {
             )}
 
             <div className="flex flex-col">
-              <label className="text-fg font-medium text-xs mb-2">Base URL</label>
+              <label className="text-fg font-medium text-xs mb-2">
+                Base URL
+              </label>
               <input
                 type="text"
                 value={asrBaseUrl}
@@ -528,13 +626,13 @@ export function ModelsView() {
                 className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors font-mono"
               />
               <p className="text-[11px] text-muted-dark mt-1.5">
-                The base URL of the API server (e.g. https://openrouter.ai/api/v1). Leave empty for standard OpenAI.
+                The base URL of the API server (e.g.
+                https://openrouter.ai/api/v1). Leave empty for standard OpenAI.
               </p>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

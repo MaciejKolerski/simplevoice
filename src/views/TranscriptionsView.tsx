@@ -15,7 +15,8 @@ export function TranscriptionsView() {
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState<TranscriptionItem | null>(null);
+  const [showDeleteModal, setShowDeleteModal] =
+    useState<TranscriptionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const loadHistory = async () => {
@@ -64,7 +65,7 @@ export function TranscriptionsView() {
     try {
       // The backend command now handles both disk cleanup AND database clearing
       await invoke("clear_history_cmd");
-      
+
       setHistory([]);
       // Dispatch event to update other views (like UsageView charts)
       window.dispatchEvent(new Event("transcription-added"));
@@ -81,15 +82,15 @@ export function TranscriptionsView() {
     if (!showDeleteModal) return;
     const item = showDeleteModal;
     setShowDeleteModal(null);
-    
+
     setIsDeleting(item.id);
     try {
       // Use the new backend command that handles both DB and File deletion
-      await invoke("delete_transcription_cmd", { 
-        id: item.id, 
-        path: item.wav_path 
+      await invoke("delete_transcription_cmd", {
+        id: item.id,
+        path: item.wav_path,
       });
-      
+
       await loadHistory();
       // Dispatch event to update other views (like UsageView charts)
       window.dispatchEvent(new Event("transcription-added"));
@@ -208,7 +209,8 @@ export function TranscriptionsView() {
               Delete Transcription?
             </h3>
             <p className="text-muted text-[13px] mb-6 leading-relaxed">
-              Are you sure you want to delete this transcription? This action cannot be undone.
+              Are you sure you want to delete this transcription? This action
+              cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button

@@ -1,15 +1,16 @@
 mod audio;
+mod media_control;
+mod stt;
 use audio::AudioController;
 use std::sync::Mutex;
-mod stt;
 use stt::SttController;
 use tauri::menu::{
     CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
-use tauri_plugin_sql::{Migration, MigrationKind};
 use tauri_plugin_global_shortcut::Shortcut;
+use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
@@ -181,6 +182,9 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
         Err(_) => return false,
     };
     if let Some(val) = json.get("pause_audio_on_record") {
+        if let Some(b) = val.as_bool() {
+            return b;
+        }
         if let Some(s) = val.as_str() {
             return s == "true";
         }
@@ -566,7 +570,10 @@ fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Resu
 }
 
 #[tauri::command]
-fn register_copy_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+fn register_copy_shortcut(
+    shortcut_str: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     let registry = app_handle.state::<ShortcutRegistry>();
     let mut entries = registry.entries.lock().unwrap();
 
@@ -594,10 +601,7 @@ fn register_copy_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) ->
 }
 
 #[tauri::command]
-fn set_last_transcription(
-    text: String,
-    last_transcription: tauri::State<'_, LastTranscription>,
-) {
+fn set_last_transcription(text: String, last_transcription: tauri::State<'_, LastTranscription>) {
     let mut t = last_transcription.text.lock().unwrap();
     *t = Some(text);
 }
@@ -1205,48 +1209,56 @@ fn paste_text() -> Result<(), String> {
     use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
     let settings = Settings::default();
-    let mut enigo = Enigo::new(&settings)
-        .map_err(|e| {
-            #[cfg(target_os = "macos")]
-            {
-                format!(
-                    "Failed to initialize keyboard simulation. \
+    let mut enigo = Enigo::new(&settings).map_err(|e| {
+        #[cfg(target_os = "macos")]
+        {
+            format!(
+                "Failed to initialize keyboard simulation. \
                      Please grant Accessibility permissions in System Settings > \
                      Privacy & Security > Accessibility. Error: {}",
-                    e
-                )
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                format!("Failed to initialize keyboard simulation: {}", e)
-            }
-        })?;
+                e
+            )
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            format!("Failed to initialize keyboard simulation: {}", e)
+        }
+    })?;
 
     #[cfg(target_os = "macos")]
     {
-        enigo.key(Key::Meta, Direction::Press)
+        enigo
+            .key(Key::Meta, Direction::Press)
             .map_err(|e| format!("Keyboard simulation failed (Meta press): {}", e))?;
-        enigo.key(Key::Unicode('v'), Direction::Click)
+        enigo
+            .key(Key::Unicode('v'), Direction::Click)
             .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
-        enigo.key(Key::Meta, Direction::Release)
+        enigo
+            .key(Key::Meta, Direction::Release)
             .map_err(|e| format!("Keyboard simulation failed (Meta release): {}", e))?;
     }
     #[cfg(target_os = "windows")]
     {
-        enigo.key(Key::Control, Direction::Press)
+        enigo
+            .key(Key::Control, Direction::Press)
             .map_err(|e| format!("Keyboard simulation failed (Ctrl press): {}", e))?;
-        enigo.key(Key::Unicode('v'), Direction::Click)
+        enigo
+            .key(Key::Unicode('v'), Direction::Click)
             .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
-        enigo.key(Key::Control, Direction::Release)
+        enigo
+            .key(Key::Control, Direction::Release)
             .map_err(|e| format!("Keyboard simulation failed (Ctrl release): {}", e))?;
     }
     #[cfg(target_os = "linux")]
     {
-        enigo.key(Key::Control, Direction::Press)
+        enigo
+            .key(Key::Control, Direction::Press)
             .map_err(|e| format!("Keyboard simulation failed (Ctrl press): {}", e))?;
-        enigo.key(Key::Unicode('v'), Direction::Click)
+        enigo
+            .key(Key::Unicode('v'), Direction::Click)
             .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
-        enigo.key(Key::Control, Direction::Release)
+        enigo
+            .key(Key::Control, Direction::Release)
             .map_err(|e| format!("Keyboard simulation failed (Ctrl release): {}", e))?;
     }
     Ok(())
@@ -1288,7 +1300,8 @@ pub fn run() {
                         if controller.is_recording() {
                             if let Ok(wav_path) = controller.stop_recording(app) {
                                 play_backend_sound(app, "stop");
-                                let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
+                                let payload =
+                                    wav_path.unwrap_or_else(|| "Recording stopped".to_string());
                                 let _ = app.emit("recording-stopped", payload);
                             }
                         } else {
@@ -1297,7 +1310,8 @@ pub fn run() {
                             match is_recording_allowed(&config, &stt) {
                                 Ok(_) => {
                                     let pause_audio = is_pause_audio_enabled(app);
-                                    if controller.start_recording(app.clone(), pause_audio).is_ok() {
+                                    if controller.start_recording(app.clone(), pause_audio).is_ok()
+                                    {
                                         play_backend_sound(app, "start");
                                         let _ = app.emit("recording-started", ());
                                     }

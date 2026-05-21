@@ -76,9 +76,13 @@ function App() {
     syncActiveConfig();
 
     // Register the copy-last shortcut if one was saved
-    const savedCopyShortcut = localStorage.getItem("global_copy_shortcut") || "CommandOrControl+Shift+C";
+    const savedCopyShortcut =
+      localStorage.getItem("global_copy_shortcut") ||
+      "CommandOrControl+Shift+C";
     if (savedCopyShortcut) {
-      invoke("register_copy_shortcut", { shortcutStr: savedCopyShortcut }).catch((err) => {
+      invoke("register_copy_shortcut", {
+        shortcutStr: savedCopyShortcut,
+      }).catch((err) => {
         console.error("Failed to register copy-last shortcut on mount:", err);
       });
     }

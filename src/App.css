@@ -1,366 +1,364 @@
 @import "tailwindcss";
 
 @theme {
-    --color-border: var(--border);
-    --color-input: var(--border);
-    --color-ring: var(--border-hover);
-    --color-background: var(--bg);
-    --color-foreground: var(--fg);
-    --color-primary: var(--accent-primary);
-    --color-primary-foreground: var(--accent-primary-fg);
-    --color-secondary: var(--surface);
-    --color-secondary-foreground: var(--fg);
-    --color-destructive: var(--color-danger);
-    --color-destructive-foreground: var(--fg);
-    --color-muted: var(--muted);
-    --color-muted-foreground: var(--muted-dark);
-    --color-accent: var(--surface-active);
-    --color-accent-foreground: var(--fg);
-    --color-popover: var(--surface);
-    --color-popover-foreground: var(--fg);
-    --color-card: var(--surface);
-    --color-card-foreground: var(--fg);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--border-hover);
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-primary: var(--accent-primary);
+  --color-primary-foreground: var(--accent-primary-fg);
+  --color-secondary: var(--surface);
+  --color-secondary-foreground: var(--fg);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: var(--fg);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-dark);
+  --color-accent: var(--surface-active);
+  --color-accent-foreground: var(--fg);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--fg);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--fg);
 
-    --font-sans: "Inter", system-ui, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-    --radius-sm: 6px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
-    --radius-pill: 9999px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
 }
 
 :root {
-    --bg: #000000;
-    --surface: #0a0a0a;
-    --surface-hover: #141414;
-    --surface-active: #1f1f1f;
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --surface-hover: #141414;
+  --surface-active: #1f1f1f;
 
-    --fg: #ededed;
-    --muted: #888888;
-    --muted-dark: #555555;
+  --fg: #ededed;
+  --muted: #888888;
+  --muted-dark: #555555;
 
-    --border: #222222;
-    --border-hover: #333333;
+  --border: #222222;
+  --border-hover: #333333;
 
-    --accent-primary: #ffffff;
-    --accent-primary-fg: #000000;
+  --accent-primary: #ffffff;
+  --accent-primary-fg: #000000;
 
-    --color-success: #34d399;
-    --color-warning: #fbbf24;
-    --color-danger: #f87171;
-    --color-info: #60a5fa;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
 
-    --sidebar-width: 240px;
-    --sidebar-collapsed-width: 64px;
-    --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 64px;
+  --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
-    * {
-        @apply border-border outline-none;
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-    }
+  * {
+    @apply border-border outline-none;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 
-    body {
-        @apply bg-background text-foreground;
-        font-family: var(--font-sans);
-        font-size: 14px;
-        line-height: 1.5;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        height: 100vh;
-        overflow: hidden;
-    }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    height: 100vh;
+    overflow: hidden;
+  }
 
-    h1 {
-        font-size: 24px;
-        font-weight: 500;
-        color: #ffffff;
-        letter-spacing: -0.02em;
-        margin-bottom: 24px;
-    }
-    h2 {
-        font-size: 16px;
-        font-weight: 500;
-        color: #ffffff;
-        letter-spacing: -0.02em;
-        margin-bottom: 16px;
-    }
-    h3 {
-        font-size: 14px;
-        font-weight: 500;
-        color: #ffffff;
-    }
+  h1 {
+    font-size: 24px;
+    font-weight: 500;
+    color: #ffffff;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+  }
+  h2 {
+    font-size: 16px;
+    font-weight: 500;
+    color: #ffffff;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+  h3 {
+    font-size: 14px;
+    font-weight: 500;
+    color: #ffffff;
+  }
 }
 
 @layer utilities {
-    .mono {
-        font-family: var(--font-mono);
-        font-variant-numeric: tabular-nums;
-    }
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
 
-    /* Custom scrollbar */
-    ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-    ::-webkit-scrollbar-track {
-        background: transparent;
-    }
-    ::-webkit-scrollbar-thumb {
-        background: var(--border);
-        border-radius: 4px;
-        border: 2px solid var(--bg);
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: var(--muted-dark);
-    }
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+    border: 2px solid var(--bg);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-dark);
+  }
 }
 
 *[data-tauri-drag-region] {
-    app-region: drag;
+  app-region: drag;
 }
 
 .title-bar-no-drag {
-    app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* Custom CSS for TitleBar and Sidebar (avoiding unknown utility errors in Tailwind v4) */
 .title-bar {
-    height: 2.5rem;
-    background-color: #000000;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    z-index: 50;
-    flex-shrink: 0;
+  height: 2.5rem;
+  background-color: #000000;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  z-index: 50;
+  flex-shrink: 0;
 }
 
 .sidebar {
-    height: 100%;
-    border-right: 1px solid var(--border);
-    background-color: #000000;
-    display: flex;
-    flex-direction: column;
-    transition-property: all;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 200ms;
-    z-index: 10;
-    flex-shrink: 0;
-    width: var(--sidebar-width);
+  height: 100%;
+  border-right: 1px solid var(--border);
+  background-color: #000000;
+  display: flex;
+  flex-direction: column;
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+  z-index: 10;
+  flex-shrink: 0;
+  width: var(--sidebar-width);
 }
 .sidebar.collapsed {
-    width: var(--sidebar-collapsed-width);
+  width: var(--sidebar-collapsed-width);
 }
 
 .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-    border-radius: 0.375rem;
-    color: var(--muted);
-    font-weight: 500;
-    font-size: 13px;
-    transition-property: all;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 200ms;
-    cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: 0.375rem;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 13px;
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+  cursor: pointer;
 }
 .nav-item:hover {
-    background-color: var(--surface);
-    color: var(--fg);
+  background-color: var(--surface);
+  color: var(--fg);
 }
 .nav-item.active {
-    background-color: var(--surface-active);
-    color: var(--fg);
+  background-color: var(--surface-active);
+  color: var(--fg);
 }
 .nav-item.active svg {
-    opacity: 1;
+  opacity: 1;
 }
 .nav-item svg {
-    opacity: 0.7;
-    transition: opacity 200ms;
+  opacity: 0.7;
+  transition: opacity 200ms;
 }
 
 .main-content {
-    flex: 1 1 0%;
-    position: relative;
-    background-color: #000000;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+  flex: 1 1 0%;
+  position: relative;
+  background-color: #000000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .view {
-    display: none;
-    padding: 1.5rem;
-    height: 100%;
-    overflow-y: auto;
-    padding-bottom: 3rem;
+  display: none;
+  padding: 1.5rem;
+  height: 100%;
+  overflow-y: auto;
+  padding-bottom: 3rem;
 }
 
 @media (min-width: 1024px) {
-    .view {
-        padding: 2.5rem;
-    }
+  .view {
+    padding: 2.5rem;
+  }
 }
 .view.active {
-    display: block;
+  display: block;
 }
 
 .card {
-    background-color: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    transition-property:
-        color, background-color, border-color, text-decoration-color, fill,
-        stroke;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 200ms;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  transition-property:
+    color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
 }
 
 .label-text {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--muted-dark);
-    font-weight: 600;
-    margin-bottom: 0.5rem;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-dark);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
 }
 
 .stat-value {
-    font-size: 2.25rem;
-    line-height: 2.5rem;
-    font-weight: 500;
-    color: #ffffff;
-    letter-spacing: -0.05em;
-    margin-top: 0.25rem;
+  font-size: 2.25rem;
+  line-height: 2.5rem;
+  font-weight: 500;
+  color: #ffffff;
+  letter-spacing: -0.05em;
+  margin-top: 0.25rem;
 }
 
 .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-    border-radius: 0.375rem;
-    background-color: var(--accent-primary);
-    color: var(--accent-primary-fg);
-    font-weight: 500;
-    font-size: 13px;
-    transition-property: all;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 200ms;
-    cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: 0.375rem;
+  background-color: var(--accent-primary);
+  color: var(--accent-primary-fg);
+  font-weight: 500;
+  font-size: 13px;
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+  cursor: pointer;
 }
 .btn:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
+  opacity: 0.9;
+  transform: translateY(-1px);
 }
 .btn:active {
-    transform: translateY(0);
+  transform: translateY(0);
 }
 
 .btn-outline {
-    background-color: transparent;
-    border: 1px solid var(--border);
-    color: var(--fg);
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
 }
 .btn-outline:hover {
-    background-color: var(--surface);
-    border-color: var(--muted-dark);
+  background-color: var(--surface);
+  border-color: var(--muted-dark);
 }
 .btn-small {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-    padding-top: 0.375rem;
-    padding-bottom: 0.375rem;
-    font-size: 0.75rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+  font-size: 0.75rem;
 }
 
 .input {
-    width: 100%;
-    background-color: #000000;
-    border: 1px solid var(--border);
-    color: var(--fg);
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-    padding-top: 0.625rem;
-    padding-bottom: 0.625rem;
-    border-radius: 0.375rem;
-    font-size: 13px;
-    transition-property: all;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 200ms;
+  width: 100%;
+  background-color: #000000;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  border-radius: 0.375rem;
+  font-size: 13px;
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
 }
 .input:focus {
-    border-color: var(--muted);
+  border-color: var(--muted);
 }
 
 /* Toggle Switch */
 .toggle {
-    position: relative;
-    display: inline-block;
-    width: 2.25rem;
-    height: 1.25rem;
+  position: relative;
+  display: inline-block;
+  width: 2.25rem;
+  height: 1.25rem;
 }
 .toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 .toggle-bg {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--surface-active);
-    border: 1px solid var(--border);
-    border-radius: 9999px;
-    transition: 200ms;
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--surface-active);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  transition: 200ms;
 }
 .toggle-bg:before {
-    position: absolute;
-    content: "";
-    height: 0.875rem;
-    width: 0.875rem;
-    left: 0.125rem;
-    bottom: 0.125rem;
-    background-color: var(--muted);
-    border-radius: 9999px;
-    transition: 200ms;
+  position: absolute;
+  content: "";
+  height: 0.875rem;
+  width: 0.875rem;
+  left: 0.125rem;
+  bottom: 0.125rem;
+  background-color: var(--muted);
+  border-radius: 9999px;
+  transition: 200ms;
 }
 .toggle input:checked + .toggle-bg {
-    background-color: var(--fg);
-    border-color: var(--fg);
+  background-color: var(--fg);
+  border-color: var(--fg);
 }
 .toggle input:checked + .toggle-bg:before {
-    transform: translateX(1rem);
-    background-color: var(--bg);
+  transform: translateX(1rem);
+  background-color: var(--bg);
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
-

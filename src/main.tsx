@@ -52,6 +52,17 @@ async function initLocalStorage() {
     for (const [key, value] of Object.entries(config)) {
       originalSetItem.call(localStorage, key, String(value));
     }
+
+    // Force sync back to disk to ensure config.json exists and matches localStorage
+    // This fixes the bug where cached localStorage state isn't written to disk.
+    const currentConfig: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k !== "transcription_history") {
+        currentConfig[k] = localStorage.getItem(k) || "";
+      }
+    }
+    await invoke("save_config", { config: JSON.stringify(currentConfig) });
   } catch (err) {
     console.error("Failed to pre-load settings from JSON files:", err);
   } finally {

@@ -44,3 +44,7 @@ media-remote = "0.3.7"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 macos-accessibility-client = "0.0.1"
+
+[target.'cfg(target_os="macos")'.dependencies]
+core-graphics = "0.25.0"
+media-remote = "0.3.7"

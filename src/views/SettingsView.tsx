@@ -38,7 +38,9 @@ export function SettingsView() {
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
-  const [shortcutTarget, setShortcutTarget] = useState<"record" | "copy" | null>(null);
+  const [shortcutTarget, setShortcutTarget] = useState<
+    "record" | "copy" | null
+  >(null);
   const [shortcutText, setShortcutText] = useState(
     "CommandOrControl+Shift+Space",
   );
@@ -77,9 +79,11 @@ export function SettingsView() {
       localStorage.getItem("global_copy_shortcut") ||
       "CommandOrControl+Shift+C";
     setCopyShortcutText(savedCopy);
-    invoke("register_copy_shortcut", { shortcutStr: savedCopy }).catch((err) => {
-      console.error("Failed to register copy shortcut on mount:", err);
-    });
+    invoke("register_copy_shortcut", { shortcutStr: savedCopy }).catch(
+      (err) => {
+        console.error("Failed to register copy shortcut on mount:", err);
+      },
+    );
 
     const savedVad = localStorage.getItem("vad_enabled") === "true";
     setVadEnabled(savedVad);
@@ -91,7 +95,8 @@ export function SettingsView() {
       localStorage.getItem("sound_feedback_enabled") !== "false";
     setSoundEnabled(savedSound);
 
-    const savedPauseAudio = localStorage.getItem("pause_audio_on_record") === "true";
+    const savedPauseAudio =
+      localStorage.getItem("pause_audio_on_record") === "true";
     setPauseAudioEnabled(savedPauseAudio);
 
     const savedLang = localStorage.getItem("asr_language") || "auto";
@@ -104,9 +109,10 @@ export function SettingsView() {
   useEffect(() => {
     const checkPermissions = async () => {
       try {
-        const status = await invoke<{ accessibility: boolean; platform: string }>(
-          "check_permissions_status",
-        );
+        const status = await invoke<{
+          accessibility: boolean;
+          platform: string;
+        }>("check_permissions_status");
         setAccessibilityGranted(status.accessibility);
         setPlatform(status.platform);
       } catch (err) {
@@ -172,8 +178,14 @@ export function SettingsView() {
 
         const shortcutStr = keys.join("+");
 
-        const commandName = currentTarget === "copy" ? "register_copy_shortcut" : "register_shortcut";
-        const storageKey = currentTarget === "copy" ? "global_copy_shortcut" : "global_record_shortcut";
+        const commandName =
+          currentTarget === "copy"
+            ? "register_copy_shortcut"
+            : "register_shortcut";
+        const storageKey =
+          currentTarget === "copy"
+            ? "global_copy_shortcut"
+            : "global_record_shortcut";
 
         invoke(commandName, { shortcutStr: shortcutStr })
           .then(() => {
@@ -479,7 +491,8 @@ export function SettingsView() {
             <div>
               <div className="text-fg font-medium mb-1">Pause System Audio</div>
               <div className="text-muted text-[13px]">
-                Automatically pause music or videos while recording and resume afterwards.
+                Automatically pause music or videos while recording and resume
+                afterwards.
               </div>
             </div>
 
@@ -563,7 +576,8 @@ export function SettingsView() {
                     Required for auto-paste (keyboard simulation via Cmd+V).
                     {!accessibilityGranted && (
                       <span className="text-amber-400 font-medium">
-                        {" "}Not granted — auto-paste will not work.
+                        {" "}
+                        Not granted — auto-paste will not work.
                       </span>
                     )}
                   </div>
@@ -590,9 +604,7 @@ export function SettingsView() {
 
               <div className="flex justify-between items-center p-6">
                 <div className="flex-1">
-                  <div className="text-fg font-medium mb-1">
-                    Microphone
-                  </div>
+                  <div className="text-fg font-medium mb-1">Microphone</div>
                   <div className="text-muted text-[13px]">
                     Required for audio capture. Managed by macOS automatically
                     on first use.
