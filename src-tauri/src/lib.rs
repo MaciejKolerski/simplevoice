@@ -10,6 +10,29 @@ use tauri::menu::{
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_sql::{Migration, MigrationKind};
+use tauri_plugin_global_shortcut::Shortcut;
+
+/// Stores the most recent transcription text so the "Copy Last" shortcut
+/// can re-copy it to the clipboard without re-transcribing.
+pub struct LastTranscription {
+    pub text: Mutex<Option<String>>,
+}
+
+/// Tracks which action each registered global shortcut should trigger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ShortcutAction {
+    Record,
+    CopyLast,
+}
+
+struct ShortcutEntry {
+    shortcut: Shortcut,
+    action: ShortcutAction,
+}
+
+pub struct ShortcutRegistry {
+    entries: Mutex<Vec<ShortcutEntry>>,
+}
 
 fn draw_status_dot(
     base_image: &tauri::image::Image<'_>,
@@ -302,6 +325,16 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
+    let copy_last_item = MenuItemBuilder::new("Copy Last Transcription")
+        .id("copy_last")
+        .enabled({
+            let last = app_handle.state::<LastTranscription>();
+            let t = last.text.lock().unwrap();
+            t.as_ref().map_or(false, |s| !s.trim().is_empty())
+        })
+        .build(app_handle)
+        .map_err(|e| e.to_string())?;
+
     let nav_usage_item = MenuItemBuilder::new("Usage")
         .id("nav_usage")
         .build(app_handle)
@@ -358,6 +391,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
 
     let menu = MenuBuilder::new(app_handle)
         .item(&toggle_recording_item)
+        .item(&copy_last_item)
         .item(&separator)
         .item(&nav_usage_item)
         .item(&nav_models_item)
@@ -440,43 +474,63 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
         controller.set_selected_device(Some(device_name.clone()));
         let _ = app.emit("device-changed", Some(device_name));
         let _ = rebuild_tray_menu(app);
+    } else if id == "copy_last" {
+        let last = app.state::<LastTranscription>();
+        let text = last.text.lock().unwrap().clone();
+        if let Some(ref t) = text {
+            if !t.trim().is_empty() {
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                    let _ = clipboard.set_text(t.clone());
+                    play_backend_sound(app, "done");
+                    let _ = app.emit("copy-last-success", t.clone());
+                }
+            }
+        }
     } else if id == "quit" {
         app.exit(0);
     }
 }
 
-#[tauri::command]
-fn copy_last_text(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let controller = app_handle.state::<AudioController>();
-    if let Some(text) = controller.get_last_text() {
-        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        clipboard.set_text(text).map_err(|e| e.to_string())?;
-        play_backend_sound(&app_handle, "done");
-        Ok(())
-    } else {
-        Err("No transcription to copy".to_string())
+/// Re-registers all shortcuts in the registry with the OS.
+/// Called whenever any shortcut changes.
+fn sync_all_shortcuts(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    let global_shortcut = app_handle.global_shortcut();
+    let _ = global_shortcut.unregister_all();
+
+    let registry = app_handle.state::<ShortcutRegistry>();
+    let entries = registry.entries.lock().unwrap();
+
+    for entry in entries.iter() {
+        global_shortcut
+            .register(entry.shortcut)
+            .map_err(|e| format!("Failed to register shortcut: {}", e))?;
     }
+
+    Ok(())
 }
 
 #[tauri::command]
 fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Result<(), String> {
-    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+    let registry = app_handle.state::<ShortcutRegistry>();
+    let mut entries = registry.entries.lock().unwrap();
 
-    let global_shortcut = app_handle.global_shortcut();
+    // Remove existing Record entry
+    entries.retain(|e| e.action != ShortcutAction::Record);
 
-    let _ = global_shortcut.unregister_all();
-
-    if shortcut_str.trim().is_empty() {
-        return Ok(());
+    if !shortcut_str.trim().is_empty() {
+        let shortcut: Shortcut = shortcut_str
+            .parse()
+            .map_err(|e| format!("Failed to parse shortcut '{}': {}", shortcut_str, e))?;
+        entries.push(ShortcutEntry {
+            shortcut,
+            action: ShortcutAction::Record,
+        });
     }
 
-    let shortcut: Shortcut = shortcut_str
-        .parse()
-        .map_err(|e| format!("Failed to parse shortcut '{}': {}", shortcut_str, e))?;
-
-    global_shortcut
-        .register(shortcut)
-        .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut_str, e))?;
+    drop(entries);
+    sync_all_shortcuts(&app_handle)?;
 
     println!(
         "Successfully registered global recording shortcut: {}",
@@ -486,31 +540,70 @@ fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Resu
 }
 
 #[tauri::command]
+fn register_copy_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    let registry = app_handle.state::<ShortcutRegistry>();
+    let mut entries = registry.entries.lock().unwrap();
+
+    // Remove existing CopyLast entry
+    entries.retain(|e| e.action != ShortcutAction::CopyLast);
+
+    if !shortcut_str.trim().is_empty() {
+        let shortcut: Shortcut = shortcut_str
+            .parse()
+            .map_err(|e| format!("Failed to parse shortcut '{}': {}", shortcut_str, e))?;
+        entries.push(ShortcutEntry {
+            shortcut,
+            action: ShortcutAction::CopyLast,
+        });
+    }
+
+    drop(entries);
+    sync_all_shortcuts(&app_handle)?;
+
+    println!(
+        "Successfully registered global copy-last shortcut: {}",
+        shortcut_str
+    );
+    Ok(())
+}
+
+#[tauri::command]
+fn set_last_transcription(
+    text: String,
+    last_transcription: tauri::State<'_, LastTranscription>,
+) {
+    let mut t = last_transcription.text.lock().unwrap();
+    *t = Some(text);
+}
+
+#[tauri::command]
+fn copy_last_transcription(
+    last_transcription: tauri::State<'_, LastTranscription>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let t = last_transcription.text.lock().unwrap();
+    match t.as_ref() {
+        Some(text) if !text.trim().is_empty() => {
+            let mut clipboard = arboard::Clipboard::new()
+                .map_err(|e| format!("Failed to access clipboard: {}", e))?;
+            clipboard
+                .set_text(text.clone())
+                .map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
+            play_backend_sound(&app_handle, "done");
+            let _ = app_handle.emit("copy-last-success", text.clone());
+            Ok(text.clone())
+        }
+        _ => Err("No transcription available to copy.".to_string()),
+    }
+}
+
+#[tauri::command]
 fn set_vad_enabled(
     enabled: bool,
     controller: tauri::State<'_, AudioController>,
 ) -> Result<(), String> {
     let mut s = controller.state.lock().unwrap();
     s.vad_enabled = enabled;
-    Ok(())
-}
-
-#[tauri::command]
-fn register_copy_shortcut(
-    shortcut_str: String,
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
-    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
-    let global_shortcut = app_handle.global_shortcut();
-
-    if !shortcut_str.trim().is_empty() {
-        let shortcut: Shortcut = shortcut_str
-            .parse()
-            .map_err(|e| format!("Failed to parse copy shortcut '{}': {}", shortcut_str, e))?;
-        global_shortcut
-            .register(shortcut)
-            .map_err(|e| format!("Failed to register copy shortcut '{}': {}", shortcut_str, e))?;
-    }
     Ok(())
 }
 
@@ -964,93 +1057,208 @@ fn play_done_sound(app_handle: tauri::AppHandle) {
     play_backend_sound(&app_handle, "done");
 }
 
-#[tauri::command]
-fn paste_text() -> Result<(), String> {
-    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+// ─── Cross-Platform Permission Checks ────────────────────────────────────────
 
-    // Simulate paste without a complex thread spawn, maybe that helps.
-    let settings = Settings::default();
-    if let Ok(mut enigo) = Enigo::new(&settings) {
-        #[cfg(target_os = "macos")]
-        {
-            let _ = enigo.key(Key::Meta, Direction::Press);
-            let _ = enigo.key(Key::Unicode('v'), Direction::Click);
-            let _ = enigo.key(Key::Meta, Direction::Release);
-        }
-        #[cfg(target_os = "windows")]
-        {
-            let _ = enigo.key(Key::Control, Direction::Press);
-            let _ = enigo.key(Key::Unicode('v'), Direction::Click);
-            let _ = enigo.key(Key::Control, Direction::Release);
-        }
+/// Returns true if the application has Accessibility permissions on macOS.
+/// On other platforms, always returns true since no equivalent permission is required.
+#[tauri::command]
+fn check_accessibility_permission() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos_accessibility_client::accessibility::application_is_trusted()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
+    }
+}
+
+/// Prompts the user to grant Accessibility permissions on macOS by showing the
+/// system dialog. On other platforms, this is a no-op that returns success.
+#[tauri::command]
+fn request_accessibility_permission() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos_accessibility_client::accessibility::application_is_trusted_with_prompt();
     }
     Ok(())
 }
 
-fn localStorage_get(app: &tauri::AppHandle, key: &str) -> Option<String> {
-    let app_local_data = app.path().app_local_data_dir().ok()?;
-    let config_path = app_local_data.join("config.json");
-    if !config_path.exists() {
-        return None;
+/// Opens the System Settings to the Accessibility privacy pane (macOS) or
+/// the equivalent settings page on other platforms.
+#[tauri::command]
+fn open_accessibility_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .spawn()
+            .map_err(|e| format!("Failed to open Accessibility settings: {}", e))?;
     }
-    let content = std::fs::read_to_string(config_path).ok()?;
-    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    json.get(key)
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+    #[cfg(target_os = "windows")]
+    {
+        // Windows doesn't have an equivalent Accessibility permission page
+        // but we can open Settings
+        std::process::Command::new("ms-settings:easeofaccess-display")
+            .spawn()
+            .map_err(|e| format!("Failed to open settings: {}", e))?;
+    }
+    Ok(())
 }
 
-fn handle_recording_toggle(app: &tauri::AppHandle) {
-    let controller = app.state::<AudioController>();
-    if controller.is_recording() {
-        if let Ok(wav_path) = controller.stop_recording(app) {
-            play_backend_sound(app, "stop");
-            let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
-            let _ = app.emit("recording-stopped", payload);
+#[derive(serde::Serialize, Clone)]
+struct PermissionsStatus {
+    /// Whether Accessibility permission is granted (macOS only, always true elsewhere)
+    accessibility: bool,
+    /// The current platform identifier
+    platform: String,
+}
+
+/// Returns the aggregated permissions status for the current platform.
+#[tauri::command]
+fn check_permissions_status() -> PermissionsStatus {
+    let accessibility = {
+        #[cfg(target_os = "macos")]
+        {
+            macos_accessibility_client::accessibility::application_is_trusted()
         }
+        #[cfg(not(target_os = "macos"))]
+        {
+            true
+        }
+    };
+
+    let platform = if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "linux") {
+        "linux"
     } else {
-        let stt = app.state::<SttController>();
-        let config = app.state::<AppConfig>();
-        match is_recording_allowed(&config, &stt) {
-            Ok(_) => {
-                if controller.start_recording(app.clone()).is_ok() {
-                    play_backend_sound(app, "start");
-                    let _ = app.emit("recording-started", ());
-                }
-            }
-            Err(reason) => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
-                let _ = app.emit("recording-failed-to-start", reason);
-            }
-        }
+        "unknown"
+    };
+
+    PermissionsStatus {
+        accessibility,
+        platform: platform.to_string(),
     }
-    let _ = rebuild_tray_menu(app);
+}
+
+// ─── Keyboard Simulation ─────────────────────────────────────────────────────
+
+#[tauri::command]
+fn paste_text() -> Result<(), String> {
+    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+    let settings = Settings::default();
+    let mut enigo = Enigo::new(&settings)
+        .map_err(|e| {
+            #[cfg(target_os = "macos")]
+            {
+                format!(
+                    "Failed to initialize keyboard simulation. \
+                     Please grant Accessibility permissions in System Settings > \
+                     Privacy & Security > Accessibility. Error: {}",
+                    e
+                )
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                format!("Failed to initialize keyboard simulation: {}", e)
+            }
+        })?;
+
+    #[cfg(target_os = "macos")]
+    {
+        enigo.key(Key::Meta, Direction::Press)
+            .map_err(|e| format!("Keyboard simulation failed (Meta press): {}", e))?;
+        enigo.key(Key::Unicode('v'), Direction::Click)
+            .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
+        enigo.key(Key::Meta, Direction::Release)
+            .map_err(|e| format!("Keyboard simulation failed (Meta release): {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        enigo.key(Key::Control, Direction::Press)
+            .map_err(|e| format!("Keyboard simulation failed (Ctrl press): {}", e))?;
+        enigo.key(Key::Unicode('v'), Direction::Click)
+            .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
+        enigo.key(Key::Control, Direction::Release)
+            .map_err(|e| format!("Keyboard simulation failed (Ctrl release): {}", e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        enigo.key(Key::Control, Direction::Press)
+            .map_err(|e| format!("Keyboard simulation failed (Ctrl press): {}", e))?;
+        enigo.key(Key::Unicode('v'), Direction::Click)
+            .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
+        enigo.key(Key::Control, Direction::Release)
+            .map_err(|e| format!("Keyboard simulation failed (Ctrl release): {}", e))?;
+    }
+    Ok(())
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
             if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                let app_handle = app.clone();
-                let shortcut_str = shortcut.to_string();
+                println!("Global shortcut pressed: {:?}", shortcut);
 
-                let record_shortcut = localStorage_get(&app_handle, "global_record_shortcut")
-                    .unwrap_or_else(|| "CommandOrControl+Shift+Space".to_string())
-                    .replace("CommandOrControl", "Super");
+                // Determine action by looking up the shortcut in the registry
+                let action = {
+                    let registry = app.state::<ShortcutRegistry>();
+                    let entries = registry.entries.lock().unwrap();
+                    entries
+                        .iter()
+                        .find(|e| e.shortcut == *shortcut)
+                        .map(|e| e.action.clone())
+                };
 
-                let copy_shortcut = localStorage_get(&app_handle, "global_copy_shortcut")
-                    .unwrap_or_else(|| "CommandOrControl+Shift+C".to_string())
-                    .replace("CommandOrControl", "Super");
-
-                if shortcut_str == copy_shortcut {
-                    let _ = copy_last_text(app_handle);
-                } else if shortcut_str == record_shortcut {
-                    handle_recording_toggle(&app_handle);
+                match action {
+                    Some(ShortcutAction::CopyLast) => {
+                        let last = app.state::<LastTranscription>();
+                        let text = last.text.lock().unwrap().clone();
+                        if let Some(ref t) = text {
+                            if !t.trim().is_empty() {
+                                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                                    let _ = clipboard.set_text(t.clone());
+                                    play_backend_sound(app, "done");
+                                    let _ = app.emit("copy-last-success", t.clone());
+                                }
+                            }
+                        }
+                    }
+                    Some(ShortcutAction::Record) | None => {
+                        // Default: toggle recording (preserves backward compat)
+                        let controller = app.state::<AudioController>();
+                        if controller.is_recording() {
+                            if let Ok(wav_path) = controller.stop_recording(app) {
+                                play_backend_sound(app, "stop");
+                                let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
+                                let _ = app.emit("recording-stopped", payload);
+                            }
+                        } else {
+                            let stt = app.state::<SttController>();
+                            let config = app.state::<AppConfig>();
+                            match is_recording_allowed(&config, &stt) {
+                                Ok(_) => {
+                                    if controller.start_recording(app.clone()).is_ok() {
+                                        play_backend_sound(app, "start");
+                                        let _ = app.emit("recording-started", ());
+                                    }
+                                }
+                                Err(reason) => {
+                                    if let Some(window) = app.get_webview_window("main") {
+                                        let _ = window.show();
+                                        let _ = window.unminimize();
+                                        let _ = window.set_focus();
+                                    }
+                                    let _ = app.emit("recording-failed-to-start", reason);
+                                }
+                            }
+                        }
+                        let _ = rebuild_tray_menu(app);
+                    }
                 }
             }
         })
@@ -1083,6 +1291,12 @@ pub fn run() {
                 provider: "openai".to_string(),
             }),
         })
+        .manage(LastTranscription {
+            text: Mutex::new(None),
+        })
+        .manage(ShortcutRegistry {
+            entries: Mutex::new(Vec::new()),
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -1103,7 +1317,6 @@ pub fn run() {
             start_recording,
             stop_recording,
             register_shortcut,
-            register_copy_shortcut,
             set_vad_enabled,
             scan_models,
             load_model,
@@ -1126,7 +1339,14 @@ pub fn run() {
             set_transcribing,
             get_model_status,
             play_done_sound,
-            paste_text
+            paste_text,
+            register_copy_shortcut,
+            set_last_transcription,
+            copy_last_transcription,
+            check_accessibility_permission,
+            request_accessibility_permission,
+            open_accessibility_settings,
+            check_permissions_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -74,6 +74,14 @@ function App() {
     initDevice();
     initModel();
     syncActiveConfig();
+
+    // Register the copy-last shortcut if one was saved
+    const savedCopyShortcut = localStorage.getItem("global_copy_shortcut") || "CommandOrControl+Shift+C";
+    if (savedCopyShortcut) {
+      invoke("register_copy_shortcut", { shortcutStr: savedCopyShortcut }).catch((err) => {
+        console.error("Failed to register copy-last shortcut on mount:", err);
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -214,6 +222,13 @@ function App() {
                   saveErr,
                 );
               }
+            }
+
+            // Store the last transcription in the Rust backend for global shortcut access
+            try {
+              await invoke("set_last_transcription", { text });
+            } catch (e) {
+              console.error("Failed to set last transcription:", e);
             }
 
             window.dispatchEvent(new Event("transcription-added"));

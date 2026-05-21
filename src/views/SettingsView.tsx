@@ -1,32 +1,8 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronDown, Sparkles, Cpu, Keyboard } from "lucide-react";
+import { ChevronDown, Sparkles, Cpu, Keyboard, Shield, ExternalLink } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
-
-function ToggleSwitch({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="relative inline-flex items-center cursor-pointer">
-      <input
-        type="checkbox"
-        className="hidden"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span className="w-11 h-6 bg-border rounded-full relative transition-colors duration-200">
-        <span
-          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0"}`}
-        ></span>
-      </span>
-    </label>
-  );
-}
 
 function formatShortcutDisplay(str: string): string {
   if (!str) return "None";
@@ -61,19 +37,23 @@ export function SettingsView() {
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
-  const [isCopyShortcut, setIsCopyShortcut] = useState(false);
+  const [shortcutTarget, setShortcutTarget] = useState<"record" | "copy" | null>(null);
   const [shortcutText, setShortcutText] = useState(
-    localStorage.getItem("global_record_shortcut") ||
-      "CommandOrControl+Shift+Space",
+    "CommandOrControl+Shift+Space",
   );
   const [copyShortcutText, setCopyShortcutText] = useState(
-    localStorage.getItem("global_copy_shortcut") || "CommandOrControl+Shift+C",
+    "CommandOrControl+Shift+C",
   );
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const isCompletedRef = useRef(false);
+  const shortcutTargetRef = useRef<"record" | "copy" | null>(null);
+
+  // Permission states
+  const [accessibilityGranted, setAccessibilityGranted] = useState(true);
+  const [platform, setPlatform] = useState("unknown");
 
   // Multi-engine & BYOK API settings states
   const [openaiKey, setOpenaiKey] = useState("");
@@ -93,12 +73,24 @@ export function SettingsView() {
   }, [isCompleted]);
 
   useEffect(() => {
+    shortcutTargetRef.current = shortcutTarget;
+  }, [shortcutTarget]);
+
+  useEffect(() => {
     const saved =
       localStorage.getItem("global_record_shortcut") ||
       "CommandOrControl+Shift+Space";
     setShortcutText(saved);
     invoke("register_shortcut", { shortcutStr: saved }).catch((err) => {
       console.error("Failed to register shortcut on mount:", err);
+    });
+
+    const savedCopy =
+      localStorage.getItem("global_copy_shortcut") ||
+      "CommandOrControl+Shift+C";
+    setCopyShortcutText(savedCopy);
+    invoke("register_copy_shortcut", { shortcutStr: savedCopy }).catch((err) => {
+      console.error("Failed to register copy shortcut on mount:", err);
     });
 
     const savedVad = localStorage.getItem("vad_enabled") === "true";
@@ -160,59 +152,106 @@ export function SettingsView() {
     };
   }, []);
 
+  // Check system permissions on mount and periodically
   useEffect(() => {
-    if (!isRecordingShortcut && !isCopyShortcut) return;
+    const checkPermissions = async () => {
+      try {
+        const status = await invoke<{ accessibility: boolean; platform: string }>(
+          "check_permissions_status",
+        );
+        setAccessibilityGranted(status.accessibility);
+        setPlatform(status.platform);
+      } catch (err) {
+        console.error("Failed to check permissions:", err);
+      }
+    };
+    checkPermissions();
+
+    // Re-check every 5 seconds so the UI updates after the user grants access
+    const interval = setInterval(checkPermissions, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!isRecordingShortcut) return;
 
     setActiveKeys([]);
     setIsCompleted(false);
     setErrorMessage(null);
 
+    const currentTarget = shortcutTargetRef.current;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isCompletedRef.current) return;
+      if (isCompletedRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       e.preventDefault();
       e.stopPropagation();
 
       if (e.key === "Escape") {
         setIsRecordingShortcut(false);
-        setIsCopyShortcut(false);
         return;
       }
 
       const keys: string[] = [];
-      if (e.metaKey || e.ctrlKey) keys.push("CommandOrControl");
+      if (e.metaKey || e.ctrlKey) {
+        keys.push("CommandOrControl");
+      } else {
+        if (e.ctrlKey) keys.push("Control");
+        if (e.metaKey) keys.push("Command");
+      }
       if (e.altKey) keys.push("Alt");
       if (e.shiftKey) keys.push("Shift");
 
       const isModifier = ["Control", "Shift", "Alt", "Meta"].includes(e.key);
       if (!isModifier) {
-        let mainKey = e.key === " " ? "Space" : e.key.toUpperCase();
+        let mainKey = e.key;
+        if (mainKey === " ") {
+          mainKey = "Space";
+        } else if (mainKey.length === 1) {
+          mainKey = mainKey.toUpperCase();
+        } else {
+          mainKey = mainKey.charAt(0).toUpperCase() + mainKey.slice(1);
+        }
+
         keys.push(mainKey);
         setActiveKeys(keys);
         setIsCompleted(true);
+        setErrorMessage(null);
+
         const shortcutStr = keys.join("+");
 
-        const targetCommand = isRecordingShortcut
-          ? "register_shortcut"
-          : "register_copy_shortcut";
-        const storageKey = isRecordingShortcut
-          ? "global_record_shortcut"
-          : "global_copy_shortcut";
+        const commandName = currentTarget === "copy" ? "register_copy_shortcut" : "register_shortcut";
+        const storageKey = currentTarget === "copy" ? "global_copy_shortcut" : "global_record_shortcut";
 
-        invoke(targetCommand, { shortcutStr })
+        invoke(commandName, { shortcutStr: shortcutStr })
           .then(() => {
             localStorage.setItem(storageKey, shortcutStr);
-            isRecordingShortcut
-              ? setShortcutText(shortcutStr)
-              : setCopyShortcutText(shortcutStr);
+            if (currentTarget === "copy") {
+              setCopyShortcutText(shortcutStr);
+            } else {
+              setShortcutText(shortcutStr);
+            }
             setTimeout(() => {
               setIsRecordingShortcut(false);
-              setIsCopyShortcut(false);
               setIsCompleted(false);
             }, 800);
           })
           .catch((err) => {
+            console.error("Failed to register shortcut:", err);
             setIsCompleted(false);
-            setErrorMessage(`Error: ${err}`);
+            setActiveKeys([]);
+            setErrorMessage(
+              shortcutStr.includes("+")
+                ? `System error: ${err}`
+                : "Global shortcuts require a modifier (Cmd, Shift, Alt, etc.) or a Function key (F1-F12).",
+            );
+            setTimeout(() => {
+              setErrorMessage(null);
+            }, 4000);
           });
       } else {
         setActiveKeys(keys);
@@ -248,7 +287,7 @@ export function SettingsView() {
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
     };
-  }, [isRecordingShortcut, isCopyShortcut]);
+  }, [isRecordingShortcut]);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -707,7 +746,10 @@ export function SettingsView() {
               </div>
             </div>
             <button
-              onClick={() => setIsRecordingShortcut(true)}
+              onClick={() => {
+                setShortcutTarget("record");
+                setIsRecordingShortcut(true);
+              }}
               className="inline-flex items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
             >
               {formatShortcutDisplay(shortcutText)}
@@ -719,27 +761,110 @@ export function SettingsView() {
                 Copy Last Transcription
               </div>
               <div className="text-muted text-[13px]">
-                Copy the most recent transcription to clipboard. Click to
-                change.
+                Re-copy the last transcription to clipboard without
+                re-transcribing.
               </div>
             </div>
             <button
-              onClick={() => setIsCopyShortcut(true)}
+              onClick={() => {
+                setShortcutTarget("copy");
+                setIsRecordingShortcut(true);
+              }}
               className="inline-flex items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
             >
               {formatShortcutDisplay(copyShortcutText)}
             </button>
           </div>
         </div>
+
+        {/* SECTION: System Permissions */}
+        {platform === "macos" && (
+          <>
+            <h2 className="mb-4 text-base text-white font-medium flex items-center gap-2">
+              <Shield size={16} className="text-muted" /> System Permissions
+            </h2>
+            <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
+              <div className="flex justify-between items-center p-6 border-b border-border">
+                <div className="flex-1">
+                  <div className="text-fg font-medium mb-1 flex items-center gap-2">
+                    Accessibility
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        accessibilityGranted
+                          ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                          : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse"
+                      }`}
+                    />
+                  </div>
+                  <div className="text-muted text-[13px]">
+                    Required for auto-paste (keyboard simulation via Cmd+V).
+                    {!accessibilityGranted && (
+                      <span className="text-amber-400 font-medium">
+                        {" "}Not granted — auto-paste will not work.
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {!accessibilityGranted ? (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await invoke("request_accessibility_permission");
+                      } catch (err) {
+                        console.error("Failed to request accessibility:", err);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border cursor-pointer transition-all duration-200 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 border-amber-500/30"
+                  >
+                    Grant Access
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center px-3 py-1.5 rounded text-xs font-medium text-emerald-400">
+                    ✓ Granted
+                  </span>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center p-6">
+                <div className="flex-1">
+                  <div className="text-fg font-medium mb-1">
+                    Microphone
+                  </div>
+                  <div className="text-muted text-[13px]">
+                    Required for audio capture. Managed by macOS automatically
+                    on first use.
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await invoke("open_folder", {
+                        path: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+                      });
+                    } catch {
+                      // Fallback: open System Settings directly
+                      await invoke("open_folder", {
+                        path: "/System/Library/PreferencePanes/Security.prefPane",
+                      });
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
+                >
+                  <ExternalLink size={12} />
+                  Open Settings
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {(isRecordingShortcut || isCopyShortcut) && (
+      {isRecordingShortcut && (
         <div
           ref={overlayRef}
           onClick={(e) => {
             if (e.target === overlayRef.current && !isCompleted) {
               setIsRecordingShortcut(false);
-              setIsCopyShortcut(false);
             }
           }}
           className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl transition-all duration-300 animate-in fade-in"
