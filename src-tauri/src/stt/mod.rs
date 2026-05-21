@@ -76,14 +76,6 @@ impl EngineAdapter for WhisperEngine {
 
         Ok(text.trim().to_string())
     }
-
-            }
-        }
-
-        println!("DEBUG: [transcribe] finished processing text of length {}", text.len());
-        Ok(text.trim().to_string())
-    }
-
 }
 
 pub struct SttState {

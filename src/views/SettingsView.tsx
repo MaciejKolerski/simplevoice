@@ -508,74 +508,9 @@ export function SettingsView() {
           </div>
         </div>
 
-        {/* SECTION: Shortcuts */}
-        <h2 className="mb-4 text-base text-white font-medium flex items-center gap-2">
-          <Keyboard size={16} className="text-muted" /> Shortcuts
-        </h2>
-        <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
-          <div className="flex justify-between items-center p-6 border-b border-border">
-            <div>
-              <div className="text-fg font-medium mb-1">
-                Global Record Toggle
-              </div>
-              <div className="text-muted text-[13px]">
-                Start/stop recording from anywhere. Click to change.
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                setShortcutTarget("record");
-                setIsRecordingShortcut(true);
-              }}
-              className="inline-flex whitespace-nowrap shrink-0 items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
-            >
-              {formatShortcutDisplay(shortcutText)}
-            </button>
-          </div>
-          <div className="flex justify-between items-center p-6">
-            <div>
-              <div className="text-fg font-medium mb-1">
-                Copy Last Transcription
-              </div>
-              <div className="text-muted text-[13px]">
-                Re-copy the last transcription to clipboard without
-                re-transcribing.
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                setShortcutTarget("copy");
-                setIsRecordingShortcut(true);
-              }}
-              className="inline-flex whitespace-nowrap shrink-0 items-center px-3 py-1.5 rounded text-xs font-mono font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
-            >
-              {formatShortcutDisplay(copyShortcutText)}
-            </button>
-          </div>
-        </div>
-
-
-              <div className="text-muted text-[13px]">
-                Use your NVIDIA GPU (RTX 3060 Ti) for much faster transcription.
-                <br />
-                Requires CUDA Toolkit installed. Disable if you have stability
-                issues.
-              </div>
-            </div>
-
-            <label className="toggle cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useGpu}
-                onChange={(e) => handleUseGpuToggle(e.target.checked)}
-              />
-              <span className="toggle-bg"></span>
-            </label>
-          </div>
-        </div>
-
         {/* SECTION: System Permissions */}
         {platform === "macos" && (
+
           <>
             <h2 className="mb-4 text-base text-white font-medium flex items-center gap-2">
               <Shield size={16} className="text-muted" /> System Permissions
