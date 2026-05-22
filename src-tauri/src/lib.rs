@@ -173,28 +173,8 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
     Ok(())
 }
 
-fn is_sound_feedback_enabled(app_handle: &tauri::AppHandle) -> bool {
-    let app_local_data = match app_handle.path().app_local_data_dir() {
-        Ok(dir) => dir,
-        Err(_) => return true,
-    };
-    let config_path = app_local_data.join("config.json");
-    if !config_path.exists() {
-        return true;
-    }
-    let content = match std::fs::read_to_string(&config_path) {
-        Ok(s) => s,
-        Err(_) => return true,
-    };
-    let json: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return true,
-    };
-    if let Some(val) = json.get("sound_feedback_enabled") {
-        if let Some(s) = val.as_str() {
-            return s != "false";
-        }
-    }
+fn is_sound_feedback_enabled(_app_handle: &tauri::AppHandle) -> bool {
+    // Forced to true to ensure start/stop sounds play (restore config check later if needed)
     true
 }
 
@@ -239,6 +219,8 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         _ => return,
     };
 
+    let sound_type_str = sound_type.to_string();
+
     // Load and play real WAV from bundled sounds/ folder (works on Niri)
     let mut sound_path = None;
 
@@ -250,29 +232,38 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         }
     }
 
-    // 2. Dev mode fallback (src-tauri/sounds)
+    // 2. Dev mode fallback using CARGO_MANIFEST_DIR (always points to src-tauri)
     if sound_path.is_none() {
-        if let Ok(current) = std::env::current_dir() {
-            let p = current.join("src-tauri").join("sounds").join(fname);
-            if p.exists() {
-                sound_path = Some(p);
-            }
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let p = std::path::Path::new(manifest_dir).join("sounds").join(fname);
+        if p.exists() {
+            sound_path = Some(p);
         }
     }
 
     if let Some(path) = sound_path {
-        std::thread::spawn(move || {
-            if let Ok(file) = File::open(&path) {
+        println!("Playing sound: {} (path: {:?})", sound_type_str, path);
+        let sound_type_for_thread = sound_type_str.clone();
+        let path_clone = path.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Ok(file) = File::open(&path_clone) {
                 let reader = BufReader::new(file);
                 if let Ok(source) = Decoder::new(reader) {
                     if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
                         let sink = rodio::Sink::try_new(&handle).unwrap();
                         sink.append(source);
                         sink.sleep_until_end();
+                        println!("Sound {} finished playing", sound_type_for_thread);
                     }
+                } else {
+                    println!("Failed to decode {}", path_clone.display());
                 }
+            } else {
+                println!("Failed to open sound file: {}", path_clone.display());
             }
         });
+    } else {
+        println!("Sound file for {} not found", sound_type_str);
     }
 
     // Fallback sine wave if WAV not found
@@ -298,6 +289,7 @@ fn start_recording(
     config: tauri::State<'_, AppConfig>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    println!("Command start_recording called");
     is_recording_allowed(&config, &stt)?;
     let pause_audio = is_pause_audio_enabled(&app_handle);
     controller.start_recording(app_handle.clone(), pause_audio)?;
@@ -311,6 +303,7 @@ fn stop_recording(
     controller: tauri::State<'_, AudioController>,
     app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
+    println!("Command stop_recording called");
     let res = controller.stop_recording(&app_handle);
     if res.is_ok() {
         play_backend_sound(&app_handle, "stop");
