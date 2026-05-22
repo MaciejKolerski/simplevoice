@@ -15,7 +15,9 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use tauri::State;
-use rodio::Source;
+use rodio::{Decoder, Source};
+use std::fs::File;
+use std::io::BufReader;
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
@@ -230,37 +232,46 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         return;
     }
 
-    let sound_type = sound_type.to_string();
+    let fname = match sound_type {
+        "start" => "start.wav",
+        "stop" => "stop.wav",
+        "done" => "done.wav",
+        _ => return,
+    };
 
-    // Cross-platform beep using rodio (pure Rust, reliable on Niri/Wayland/PipeWire)
-    // Uses take_duration() to prevent infinite tone / high-pitched noise
+    // Load and play real WAV from bundled sounds/ folder (works on Niri)
+    if let Ok(res_dir) = app_handle.path().resource_dir() {
+        let path = res_dir.join("sounds").join(fname);
+        if path.exists() {
+            let path_clone = path.clone();
+            std::thread::spawn(move || {
+                if let Ok(file) = File::open(&path_clone) {
+                    let reader = BufReader::new(file);
+                    if let Ok(source) = Decoder::new(reader) {
+                        if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                            let sink = rodio::Sink::try_new(&handle).unwrap();
+                            sink.append(source);
+                            sink.sleep_until_end();
+                        }
+                    }
+                }
+            });
+            return;
+        }
+    }
+
+    // Fallback sine wave if WAV not found
+    let freq = match sound_type {
+        "start" => 880.0,
+        "stop" => 520.0,
+        "done" => 987.0,
+        _ => 660.0,
+    };
     std::thread::spawn(move || {
-        let (_stream, stream_handle) = match rodio::OutputStream::try_default() {
-            Ok(stream) => stream,
-            Err(_) => return,
-        };
-        let sink = match rodio::Sink::try_new(&stream_handle) {
-            Ok(sink) => sink,
-            Err(_) => return,
-        };
-
-        match sound_type.as_str() {
-            "start" => {
-                sink.append(rodio::source::SineWave::new(880.0).take_duration(std::time::Duration::from_millis(80)));
-                sink.sleep_until_end();
-            }
-            "stop" => {
-                sink.append(rodio::source::SineWave::new(520.0).take_duration(std::time::Duration::from_millis(150)));
-                sink.sleep_until_end();
-            }
-            "done" => {
-                sink.append(rodio::source::SineWave::new(987.0).take_duration(std::time::Duration::from_millis(80)));
-                sink.sleep_until_end();
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                sink.append(rodio::source::SineWave::new(1318.0).take_duration(std::time::Duration::from_millis(120)));
-                sink.sleep_until_end();
-            }
-            _ => {}
+        if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+            let sink = rodio::Sink::try_new(&handle).unwrap();
+            sink.append(rodio::source::SineWave::new(freq).take_duration(std::time::Duration::from_millis(150)));
+            sink.sleep_until_end();
         }
     });
 }
