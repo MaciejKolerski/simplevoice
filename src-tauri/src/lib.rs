@@ -15,8 +15,9 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use tauri::State;
-use rodio::Decoder;
-use std::io::Cursor;
+use rodio::{Decoder, Source};
+use std::fs::File;
+use std::io::BufReader;
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
@@ -226,10 +227,6 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
 }
 
 /// Resolves the sound file for the given event type.
-/// Looks for start.wav / stop.wav / done.wav inside the bundled resources:
-///   <app>.app/Contents/Resources/sounds/  (macOS bundle)
-///   or next to the binary in dev mode.
-/// Falls back to a built-in macOS system sound if the file is not present.
 fn resolve_sound_file(
     app_handle: &tauri::AppHandle,
     sound_type: &str,
@@ -241,7 +238,6 @@ fn resolve_sound_file(
         _ => return None,
     };
 
-    // Check bundled resources (works in both dev and release builds)
     if let Ok(res_dir) = app_handle.path().resource_dir() {
         let bundled = res_dir.join("sounds").join(fname);
         if bundled.exists() {
@@ -249,7 +245,6 @@ fn resolve_sound_file(
         }
     }
 
-    // Fallback: built-in macOS system sounds
     #[cfg(target_os = "macos")]
     {
         let fallback = match sound_type {
@@ -261,58 +256,39 @@ fn resolve_sound_file(
         return Some(std::path::PathBuf::from(fallback));
     }
 
-    #[allow(unreachable_code)]
     None
 }
 
+
 fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
+    println!("play_backend_sound called for: {}", sound_type);
     if !is_sound_feedback_enabled(app_handle) {
+        println!("Sound feedback disabled in config");
         return;
     }
-    if let Some(path) = resolve_sound_file(app_handle, sound_type) {
-        println!("Playing sound '{}' using path: {:?}", sound_type, path);
 
-        let played = if cfg!(target_os = "macos") {
-            std::process::Command::new("afplay").arg(&path).status().map(|s| s.success()).unwrap_or(false)
-        } else if cfg!(target_os = "linux") {
-            std::process::Command::new("paplay").arg(&path).status().map(|s| s.success()).unwrap_or(false)
-                || std::process::Command::new("aplay").arg("-q").arg(&path).status().map(|s| s.success()).unwrap_or(false)
-        } else if cfg!(target_os = "windows") {
-            std::process::Command::new("powershell")
+    if let Some(path) = resolve_sound_file(app_handle, sound_type) {
+        println!("Found sound for {}: {:?}", sound_type, path);
+        #[cfg(target_os = "macos")]
+        {
+            println!("Launching afplay for {}", sound_type);
+            let _ = std::process::Command::new("afplay").arg(&path).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            println!("Launching paplay/aplay for {}", sound_type);
+            let _ = std::process::Command::new("paplay")
+                .arg(&path)
+                .spawn()
+                .or_else(|_| std::process::Command::new("aplay").arg("-q").arg(&path).spawn());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            println!("Launching PowerShell for {}", sound_type);
+            let _ = std::process::Command::new("powershell")
                 .arg("-c")
                 .arg(format!("(New-Object Media.SoundPlayer '{}').PlaySync()", path.display()))
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        } else {
-            false
-        };
-
-        if !played {
-            // Rodio fallback for all platforms
-            let name = sound_type.to_string();
-            let data = match sound_type {
-                "start" => include_bytes!("../sounds/start.wav").as_ref(),
-                "stop" => include_bytes!("../sounds/stop.wav").as_ref(),
-                "done" => include_bytes!("../sounds/done.wav").as_ref(),
-                _ => return,
-            };
-            let _ = tauri::async_runtime::spawn_blocking(move || {
-                if name == "start" || name == "stop" {
-                    std::thread::sleep(std::time::Duration::from_millis(80));
-                }
-                let cursor = Cursor::new(data);
-                if let Ok(source) = Decoder::new(cursor) {
-                    if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
-                        if let Ok(sink) = rodio::Sink::try_new(&handle) {
-                            sink.set_volume(0.9);
-                            sink.append(source);
-                            sink.sleep_until_end();
-                            println!("Sound {} finished (rodio fallback)", name);
-                        }
-                    }
-                }
-            });
+                .spawn();
         }
     } else {
         println!("Could not resolve sound for {}", sound_type);
@@ -1008,6 +984,9 @@ async fn transcribe_audio(
         .await
         .map_err(|e| e.to_string())?
     }
+
+
+
 }
 
 #[tauri::command]
