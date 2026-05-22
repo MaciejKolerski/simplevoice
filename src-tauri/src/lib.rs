@@ -224,10 +224,8 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
 }
 
 /// Resolves the sound file for the given event type.
-/// Looks for start.wav / stop.wav / done.wav inside the bundled resources:
-///   <app>.app/Contents/Resources/sounds/  (macOS bundle)
-///   or next to the binary in dev mode.
-/// Falls back to a built-in macOS system sound if the file is not present.
+/// Looks for start.wav / stop.wav / done.wav inside the bundled resources.
+/// On Linux falls back to canberra-gtk-play system events (bell, complete, dialog-warning).
 fn resolve_sound_file(
     app_handle: &tauri::AppHandle,
     sound_type: &str,
@@ -267,10 +265,39 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
     if !is_sound_feedback_enabled(app_handle) {
         return;
     }
-    if let Some(path) = resolve_sound_file(app_handle, sound_type) {
+
+    if let Some(_path) = resolve_sound_file(app_handle, sound_type) {
         #[cfg(target_os = "macos")]
         {
-            let _ = std::process::Command::new("afplay").arg(&path).spawn();
+            let _ = std::process::Command::new("afplay").arg(&_path).spawn();
+        }
+    } else {
+        // Linux fallback (canberra-gtk-play → paplay → aplay)
+        #[cfg(target_os = "linux")]
+        {
+            let event = match sound_type {
+                "start" => "bell",
+                "stop" => "dialog-warning",
+                "done" => "complete",
+                _ => "bell",
+            };
+            if std::process::Command::new("canberra-gtk-play")
+                .arg("-i")
+                .arg(event)
+                .status()
+                .is_err()
+            {
+                // paplay fallback (PulseAudio)
+                let sound_file = match sound_type {
+                    "start" => "/usr/share/sounds/freedesktop/stereo/message.oga",
+                    "stop" => "/usr/share/sounds/freedesktop/stereo/dialog-warning.oga",
+                    "done" => "/usr/share/sounds/freedesktop/stereo/complete.oga",
+                    _ => "/usr/share/sounds/freedesktop/stereo/bell.oga",
+                };
+                let _ = std::process::Command::new("paplay")
+                    .arg(sound_file)
+                    .spawn();
+            }
         }
     }
 }
