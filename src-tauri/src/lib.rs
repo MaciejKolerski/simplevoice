@@ -212,75 +212,34 @@ fn play_backend_sound<R: tauri::Runtime, T: tauri::Manager<R>>(manager: &T, soun
         return;
     }
 
-    let fname = match sound_type {
-        "start" => "start.wav",
-        "stop" => "stop.wav",
-        "done" => "done.wav",
-        _ => return,
-    };
     let name = sound_type.to_string();
     println!("Playing sound: {}", name);
 
-    std::thread::spawn(move || {
+    let data = match sound_type {
+        "start" => include_bytes!("../sounds/start.wav").as_ref(),
+        "stop" => include_bytes!("../sounds/stop.wav").as_ref(),
+        "done" => include_bytes!("../sounds/done.wav").as_ref(),
+        _ => return,
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
         if name == "start" || name == "stop" {
-            std::thread::sleep(std::time::Duration::from_millis(80));
+            std::thread::sleep(std::time::Duration::from_millis(150));
         }
 
-        let sounds_dir = std::path::Path::new("src-tauri/sounds");
-        let sound_path = sounds_dir.join(fname);
-
-        let played = if cfg!(target_os = "macos") {
-            std::process::Command::new("afplay")
-                .arg(&sound_path)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        } else if cfg!(target_os = "windows") {
-            std::process::Command::new("powershell")
-                .arg("-c")
-                .arg(format!("(New-Object Media.SoundPlayer '{}').PlaySync()", sound_path.display()))
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        } else {
-            // Linux - try paplay then aplay then rodio
-            std::process::Command::new("paplay")
-                .arg(&sound_path)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-                || std::process::Command::new("aplay")
-                    .arg("-q")
-                    .arg(&sound_path)
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false)
-        };
-
-        if !played {
-            // Rodio fallback (embedded)
-            let data = match name.as_str() {
-                "start" => include_bytes!("../sounds/start.wav").as_ref(),
-                "stop" => include_bytes!("../sounds/stop.wav").as_ref(),
-                "done" => include_bytes!("../sounds/done.wav").as_ref(),
-                _ => return,
-            };
-            let cursor = Cursor::new(data);
-            if let Ok(source) = Decoder::new(cursor) {
-                if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
-                    if let Ok(sink) = rodio::Sink::try_new(&handle) {
-                        sink.set_volume(0.9);
-                        sink.append(source);
-                        sink.sleep_until_end();
-                        println!("Sound {} finished (rodio fallback)", name);
-                        return;
-                    }
+        let cursor = Cursor::new(data);
+        if let Ok(source) = Decoder::new(cursor) {
+            if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                if let Ok(sink) = rodio::Sink::try_new(&handle) {
+                    sink.set_volume(0.8);
+                    sink.append(source);
+                    sink.sleep_until_end();
+                    println!("Sound {} finished", name);
+                    return;
                 }
             }
-            println!("All playback methods failed for {}", name);
-        } else {
-            println!("Sound {} finished", name);
         }
+        println!("Failed to play sound: {}", name);
     });
 }
 
