@@ -1,4 +1,5 @@
 mod audio;
+mod error;
 mod media_control;
 mod stt;
 use audio::AudioController;
@@ -11,6 +12,9 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::Shortcut;
 use tauri_plugin_sql::{Migration, MigrationKind};
+use serde::Serialize;
+use sqlx::{FromRow, SqlitePool};
+use tauri::State;
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
@@ -32,6 +36,32 @@ struct ShortcutEntry {
 
 pub struct ShortcutRegistry {
     entries: Mutex<Vec<ShortcutEntry>>,
+}
+
+#[derive(Serialize, FromRow)]
+struct Transcription {
+    id: String,
+    timestamp: String,
+    date: String,
+    text: String,
+    model: String,
+    wav_path: Option<String>,
+    duration_sec: Option<f64>,
+}
+
+#[derive(Serialize)]
+struct UsageStats {
+    total_transcriptions: i32,
+    total_words: i32,
+    total_duration_sec: f64,
+    daily: Vec<DailyUsage>,
+}
+
+#[derive(Serialize, FromRow)]
+struct DailyUsage {
+    date: String,
+    words_generated: i32,
+    time_transcribed_sec: f64,
 }
 
 fn draw_status_dot(
@@ -286,6 +316,13 @@ fn set_transcribing(
 
 #[tauri::command]
 fn open_folder(path: String) -> Result<(), String> {
+    let path = std::path::Path::new(&path);
+
+    // Basic validation to prevent obvious path traversal
+    if path.components().any(|c| c.as_os_str() == "..") {
+        return Err("Access denied: invalid path".to_string());
+    }
+
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
@@ -360,7 +397,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .enabled({
             let last = app_handle.state::<LastTranscription>();
             let t = last.text.lock().unwrap();
-            t.as_ref().map_or(false, |s| !s.trim().is_empty())
+            t.as_ref().is_some_and(|s| !s.trim().is_empty())
         })
         .build(app_handle)
         .map_err(|e| e.to_string())?;
@@ -914,6 +951,7 @@ async fn transcribe_audio(
         crate::stt::cloud::transcribe_cloud(
             &final_samples,
             &key,
+            Some(&provider_name),
             model.as_deref(),
             base_url.as_deref(),
             language.as_deref(),
@@ -971,7 +1009,7 @@ async fn save_transcription_data(
     wav_path: String,
     text: String,
     model: String,
-    app_handle: tauri::AppHandle,
+    pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
     println!("DEBUG: save_transcription_data called with wav_path='{}', text='{}' (len={})", wav_path, text, text.len());
 
@@ -998,18 +1036,6 @@ async fn save_transcription_data(
     let dur_val = duration_sec.unwrap_or(0.0);
     let word_count = text.split_whitespace().count() as i32;
 
-    // Use sqlx directly to the same database file used by the plugin
-    let app_dir = app_handle
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?;
-    let db_path = app_dir.join("simplevoice.db");
-    let db_url = format!("sqlite:{}", db_path.to_string_lossy());
-
-    let pool = sqlx::SqlitePool::connect(&db_url)
-        .await
-        .map_err(|e| e.to_string())?;
-
     // 1. Insert Transcription
     sqlx::query(
         "INSERT OR IGNORE INTO transcriptions (id, timestamp, date, text, model, wav_path, duration_sec) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -1021,7 +1047,7 @@ async fn save_transcription_data(
     .bind(&model)
     .bind(&wav_path)
     .bind(dur_val)
-    .execute(&pool)
+    .execute(&*pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -1036,7 +1062,7 @@ async fn save_transcription_data(
     .bind(&date)
     .bind(word_count)
     .bind(dur_val)
-    .execute(&pool)
+    .execute(&*pool)
     .await
         .map_err(|e| e.to_string())?;
 
@@ -1046,7 +1072,10 @@ async fn save_transcription_data(
 
 
 #[tauri::command]
-async fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
+async fn clear_history_cmd(
+    app_handle: tauri::AppHandle,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
     // 1. Delete recordings from disk
     let app_local_data = app_handle
         .path()
@@ -1057,25 +1086,14 @@ async fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
         std::fs::remove_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
     }
 
-    // 2. Clear SQL database
-    let app_dir = app_handle
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?;
-    let db_path = app_dir.join("simplevoice.db");
-    let db_url = format!("sqlite:{}", db_path.to_string_lossy());
-
-    let pool = sqlx::SqlitePool::connect(&db_url)
-        .await
-        .map_err(|e| e.to_string())?;
-
+    // 2. Clear SQL database using shared pool
     sqlx::query("DELETE FROM transcriptions")
-        .execute(&pool)
+        .execute(&*pool)
         .await
         .map_err(|e| e.to_string())?;
 
     sqlx::query("DELETE FROM daily_usage")
-        .execute(&pool)
+        .execute(&*pool)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1086,7 +1104,8 @@ async fn clear_history_cmd(app_handle: tauri::AppHandle) -> Result<(), String> {
 async fn delete_transcription_cmd(
     id: String,
     path: Option<String>,
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
+    pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
     // 1. Delete physical file if path is provided
     if let Some(wav_path) = path {
@@ -1100,25 +1119,52 @@ async fn delete_transcription_cmd(
         }
     }
 
-    // 2. Delete from database
-    let app_dir = app_handle
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?;
-    let db_path = app_dir.join("simplevoice.db");
-    let db_url = format!("sqlite:{}", db_path.to_string_lossy());
-
-    let pool = sqlx::SqlitePool::connect(&db_url)
-        .await
-        .map_err(|e| e.to_string())?;
-
+    // 2. Delete from database using shared pool
     sqlx::query("DELETE FROM transcriptions WHERE id = ?")
         .bind(id)
-        .execute(&pool)
+        .execute(&*pool)
         .await
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+async fn get_transcriptions(pool: State<'_, SqlitePool>) -> Result<Vec<Transcription>, String> {
+    let transcriptions = sqlx::query_as::<_, Transcription>(
+        "SELECT id, timestamp, date, text, model, wav_path, duration_sec FROM transcriptions ORDER BY id DESC"
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(transcriptions)
+}
+
+#[tauri::command]
+async fn get_usage_stats(pool: State<'_, SqlitePool>) -> Result<UsageStats, String> {
+    let totals: (i32, i32, f64) = sqlx::query_as(
+        "SELECT COUNT(*) as total_transcriptions, 
+                COALESCE(SUM(words_generated), 0) as total_words, 
+                COALESCE(SUM(time_transcribed_sec), 0.0) as total_duration_sec 
+         FROM daily_usage"
+    )
+    .fetch_one(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let daily: Vec<DailyUsage> = sqlx::query_as(
+        "SELECT date, words_generated, time_transcribed_sec FROM daily_usage ORDER BY date DESC"
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(UsageStats {
+        total_transcriptions: totals.0,
+        total_words: totals.1,
+        total_duration_sec: totals.2,
+        daily,
+    })
 }
 
 #[tauri::command]
@@ -1392,8 +1438,23 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let app_handle = app.handle();
-            let _ = rebuild_tray_menu(app_handle);
+            let app_handle = app.handle().clone();
+
+            // Initialize SQLite connection pool once (fixes connection leak)
+            let pool = tauri::async_runtime::block_on(async {
+                let app_dir = app_handle
+                    .path()
+                    .app_config_dir()
+                    .expect("Failed to get app config directory");
+                let db_path = app_dir.join("simplevoice.db");
+                let db_url = format!("sqlite:{}", db_path.to_string_lossy());
+                SqlitePool::connect(&db_url)
+                    .await
+                    .expect("Failed to create SQLite pool")
+            });
+            app.manage(pool);
+
+            let _ = rebuild_tray_menu(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1420,6 +1481,8 @@ pub fn run() {
             clear_history_cmd,
             delete_transcription_cmd,
             save_transcription_data,
+            get_transcriptions,
+            get_usage_stats,
             set_transcribing,
             get_model_status,
             play_done_sound,

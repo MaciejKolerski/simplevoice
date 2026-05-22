@@ -9,6 +9,7 @@ import { UsageView } from "./views/UsageView";
 import { ModelsView } from "./views/ModelsView";
 import { TranscriptionsView } from "./views/TranscriptionsView";
 import { SettingsView } from "./views/SettingsView";
+import { ConfigProvider } from "./context/ConfigContext";
 
 type ViewId = "usage" | "models" | "transcriptions" | "settings";
 
@@ -241,110 +242,112 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-black relative">
-      <TitleBar
-        activeViewName={getTitleName(activeView)}
-        toggleSidebar={toggleSidebar}
-      />
-      {errorMessage && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300 animate-[fadeIn_0.2s_ease-out]">
-          <div className="flex flex-col items-center justify-center bg-[#1c1c1e]/95 border border-border/90 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-[0_20px_50px_rgba(0,0,0,0.7)] backdrop-blur-md text-center transform scale-100 transition-all duration-300">
-            <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4 text-red-500">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-6 h-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-white text-lg font-semibold mb-2">
-              Configuration Required
-            </h3>
-            <p className="text-muted text-xs leading-relaxed mb-6">
-              {errorMessage}
-            </p>
-            <button
-              onClick={() => setErrorMessage(null)}
-              className="w-full btn btn-primary py-2.5 rounded-lg text-xs font-semibold cursor-pointer"
-            >
-              Configure Now
-            </button>
-          </div>
-        </div>
-      )}
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          activeView={activeView}
-          setActiveView={(v) => setActiveView(v as ViewId)}
+    <ConfigProvider>
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-black relative">
+        <TitleBar
+          activeViewName={getTitleName(activeView)}
+          toggleSidebar={toggleSidebar}
         />
+        {errorMessage && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex flex-col items-center justify-center bg-[#1c1c1e]/95 border border-border/90 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-[0_20px_50px_rgba(0,0,0,0.7)] backdrop-blur-md text-center transform scale-100 transition-all duration-300">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4 text-red-500">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-6 h-6"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-white text-lg font-semibold mb-2">
+                Configuration Required
+              </h3>
+              <p className="text-muted text-xs leading-relaxed mb-6">
+                {errorMessage}
+              </p>
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="w-full btn btn-primary py-2.5 rounded-lg text-xs font-semibold cursor-pointer"
+              >
+                Configure Now
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            activeView={activeView}
+            setActiveView={(v) => setActiveView(v as ViewId)}
+          />
 
-        <main className="main-content">
-          <div className={`view ${activeView === "usage" ? "active" : ""}`}>
-            <UsageView />
-          </div>
-          <div className={`view ${activeView === "models" ? "active" : ""}`}>
-            <ModelsView />
-          </div>
-          <div
-            className={`view ${activeView === "transcriptions" ? "active" : ""}`}
-          >
-            <TranscriptionsView />
-          </div>
-          <div className={`view ${activeView === "settings" ? "active" : ""}`}>
-            <SettingsView />
-          </div>
-        </main>
-      </div>
-
-      {/* Global Recording / Transcribing HUD Overlay */}
-      {(isRecording || isTranscribing) && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300 animate-[fadeIn_0.2s_ease-out]">
-          <div className="flex flex-col items-center justify-center bg-[#1c1c1e]/90 border border-border/85 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-md text-center transform scale-100 transition-all duration-300">
-            {isRecording ? (
-              <>
-                <div className="relative mb-6">
-                  {/* Pulsing outer ring */}
-                  <div className="absolute inset-[-12px] rounded-full bg-red-500/10 animate-ping"></div>
-                  <div className="absolute inset-[-6px] rounded-full bg-red-500/20 animate-pulse"></div>
-                  {/* Recording circle */}
-                  <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/30">
-                    <div className="w-6 h-6 bg-white rounded-sm animate-pulse"></div>
-                  </div>
-                </div>
-                <h2 className="text-white text-lg font-medium mb-1 tracking-tight">
-                  Recording Audio
-                </h2>
-                <p className="text-muted text-sm leading-normal">
-                  Speak now... Press shortcut or wait for silence to stop.
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="relative mb-6">
-                  {/* Rotating loader */}
-                  <div className="w-16 h-16 rounded-full border-4 border-border/40 border-t-white animate-spin"></div>
-                </div>
-                <h2 className="text-white text-lg font-medium mb-1 tracking-tight">
-                  Transcribing
-                </h2>
-                <p className="text-muted text-sm leading-normal">
-                  Processing audio locally using Whisper...
-                </p>
-              </>
-            )}
-          </div>
+          <main className="main-content">
+            <div className={`view ${activeView === "usage" ? "active" : ""}`}>
+              <UsageView />
+            </div>
+            <div className={`view ${activeView === "models" ? "active" : ""}`}>
+              <ModelsView />
+            </div>
+            <div
+              className={`view ${activeView === "transcriptions" ? "active" : ""}`}
+            >
+              <TranscriptionsView />
+            </div>
+            <div className={`view ${activeView === "settings" ? "active" : ""}`}>
+              <SettingsView />
+            </div>
+          </main>
         </div>
-      )}
-    </div>
+
+        {/* Global Recording / Transcribing HUD Overlay */}
+        {(isRecording || isTranscribing) && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex flex-col items-center justify-center bg-[#1c1c1e]/90 border border-border/85 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-md text-center transform scale-100 transition-all duration-300">
+              {isRecording ? (
+                <>
+                  <div className="relative mb-6">
+                    {/* Pulsing outer ring */}
+                    <div className="absolute inset-[-12px] rounded-full bg-red-500/10 animate-ping"></div>
+                    <div className="absolute inset-[-6px] rounded-full bg-red-500/20 animate-pulse"></div>
+                    {/* Recording circle */}
+                    <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/30">
+                      <div className="w-6 h-6 bg-white rounded-sm animate-pulse"></div>
+                    </div>
+                  </div>
+                  <h2 className="text-white text-lg font-medium mb-1 tracking-tight">
+                    Recording Audio
+                  </h2>
+                  <p className="text-muted text-sm leading-normal">
+                    Speak now... Press shortcut or wait for silence to stop.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="relative mb-6">
+                    {/* Rotating loader */}
+                    <div className="w-16 h-16 rounded-full border-4 border-border/40 border-t-white animate-spin"></div>
+                  </div>
+                  <h2 className="text-white text-lg font-medium mb-1 tracking-tight">
+                    Transcribing
+                  </h2>
+                  <p className="text-muted text-sm leading-normal">
+                    Processing audio locally using Whisper...
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </ConfigProvider>
   );
 }
 

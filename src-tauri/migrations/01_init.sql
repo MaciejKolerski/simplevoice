@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     duration_sec REAL
 );
 
+CREATE INDEX IF NOT EXISTS idx_transcriptions_date ON transcriptions(date);
+CREATE INDEX IF NOT EXISTS idx_transcriptions_timestamp ON transcriptions(timestamp);
+
 CREATE TABLE IF NOT EXISTS daily_usage (
     date TEXT PRIMARY KEY, -- YYYY-MM-DD
     words_generated INTEGER DEFAULT 0,

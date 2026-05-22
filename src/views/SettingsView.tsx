@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronDown, Cpu, Keyboard, Shield, ExternalLink } from "lucide-react";
+import { ChevronDown, Cpu, Shield, ExternalLink, Keyboard } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
@@ -54,6 +54,15 @@ export function SettingsView() {
   const overlayRef = useRef<HTMLDivElement>(null);
   const isCompletedRef = useRef(false);
   const shortcutTargetRef = useRef<"record" | "copy" | null>(null);
+
+  const startRecordingShortcut = (target: "record" | "copy") => {
+    setShortcutTarget(target);
+    setIsRecordingShortcut(true);
+    setActiveKeys([]);
+    setErrorMessage(null);
+    setIsCompleted(false);
+    shortcutTargetRef.current = target;
+  };
 
   // Permission states
   const [accessibilityGranted, setAccessibilityGranted] = useState(true);
@@ -505,6 +514,45 @@ export function SettingsView() {
               />
               <span className="toggle-bg"></span>
             </label>
+          </div>
+          </div>
+
+        {/* SECTION: Keyboard Shortcuts */}
+        <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
+          <h2 className="p-6 pb-4 text-base text-white font-medium flex items-center gap-2 border-b border-border">
+            <Keyboard size={16} className="text-muted" /> Keyboard Shortcuts
+          </h2>
+
+          <div className="flex justify-between items-center p-6 border-b border-border">
+            <div className="flex-1 pr-8">
+              <div className="text-fg font-medium mb-1">Start / Stop Recording</div>
+              <div className="text-muted text-[13px]">
+                Global hotkey to toggle voice recording from anywhere
+              </div>
+            </div>
+            <div
+              onClick={() => startRecordingShortcut("record")}
+              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded border border-border text-foreground min-w-[140px] text-center cursor-pointer hover:border-blue-400 hover:bg-blue-500/10 active:scale-[0.985] transition-all select-none"
+              title="Click to change shortcut"
+            >
+              {formatShortcutDisplay(shortcutText)}
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center p-6">
+            <div className="flex-1 pr-8">
+              <div className="text-fg font-medium mb-1">Copy Last Transcription</div>
+              <div className="text-muted text-[13px]">
+                Copy the most recent transcription result to clipboard
+              </div>
+            </div>
+            <div
+              onClick={() => startRecordingShortcut("copy")}
+              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded border border-border text-foreground min-w-[140px] text-center cursor-pointer hover:border-blue-400 hover:bg-blue-500/10 active:scale-[0.985] transition-all select-none"
+              title="Click to change shortcut"
+            >
+              {formatShortcutDisplay(copyShortcutText)}
+            </div>
           </div>
         </div>
 

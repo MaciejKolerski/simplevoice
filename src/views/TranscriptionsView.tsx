@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import Database from "@tauri-apps/plugin-sql";
 
 interface TranscriptionItem {
   id: string;
@@ -21,10 +20,7 @@ export function TranscriptionsView() {
 
   const loadHistory = async () => {
     try {
-      const db = await Database.load("sqlite:simplevoice.db");
-      const result = await db.select<TranscriptionItem[]>(
-        "SELECT * FROM transcriptions ORDER BY id DESC",
-      );
+      const result = await invoke<TranscriptionItem[]>("get_transcriptions");
       setHistory(result);
     } catch (err) {
       console.error("Failed to load transcription history from DB:", err);

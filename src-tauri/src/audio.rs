@@ -395,6 +395,11 @@ impl AudioController {
                 let _ = wrapper.0.pause();
             }
 
+            // Consumer thread will drain remaining samples. We drop lock immediately
+            // to avoid deadlock with VAD path. No artificial sleep.
+            drop(s);
+
+            let mut s = self.state.lock().unwrap();
             s.last_samples = s.buffer.clone();
             let samples = std::mem::take(&mut s.buffer);
             let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);

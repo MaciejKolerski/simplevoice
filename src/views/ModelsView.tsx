@@ -449,13 +449,13 @@ export function ModelsView() {
           </div>
         )
       ) : (
-        <div className="border border-border rounded-xl p-8 bg-secondary flex flex-col gap-6">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-border/50 pb-6">
+        <div className="border border-border rounded-xl p-6 md:p-8 bg-secondary flex flex-col gap-6 max-w-2xl mx-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border-b border-border/50 pb-6">
             <div className="flex-1">
               <h3 className="m-0 font-medium text-white text-base mb-2">
                 BYOK Config
               </h3>
-              <p className="text-muted text-[13px] max-w-xl leading-relaxed">
+              <p className="text-muted text-[13px] max-w-md sm:max-w-xl leading-relaxed">
                 Configure your cloud-based Speech-to-Text provider. All API
                 requests are sent directly from your client machine to the
                 designated endpoint.
@@ -463,7 +463,7 @@ export function ModelsView() {
             </div>
           </div>
 
-          <div className="max-w-xl space-y-6">
+          <div className="max-w-2xl mx-auto space-y-6">
             <div className="flex flex-col">
               <label className="text-fg font-medium text-xs mb-2">
                 Provider Preset
@@ -476,7 +476,6 @@ export function ModelsView() {
                 >
                   <option value="openai">OpenAI</option>
                   <option value="openrouter">OpenRouter</option>
-                  <option value="anthropic">Anthropic Claude</option>
                   <option value="gemini">Google Gemini</option>
                   <option value="custom">Custom...</option>
                 </select>
@@ -490,7 +489,7 @@ export function ModelsView() {
               <label className="text-fg font-medium text-xs mb-2">
                 API Key ({asrProvider.toUpperCase()})
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type={showApiKey ? "text" : "password"}
                   value={providerKey}
@@ -508,7 +507,7 @@ export function ModelsView() {
                 <button
                   type="button"
                   onClick={() => setShowApiKey(!showApiKey)}
-                  className="btn btn-outline min-w-[70px] flex items-center justify-center text-xs font-medium cursor-pointer"
+                  className="btn btn-outline sm:min-w-[70px] flex items-center justify-center text-xs font-medium cursor-pointer whitespace-nowrap"
                 >
                   {showApiKey ? "Hide" : "Show"}
                 </button>
@@ -546,19 +545,7 @@ export function ModelsView() {
                       </option>
                     </>
                   )}
-                  {asrProvider === "anthropic" && (
-                    <>
-                      <option value="claude-3-5-haiku-20241022">
-                        claude-3-5-haiku-20241022
-                      </option>
-                      <option value="claude-3-5-sonnet-20241022">
-                        claude-3-5-sonnet-20241022
-                      </option>
-                      <option value="claude-3-opus-20240229">
-                        claude-3-opus-20240229
-                      </option>
-                    </>
-                  )}
+
                   {asrProvider === "gemini" && (
                     <>
                       <option value="gemini-1.5-flash">gemini-1.5-flash</option>
