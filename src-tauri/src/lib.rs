@@ -270,15 +270,17 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         }
         #[cfg(not(target_os = "macos"))]
         {
+            let name = sound_type.to_string();
+            let path_clone = path.clone();
             std::thread::spawn(move || {
-                if let Ok(file) = File::open(&path) {
+                if let Ok(file) = File::open(&path_clone) {
                     let reader = BufReader::new(file);
                     if let Ok(source) = Decoder::new(reader) {
                         if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
                             let sink = rodio::Sink::try_new(&handle).unwrap();
                             sink.append(source);
                             sink.sleep_until_end();
-                            println!("Sound {} finished", sound_type);
+                            println!("Sound {} finished", name);
                         }
                     }
                 }
@@ -286,6 +288,7 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         }
     } else {
         println!("Sound file for {} not found - using sine fallback", sound_type);
+        let name = sound_type.to_string();
         let freq = match sound_type {
             "start" => 880.0,
             "stop" => 520.0,
@@ -297,7 +300,7 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
                 let sink = rodio::Sink::try_new(&handle).unwrap();
                 sink.append(rodio::source::SineWave::new(freq).take_duration(std::time::Duration::from_millis(200)));
                 sink.sleep_until_end();
-                println!("Sine fallback played for {}", sound_type);
+                println!("Sine fallback played for {}", name);
             }
         });
     }
