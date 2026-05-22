@@ -223,80 +223,44 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
     false
 }
 
-/// Resolves the sound file for the given event type.
-/// Looks for start.wav / stop.wav / done.wav inside the bundled resources.
-/// On Linux falls back to canberra-gtk-play system events (bell, complete, dialog-warning).
-fn resolve_sound_file(
-    app_handle: &tauri::AppHandle,
-    sound_type: &str,
-) -> Option<std::path::PathBuf> {
-    let fname = match sound_type {
-        "start" => "start.wav",
-        "stop" => "stop.wav",
-        "done" => "done.wav",
-        _ => return None,
-    };
-
-    // Check bundled resources (works in both dev and release builds)
-    if let Ok(res_dir) = app_handle.path().resource_dir() {
-        let bundled = res_dir.join("sounds").join(fname);
-        if bundled.exists() {
-            return Some(bundled);
-        }
-    }
-
-    // Fallback: built-in macOS system sounds
-    #[cfg(target_os = "macos")]
-    {
-        let fallback = match sound_type {
-            "start" => "/System/Library/Sounds/Tink.aiff",
-            "stop" => "/System/Library/Sounds/Pop.aiff",
-            "done" => "/System/Library/Sounds/Glass.aiff",
-            _ => return None,
-        };
-        return Some(std::path::PathBuf::from(fallback));
-    }
-
-    #[allow(unreachable_code)]
-    None
-}
 
 fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
     if !is_sound_feedback_enabled(app_handle) {
         return;
     }
 
-    if let Some(_path) = resolve_sound_file(app_handle, sound_type) {
-        #[cfg(target_os = "macos")]
-        {
-            let _ = std::process::Command::new("afplay").arg(&_path).spawn();
-        }
-    } else {
-        // Linux fallback for Niri/Wayland (canberra → pw-play/PipeWire → paplay → aplay)
-        #[cfg(target_os = "linux")]
-        {
-            let sound_file = match sound_type {
-                "start" => "/usr/share/sounds/freedesktop/stereo/message.oga",
-                "stop" => "/usr/share/sounds/freedesktop/stereo/dialog-warning.oga",
-                "done" => "/usr/share/sounds/freedesktop/stereo/complete.oga",
-                _ => "/usr/share/sounds/freedesktop/stereo/bell.oga",
-            };
+    let sound_type = sound_type.to_string();
 
-            // Try canberra (GNOME/KDE event sounds)
-            if std::process::Command::new("canberra-gtk-play")
-                .arg("-i")
-                .arg(match sound_type { "start" => "bell", "stop" => "dialog-warning", "done" => "complete", _ => "bell" })
-                .status()
-                .is_err()
-            {
-                // PipeWire (Niri default)
-                if std::process::Command::new("pw-play").arg(sound_file).status().is_err() {
-                    // PulseAudio fallback
-                    let _ = std::process::Command::new("paplay").arg(sound_file).spawn();
-                }
+    // Cross-platform beep using rodio (no external dependencies, works on Niri/Wayland)
+    std::thread::spawn(move || {
+        let (_stream, stream_handle) = match rodio::OutputStream::try_default() {
+            Ok(stream) => stream,
+            Err(_) => return,
+        };
+        let sink = match rodio::Sink::try_new(&stream_handle) {
+            Ok(sink) => sink,
+            Err(_) => return,
+        };
+
+        match sound_type.as_str() {
+            "start" => {
+                sink.append(rodio::source::SineWave::new(880.0));
+                std::thread::sleep(std::time::Duration::from_millis(80));
             }
+            "stop" => {
+                sink.append(rodio::source::SineWave::new(660.0));
+                std::thread::sleep(std::time::Duration::from_millis(120));
+            }
+            "done" => {
+                sink.append(rodio::source::SineWave::new(1100.0));
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                sink.append(rodio::source::SineWave::new(1320.0));
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            _ => {}
         }
-    }
+        sink.sleep_until_end();
+    });
 }
 
 #[tauri::command]
