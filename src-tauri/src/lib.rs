@@ -15,6 +15,7 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use tauri::State;
+use rodio::Source;
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
