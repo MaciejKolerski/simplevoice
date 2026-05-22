@@ -272,31 +272,28 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
             let _ = std::process::Command::new("afplay").arg(&_path).spawn();
         }
     } else {
-        // Linux fallback (canberra-gtk-play → paplay → aplay)
+        // Linux fallback for Niri/Wayland (canberra → pw-play/PipeWire → paplay → aplay)
         #[cfg(target_os = "linux")]
         {
-            let event = match sound_type {
-                "start" => "bell",
-                "stop" => "dialog-warning",
-                "done" => "complete",
-                _ => "bell",
+            let sound_file = match sound_type {
+                "start" => "/usr/share/sounds/freedesktop/stereo/message.oga",
+                "stop" => "/usr/share/sounds/freedesktop/stereo/dialog-warning.oga",
+                "done" => "/usr/share/sounds/freedesktop/stereo/complete.oga",
+                _ => "/usr/share/sounds/freedesktop/stereo/bell.oga",
             };
+
+            // Try canberra (GNOME/KDE event sounds)
             if std::process::Command::new("canberra-gtk-play")
                 .arg("-i")
-                .arg(event)
+                .arg(match sound_type { "start" => "bell", "stop" => "dialog-warning", "done" => "complete", _ => "bell" })
                 .status()
                 .is_err()
             {
-                // paplay fallback (PulseAudio)
-                let sound_file = match sound_type {
-                    "start" => "/usr/share/sounds/freedesktop/stereo/message.oga",
-                    "stop" => "/usr/share/sounds/freedesktop/stereo/dialog-warning.oga",
-                    "done" => "/usr/share/sounds/freedesktop/stereo/complete.oga",
-                    _ => "/usr/share/sounds/freedesktop/stereo/bell.oga",
-                };
-                let _ = std::process::Command::new("paplay")
-                    .arg(sound_file)
-                    .spawn();
+                // PipeWire (Niri default)
+                if std::process::Command::new("pw-play").arg(sound_file).status().is_err() {
+                    // PulseAudio fallback
+                    let _ = std::process::Command::new("paplay").arg(sound_file).spawn();
+                }
             }
         }
     }
