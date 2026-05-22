@@ -15,6 +15,8 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use tauri::State;
+use rodio::Decoder;
+use std::io::Cursor;
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
@@ -268,25 +270,52 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         return;
     }
     if let Some(path) = resolve_sound_file(app_handle, sound_type) {
-        #[cfg(target_os = "macos")]
-        {
-            let _ = std::process::Command::new("afplay").arg(&path).spawn();
-        }
-        #[cfg(target_os = "linux")]
-        {
-            // On Linux try paplay (PulseAudio/PipeWire) then aplay
-            let _ = std::process::Command::new("paplay")
-                .arg(&path)
-                .spawn()
-                .or_else(|_| std::process::Command::new("aplay").arg("-q").arg(&path).spawn());
-        }
-        #[cfg(target_os = "windows")]
-        {
-            let _ = std::process::Command::new("powershell")
+        println!("Playing sound '{}' using path: {:?}", sound_type, path);
+
+        let played = if cfg!(target_os = "macos") {
+            std::process::Command::new("afplay").arg(&path).status().map(|s| s.success()).unwrap_or(false)
+        } else if cfg!(target_os = "linux") {
+            std::process::Command::new("paplay").arg(&path).status().map(|s| s.success()).unwrap_or(false)
+                || std::process::Command::new("aplay").arg("-q").arg(&path).status().map(|s| s.success()).unwrap_or(false)
+        } else if cfg!(target_os = "windows") {
+            std::process::Command::new("powershell")
                 .arg("-c")
                 .arg(format!("(New-Object Media.SoundPlayer '{}').PlaySync()", path.display()))
-                .spawn();
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        if !played {
+            // Rodio fallback for all platforms
+            let name = sound_type.to_string();
+            let data = match sound_type {
+                "start" => include_bytes!("../sounds/start.wav").as_ref(),
+                "stop" => include_bytes!("../sounds/stop.wav").as_ref(),
+                "done" => include_bytes!("../sounds/done.wav").as_ref(),
+                _ => return,
+            };
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                if name == "start" || name == "stop" {
+                    std::thread::sleep(std::time::Duration::from_millis(80));
+                }
+                let cursor = Cursor::new(data);
+                if let Ok(source) = Decoder::new(cursor) {
+                    if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                        if let Ok(sink) = rodio::Sink::try_new(&handle) {
+                            sink.set_volume(0.9);
+                            sink.append(source);
+                            sink.sleep_until_end();
+                            println!("Sound {} finished (rodio fallback)", name);
+                        }
+                    }
+                }
+            });
         }
+    } else {
+        println!("Could not resolve sound for {}", sound_type);
     }
 }
 
