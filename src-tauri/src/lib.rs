@@ -15,9 +15,8 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use tauri::State;
-use rodio::{Decoder, Source};
-use std::fs::File;
-use std::io::BufReader;
+use rodio::Decoder;
+use std::io::Cursor;
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
@@ -173,12 +172,13 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
     Ok(())
 }
 
-fn is_sound_feedback_enabled(_app_handle: &tauri::AppHandle) -> bool {
+fn is_sound_feedback_enabled<R: tauri::Runtime, T: tauri::Manager<R>>(_manager: &T) -> bool {
     // Forced to true to ensure start/stop sounds play (restore config check later if needed)
     true
 }
 
-fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
+fn is_pause_audio_enabled<R: tauri::Runtime, T: tauri::Manager<R>>(manager: &T) -> bool {
+    let app_handle = manager.app_handle();
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
         Err(_) => return false,
@@ -207,8 +207,8 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
 }
 
 
-fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
-    if !is_sound_feedback_enabled(app_handle) {
+fn play_backend_sound<R: tauri::Runtime, T: tauri::Manager<R>>(manager: &T, sound_type: &str) {
+    if !is_sound_feedback_enabled(manager) {
         return;
     }
 
@@ -218,66 +218,68 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         "done" => "done.wav",
         _ => return,
     };
+    let name = sound_type.to_string();
+    println!("Playing sound: {}", name);
 
-    let sound_type_str = sound_type.to_string();
-
-    // Load and play real WAV from bundled sounds/ folder (works on Niri)
-    let mut sound_path = None;
-
-    // 1. Bundled resources (release + some dev builds)
-    if let Ok(res_dir) = app_handle.path().resource_dir() {
-        let p = res_dir.join("sounds").join(fname);
-        if p.exists() {
-            sound_path = Some(p);
+    std::thread::spawn(move || {
+        if name == "start" || name == "stop" {
+            std::thread::sleep(std::time::Duration::from_millis(80));
         }
-    }
 
-    // 2. Dev mode fallback using CARGO_MANIFEST_DIR (always points to src-tauri)
-    if sound_path.is_none() {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let p = std::path::Path::new(manifest_dir).join("sounds").join(fname);
-        if p.exists() {
-            sound_path = Some(p);
-        }
-    }
+        let sounds_dir = std::path::Path::new("src-tauri/sounds");
+        let sound_path = sounds_dir.join(fname);
 
-    if let Some(path) = sound_path {
-        println!("Playing sound: {} (path: {:?})", sound_type_str, path);
-        let sound_type_for_thread = sound_type_str.clone();
-        let path_clone = path.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Ok(file) = File::open(&path_clone) {
-                let reader = BufReader::new(file);
-                if let Ok(source) = Decoder::new(reader) {
-                    if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
-                        let sink = rodio::Sink::try_new(&handle).unwrap();
+        let played = if cfg!(target_os = "macos") {
+            std::process::Command::new("afplay")
+                .arg(&sound_path)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        } else if cfg!(target_os = "windows") {
+            std::process::Command::new("powershell")
+                .arg("-c")
+                .arg(format!("(New-Object Media.SoundPlayer '{}').PlaySync()", sound_path.display()))
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        } else {
+            // Linux - try paplay then aplay then rodio
+            std::process::Command::new("paplay")
+                .arg(&sound_path)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+                || std::process::Command::new("aplay")
+                    .arg("-q")
+                    .arg(&sound_path)
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+        };
+
+        if !played {
+            // Rodio fallback (embedded)
+            let data = match sound_type {
+                "start" => include_bytes!("../sounds/start.wav").as_ref(),
+                "stop" => include_bytes!("../sounds/stop.wav").as_ref(),
+                "done" => include_bytes!("../sounds/done.wav").as_ref(),
+                _ => return,
+            };
+            let cursor = Cursor::new(data);
+            if let Ok(source) = Decoder::new(cursor) {
+                if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                    if let Ok(sink) = rodio::Sink::try_new(&handle) {
+                        sink.set_volume(0.9);
                         sink.append(source);
                         sink.sleep_until_end();
-                        println!("Sound {} finished playing", sound_type_for_thread);
+                        println!("Sound {} finished (rodio fallback)", name);
+                        return;
                     }
-                } else {
-                    println!("Failed to decode {}", path_clone.display());
                 }
-            } else {
-                println!("Failed to open sound file: {}", path_clone.display());
             }
-        });
-    } else {
-        println!("Sound file for {} not found", sound_type_str);
-    }
-
-    // Fallback sine wave if WAV not found
-    let freq = match sound_type {
-        "start" => 880.0,
-        "stop" => 520.0,
-        "done" => 987.0,
-        _ => 660.0,
-    };
-    std::thread::spawn(move || {
-        if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
-            let sink = rodio::Sink::try_new(&handle).unwrap();
-            sink.append(rodio::source::SineWave::new(freq).take_duration(std::time::Duration::from_millis(150)));
-            sink.sleep_until_end();
+            println!("All playback methods failed for {}", name);
+        } else {
+            println!("Sound {} finished", name);
         }
     });
 }
@@ -292,8 +294,8 @@ fn start_recording(
     println!("Command start_recording called");
     is_recording_allowed(&config, &stt)?;
     let pause_audio = is_pause_audio_enabled(&app_handle);
-    controller.start_recording(app_handle.clone(), pause_audio)?;
     play_backend_sound(&app_handle, "start");
+    controller.start_recording(app_handle.clone(), pause_audio)?;
     let _ = rebuild_tray_menu(&app_handle);
     Ok(())
 }
@@ -1380,9 +1382,9 @@ pub fn run() {
                             match is_recording_allowed(&config, &stt) {
                                 Ok(_) => {
                                     let pause_audio = is_pause_audio_enabled(app);
+                                    play_backend_sound(app, "start");
                                     if controller.start_recording(app.clone(), pause_audio).is_ok()
                                     {
-                                        play_backend_sound(app, "start");
                                         let _ = app.emit("recording-started", ());
                                     }
                                 }

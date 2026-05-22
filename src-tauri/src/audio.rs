@@ -264,13 +264,17 @@ impl AudioController {
                                         s.is_transcribing = true;
                                     }
 
-                                    let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
+                                     let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
 
-                                    // Emit recording-stopped event with the path
-                                    let payload = saved_path
-                                        .unwrap_or_else(|| "Recording stopped".to_string());
-                                    let _ =
-                                        app_handle_save_clone.emit("recording-stopped", payload);
+                                     // Play stop sound on VAD auto-stop
+                                     crate::play_backend_sound(&app_handle_save_clone, "stop");
+
+                                     // Emit recording-stopped event with the path
+                                     let payload = saved_path
+                                         .unwrap_or_else(|| "Recording stopped".to_string());
+                                     let _ =
+                                         app_handle_save_clone.emit("recording-stopped", payload);
+
                                 });
 
                                 break;
