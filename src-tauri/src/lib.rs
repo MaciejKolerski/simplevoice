@@ -205,24 +205,35 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
     };
     let config_path = app_local_data.join("config.json");
     if !config_path.exists() {
+        println!("Pause audio config file not found - defaulting to false");
         return false;
     }
     let content = match std::fs::read_to_string(&config_path) {
         Ok(s) => s,
-        Err(_) => return false,
+        Err(_) => {
+            println!("Could not read pause audio config - defaulting to false");
+            return false;
+        }
     };
     let json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(v) => v,
-        Err(_) => return false,
+        Err(_) => {
+            println!("Could not parse pause audio config - defaulting to false");
+            return false;
+        }
     };
     if let Some(val) = json.get("pause_audio_on_record") {
-        if let Some(b) = val.as_bool() {
-            return b;
-        }
-        if let Some(s) = val.as_str() {
-            return s == "true";
-        }
+        let value = if let Some(b) = val.as_bool() {
+            b
+        } else if let Some(s) = val.as_str() {
+            s == "true"
+        } else {
+            false
+        };
+        println!("pause_audio_on_record = {}", value);
+        return value;
     }
+    println!("pause_audio_on_record not found in config - defaulting to false");
     false
 }
 
@@ -302,6 +313,7 @@ fn start_recording(
     config: tauri::State<'_, AppConfig>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    println!("start_recording command called");
     is_recording_allowed(&config, &stt)?;
     let pause_audio = is_pause_audio_enabled(&app_handle);
     controller.start_recording(app_handle.clone(), pause_audio)?;
@@ -315,6 +327,7 @@ fn stop_recording(
     controller: tauri::State<'_, AudioController>,
     app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
+    println!("stop_recording command called");
     let res = controller.stop_recording(&app_handle);
     if res.is_ok() {
         play_backend_sound(&app_handle, "stop");
@@ -1349,6 +1362,7 @@ fn paste_text() -> Result<(), String> {
 pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
+            println!("Global shortcut handler triggered for shortcut: {:?}, state: {:?}", shortcut, event.state());
             if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                 println!("Global shortcut pressed: {:?}", shortcut);
 
@@ -1379,6 +1393,7 @@ pub fn run() {
                     Some(ShortcutAction::Record) | None => {
                         // Default: toggle recording (preserves backward compat)
                         let controller = app.state::<AudioController>();
+                        println!("Recording shortcut triggered. Is recording: {}", controller.is_recording());
                         if controller.is_recording() {
                             if let Ok(wav_path) = controller.stop_recording(app) {
                                 play_backend_sound(&app.app_handle(), "stop");
