@@ -509,37 +509,44 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     Ok(())
 }
 
-fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
-    if id == "toggle_recording" {
-        let controller = app.state::<AudioController>();
-        if controller.is_recording() {
-            if let Ok(wav_path) = controller.stop_recording(app) {
-                play_backend_sound(app, "stop");
-                let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
-                let _ = app.emit("recording-stopped", payload);
+/// Toggles the voice recording state.
+/// If active, stops the recording and emits the transcribed payload.
+/// If inactive, starts recording if allowed by configuration.
+fn toggle_recording(app: &tauri::AppHandle) {
+    let controller = app.state::<AudioController>();
+    if controller.is_recording() {
+        if let Ok(wav_path) = controller.stop_recording(app) {
+            play_backend_sound(app, "stop");
+            let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
+            let _ = app.emit("recording-stopped", payload);
+        }
+    } else {
+        let stt = app.state::<SttController>();
+        let config = app.state::<AppConfig>();
+        match is_recording_allowed(&config, &stt) {
+            Ok(_) => {
+                let pause_audio = is_pause_audio_enabled(app);
+                if controller.start_recording(app.clone(), pause_audio).is_ok() {
+                    play_backend_sound(app, "start");
+                    let _ = app.emit("recording-started", ());
+                }
             }
-        } else {
-            let stt = app.state::<SttController>();
-            let config = app.state::<AppConfig>();
-            match is_recording_allowed(&config, &stt) {
-                Ok(_) => {
-                    let pause_audio = is_pause_audio_enabled(app);
-                    if controller.start_recording(app.clone(), pause_audio).is_ok() {
-                        play_backend_sound(app, "start");
-                        let _ = app.emit("recording-started", ());
-                    }
+            Err(reason) => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
                 }
-                Err(reason) => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.unminimize();
-                        let _ = window.set_focus();
-                    }
-                    let _ = app.emit("recording-failed-to-start", reason);
-                }
+                let _ = app.emit("recording-failed-to-start", reason);
             }
         }
-        let _ = rebuild_tray_menu(app);
+    }
+    let _ = rebuild_tray_menu(app);
+}
+
+fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
+    if id == "toggle_recording" {
+        toggle_recording(app);
     } else if id.starts_with("nav_") {
         let view_name = id.trim_start_matches("nav_");
         if let Some(window) = app.get_webview_window("main") {
@@ -1241,6 +1248,8 @@ struct PermissionsStatus {
     accessibility: bool,
     /// The current platform identifier
     platform: String,
+    /// Whether the current session is running under Wayland (Linux only, false elsewhere)
+    is_wayland: bool,
 }
 
 /// Returns the aggregated permissions status for the current platform.
@@ -1267,9 +1276,19 @@ fn check_permissions_status() -> PermissionsStatus {
         "unknown"
     };
 
+    let is_wayland = if cfg!(target_os = "linux") {
+        std::env::var("WAYLAND_DISPLAY").is_ok()
+            || std::env::var("XDG_SESSION_TYPE")
+                .map(|v| v.to_lowercase() == "wayland")
+                .unwrap_or(false)
+    } else {
+        false
+    };
+
     PermissionsStatus {
         accessibility,
         platform: platform.to_string(),
+        is_wayland,
     }
 }
 
@@ -1370,38 +1389,7 @@ pub fn run() {
                         }
                     }
                     Some(ShortcutAction::Record) | None => {
-                        // Default: toggle recording (preserves backward compat)
-                        let controller = app.state::<AudioController>();
-                        if controller.is_recording() {
-                            if let Ok(wav_path) = controller.stop_recording(app) {
-                                play_backend_sound(app, "stop");
-                                let payload =
-                                    wav_path.unwrap_or_else(|| "Recording stopped".to_string());
-                                let _ = app.emit("recording-stopped", payload);
-                            }
-                        } else {
-                            let stt = app.state::<SttController>();
-                            let config = app.state::<AppConfig>();
-                            match is_recording_allowed(&config, &stt) {
-                                Ok(_) => {
-                                    let pause_audio = is_pause_audio_enabled(app);
-                                    if controller.start_recording(app.clone(), pause_audio).is_ok()
-                                    {
-                                        play_backend_sound(app, "start");
-                                        let _ = app.emit("recording-started", ());
-                                    }
-                                }
-                                Err(reason) => {
-                                    if let Some(window) = app.get_webview_window("main") {
-                                        let _ = window.show();
-                                        let _ = window.unminimize();
-                                        let _ = window.set_focus();
-                                    }
-                                    let _ = app.emit("recording-failed-to-start", reason);
-                                }
-                            }
-                        }
-                        let _ = rebuild_tray_menu(app);
+                        toggle_recording(app);
                     }
                 }
             }
@@ -1416,6 +1404,16 @@ pub fn run() {
     }];
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // Check if the application was invoked with the toggle argument
+            if argv.iter().any(|arg| arg == "--toggle" || arg == "toggle") {
+                toggle_recording(app);
+            } else if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(global_shortcut_plugin)

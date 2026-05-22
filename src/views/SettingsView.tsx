@@ -14,6 +14,7 @@ function formatShortcutDisplay(str: string): string {
       if (part === "Control") return "Ctrl";
       if (part === "Shift") return "Shift";
       if (part === "Alt") return "Option";
+      if (part === "Super") return "Super";
       return part;
     })
     .join(" + ");
@@ -26,6 +27,7 @@ function formatKeycapLabel(key: string): string {
   if (key === "Control") return "Ctrl";
   if (key === "Shift") return isMac ? "⇧ Shift" : "Shift";
   if (key === "Alt") return isMac ? "⌥ Opt" : "Alt";
+  if (key === "Super") return "Super";
   return key;
 }
 
@@ -64,9 +66,12 @@ export function SettingsView() {
     shortcutTargetRef.current = target;
   };
 
-  // Permission states
+  // Permission and environment states
   const [accessibilityGranted, setAccessibilityGranted] = useState(true);
   const [platform, setPlatform] = useState("unknown");
+  const [isWayland, setIsWayland] = useState(false);
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
+  const [copyShortcutError, setCopyShortcutError] = useState<string | null>(null);
 
   useEffect(() => {
     isCompletedRef.current = isCompleted;
@@ -83,6 +88,7 @@ export function SettingsView() {
     setShortcutText(saved);
     invoke("register_shortcut", { shortcutStr: saved }).catch((err) => {
       console.error("Failed to register shortcut on mount:", err);
+      setShortcutError(String(err));
     });
 
     const savedCopy =
@@ -92,6 +98,7 @@ export function SettingsView() {
     invoke("register_copy_shortcut", { shortcutStr: savedCopy }).catch(
       (err) => {
         console.error("Failed to register copy shortcut on mount:", err);
+        setCopyShortcutError(String(err));
       },
     );
 
@@ -115,16 +122,18 @@ export function SettingsView() {
     isEnabled().then(setAutostartEnabled);
   }, []);
 
-  // Check system permissions on mount and periodically
+  // Check system permissions and Wayland status on mount and periodically
   useEffect(() => {
     const checkPermissions = async () => {
       try {
         const status = await invoke<{
           accessibility: boolean;
           platform: string;
+          is_wayland: boolean;
         }>("check_permissions_status");
         setAccessibilityGranted(status.accessibility);
         setPlatform(status.platform);
+        setIsWayland(status.is_wayland);
       } catch (err) {
         console.error("Failed to check permissions:", err);
       }
@@ -145,6 +154,27 @@ export function SettingsView() {
 
     const currentTarget = shortcutTargetRef.current;
 
+    // Helper to determine active modifier keys based on target platform
+    const getModifiers = (event: KeyboardEvent) => {
+      const mods: string[] = [];
+      const isMac = platform === "macos";
+      if (isMac) {
+        if (event.metaKey || event.ctrlKey) {
+          mods.push("CommandOrControl");
+        }
+      } else {
+        if (event.ctrlKey) {
+          mods.push("Control");
+        }
+        if (event.metaKey) {
+          mods.push("Super");
+        }
+      }
+      if (event.altKey) mods.push("Alt");
+      if (event.shiftKey) mods.push("Shift");
+      return mods;
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isCompletedRef.current) {
         e.preventDefault();
@@ -160,20 +190,18 @@ export function SettingsView() {
         return;
       }
 
-      const keys: string[] = [];
-      if (e.metaKey || e.ctrlKey) {
-        keys.push("CommandOrControl");
-      } else {
-        if (e.ctrlKey) keys.push("Control");
-        if (e.metaKey) keys.push("Command");
-      }
-      if (e.altKey) keys.push("Alt");
-      if (e.shiftKey) keys.push("Shift");
+      const keys = getModifiers(e);
+      const isModifier = ["Control", "Shift", "Alt", "Meta", "OS", "Super"].includes(e.key);
 
-      const isModifier = ["Control", "Shift", "Alt", "Meta"].includes(e.key);
       if (!isModifier) {
         let mainKey = e.key;
-        if (mainKey === " ") {
+        // Normalize spacebar inputs across different layout/platform representations
+        if (
+          mainKey === " " ||
+          mainKey === "\u00a0" ||
+          mainKey === "\xa0" ||
+          mainKey === "Spacebar"
+        ) {
           mainKey = "Space";
         } else if (mainKey.length === 1) {
           mainKey = mainKey.toUpperCase();
@@ -202,8 +230,10 @@ export function SettingsView() {
             localStorage.setItem(storageKey, shortcutStr);
             if (currentTarget === "copy") {
               setCopyShortcutText(shortcutStr);
+              setCopyShortcutError(null);
             } else {
               setShortcutText(shortcutStr);
+              setShortcutError(null);
             }
             setTimeout(() => {
               setIsRecordingShortcut(false);
@@ -238,16 +268,7 @@ export function SettingsView() {
       e.preventDefault();
       e.stopPropagation();
 
-      const keys: string[] = [];
-      if (e.metaKey || e.ctrlKey) {
-        keys.push("CommandOrControl");
-      } else {
-        if (e.ctrlKey) keys.push("Control");
-        if (e.metaKey) keys.push("Command");
-      }
-      if (e.altKey) keys.push("Alt");
-      if (e.shiftKey) keys.push("Shift");
-
+      const keys = getModifiers(e);
       setActiveKeys(keys);
     };
 
@@ -257,7 +278,7 @@ export function SettingsView() {
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
     };
-  }, [isRecordingShortcut]);
+  }, [isRecordingShortcut, platform]);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -554,6 +575,36 @@ export function SettingsView() {
               {formatShortcutDisplay(copyShortcutText)}
             </div>
           </div>
+
+          {/* Wayland or registration error warnings */}
+          {(isWayland || shortcutError || copyShortcutError) && (
+            <div className="p-6 pt-0 border-t border-border">
+              <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-400 text-xs leading-relaxed flex flex-col gap-2">
+                <div className="font-semibold flex items-center gap-1.5 text-sm">
+                  <Shield size={14} /> Linux Wayland / Shortcut System Warning
+                </div>
+                {isWayland && (
+                  <p>
+                    You are running a Wayland session. Global keyboard shortcuts are restricted by Wayland security policy. 
+                    Standard hotkeys registered here may not trigger.
+                  </p>
+                )}
+                {!isWayland && (shortcutError || copyShortcutError) && (
+                  <p>
+                    Active shortcut registration failed. This is common under Linux systems without XWayland fallback.
+                  </p>
+                )}
+                <div className="mt-1 font-medium border-t border-amber-500/10 pt-2 flex flex-col gap-1">
+                  <span>How to fix:</span>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>Create a custom keyboard shortcut in your system settings (GNOME, KDE, etc.).</li>
+                    <li>Set the shortcut command to: <code className="bg-black/50 px-1 py-0.5 rounded font-mono font-bold text-amber-300">simplevoice --toggle</code></li>
+                    <li>This will reliably toggle recording using our built-in Single Instance handler.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* SECTION: System Permissions */}
