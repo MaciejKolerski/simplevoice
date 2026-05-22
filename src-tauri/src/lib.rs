@@ -259,7 +259,7 @@ fn play_backend_sound<R: tauri::Runtime, T: tauri::Manager<R>>(manager: &T, soun
 
         if !played {
             // Rodio fallback (embedded)
-            let data = match sound_type {
+            let data = match name.as_str() {
                 "start" => include_bytes!("../sounds/start.wav").as_ref(),
                 "stop" => include_bytes!("../sounds/stop.wav").as_ref(),
                 "done" => include_bytes!("../sounds/done.wav").as_ref(),
