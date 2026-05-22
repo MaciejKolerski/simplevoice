@@ -267,7 +267,7 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
     if !is_sound_feedback_enabled(app_handle) {
         return;
     }
-    if let Some(_path) = resolve_sound_file(app_handle, sound_type) {
+    if let Some(path) = resolve_sound_file(app_handle, sound_type) {
         #[cfg(target_os = "macos")]
         {
             let _ = std::process::Command::new("afplay").arg(&path).spawn();
