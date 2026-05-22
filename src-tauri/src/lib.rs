@@ -228,48 +228,11 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
 
 
 fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
+    println!("play_backend_sound called for '{}'", sound_type);
     if !is_sound_feedback_enabled(app_handle) {
-        println!("Sound feedback disabled in config for {}", sound_type);
+        println!("Sound feedback disabled in config");
         return;
     }
-    if let Some(path) = resolve_sound_file(app_handle, sound_type) {
-        println!("Playing sound '{}' using path: {:?}", sound_type, path);
-        #[cfg(target_os = "macos")]
-        {
-            let _ = std::process::Command::new("afplay").arg(&path).spawn();
-            println!("Launched afplay for {}", sound_type);
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let name = sound_type.to_string();
-            let data = match sound_type {
-                "start" => include_bytes!("../sounds/start.wav").as_ref(),
-                "stop" => include_bytes!("../sounds/stop.wav").as_ref(),
-                "done" => include_bytes!("../sounds/done.wav").as_ref(),
-                _ => return,
-            };
-            let _ = tauri::async_runtime::spawn_blocking(move || {
-                if name == "start" || name == "stop" {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-                let cursor = Cursor::new(data);
-                if let Ok(source) = Decoder::new(cursor) {
-                    if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
-                        if let Ok(sink) = rodio::Sink::try_new(&handle) {
-                            sink.set_volume(0.8);
-                            sink.append(source);
-                            sink.sleep_until_end();
-                            println!("Sound {} finished", name);
-                        }
-                    }
-                }
-            });
-        }
-    } else {
-        println!("Could not resolve sound file for: {}", sound_type);
-    }
-}
-
 
     let fname = match sound_type {
         "start" => "start.wav",
@@ -278,21 +241,20 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         _ => return,
     };
 
-    // Load and play real WAV from bundled sounds/ folder (works on Niri)
     let mut sound_path = None;
 
-    // 1. Bundled resources (release + some dev builds)
     if let Ok(res_dir) = app_handle.path().resource_dir() {
         let p = res_dir.join("sounds").join(fname);
+        println!("Checking bundled path: {:?} (exists: {})", p, p.exists());
         if p.exists() {
             sound_path = Some(p);
         }
     }
 
-    // 2. Dev mode fallback (src-tauri/sounds)
     if sound_path.is_none() {
         if let Ok(current) = std::env::current_dir() {
             let p = current.join("src-tauri").join("sounds").join(fname);
+            println!("Checking dev path: {:?} (exists: {})", p, p.exists());
             if p.exists() {
                 sound_path = Some(p);
             }
@@ -300,34 +262,45 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
     }
 
     if let Some(path) = sound_path {
-        std::thread::spawn(move || {
-            if let Ok(file) = File::open(&path) {
-                let reader = BufReader::new(file);
-                if let Ok(source) = Decoder::new(reader) {
-                    if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
-                        let sink = rodio::Sink::try_new(&handle).unwrap();
-                        sink.append(source);
-                        sink.sleep_until_end();
+        println!("Found sound file for {}: {:?}", sound_type, path);
+        #[cfg(target_os = "macos")]
+        {
+            println!("Using afplay on macOS for {}", sound_type);
+            let _ = std::process::Command::new("afplay").arg(&path).spawn();
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            std::thread::spawn(move || {
+                if let Ok(file) = File::open(&path) {
+                    let reader = BufReader::new(file);
+                    if let Ok(source) = Decoder::new(reader) {
+                        if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                            let sink = rodio::Sink::try_new(&handle).unwrap();
+                            sink.append(source);
+                            sink.sleep_until_end();
+                            println!("Sound {} finished", sound_type);
+                        }
                     }
                 }
+            });
+        }
+    } else {
+        println!("Sound file for {} not found - using sine fallback", sound_type);
+        let freq = match sound_type {
+            "start" => 880.0,
+            "stop" => 520.0,
+            "done" => 987.0,
+            _ => 660.0,
+        };
+        std::thread::spawn(move || {
+            if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                let sink = rodio::Sink::try_new(&handle).unwrap();
+                sink.append(rodio::source::SineWave::new(freq).take_duration(std::time::Duration::from_millis(200)));
+                sink.sleep_until_end();
+                println!("Sine fallback played for {}", sound_type);
             }
         });
     }
-
-    // Fallback sine wave if WAV not found
-    let freq = match sound_type {
-        "start" => 880.0,
-        "stop" => 520.0,
-        "done" => 987.0,
-        _ => 660.0,
-    };
-    std::thread::spawn(move || {
-        if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
-            let sink = rodio::Sink::try_new(&handle).unwrap();
-            sink.append(rodio::source::SineWave::new(freq).take_duration(std::time::Duration::from_millis(150)));
-            sink.sleep_until_end();
-        }
-    });
 }
 
 #[tauri::command]
