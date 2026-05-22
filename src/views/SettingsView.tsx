@@ -314,14 +314,33 @@ export function SettingsView() {
     }
   };
 
-  const handleSoundToggle = (checked: boolean) => {
-    setSoundEnabled(checked);
-    localStorage.setItem("sound_feedback_enabled", String(checked));
+  const saveConfig = async () => {
+    const config = {
+      sound_feedback_enabled: soundEnabled,
+      pause_audio_on_record: pauseAudioEnabled,
+      vad_enabled: vadEnabled,
+      asr_language: asrLanguage,
+      asr_engine: localStorage.getItem("asr_engine") || "local",
+      asr_provider: localStorage.getItem("asr_provider") || "openai",
+      asr_model: localStorage.getItem("asr_model") || "whisper-1",
+    };
+    try {
+      await invoke("save_config", { config: JSON.stringify(config) });
+    } catch (err) {
+      console.error("Failed to save config:", err);
+    }
   };
 
-  const handlePauseAudioToggle = (checked: boolean) => {
+  const handleSoundToggle = async (checked: boolean) => {
+    setSoundEnabled(checked);
+    localStorage.setItem("sound_feedback_enabled", String(checked));
+    await saveConfig();
+  };
+
+  const handlePauseAudioToggle = async (checked: boolean) => {
     setPauseAudioEnabled(checked);
     localStorage.setItem("pause_audio_on_record", String(checked));
+    await saveConfig();
   };
 
   const handleAsrLanguageChange = (val: string) => {
