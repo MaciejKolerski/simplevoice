@@ -1,0 +1,27 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "simplevoice-app",
+        "width": 800,
+        "height": 600,
+        "minWidth": 800,
+        "minHeight": 600,
+        "maxWidth": 1200,
+        "maxHeight": 900,
+        "resizable": true,
+        "fullscreen": false,
+        "maximizable": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "transparent": false,
+        "trafficLightPosition": {
+          "x": 12,
+          "y": 21
+        }
+      }
+    ]
+  }
+}

@@ -272,6 +272,21 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         {
             let _ = std::process::Command::new("afplay").arg(&path).spawn();
         }
+        #[cfg(not(target_os = "macos"))]
+        {
+            std::thread::spawn(move || {
+                if let Ok(file) = std::fs::File::open(&path) {
+                    if let Ok(source) = rodio::Decoder::new(std::io::BufReader::new(file)) {
+                        if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                            if let Ok(sink) = rodio::Sink::try_new(&handle) {
+                                sink.append(source);
+                                sink.sleep_until_end();
+                            }
+                        }
+                    }
+                }
+            });
+        }
     }
 }
 
@@ -499,6 +514,7 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
         let controller = app.state::<AudioController>();
         if controller.is_recording() {
             if let Ok(wav_path) = controller.stop_recording(app) {
+                play_backend_sound(app, "stop");
                 let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
                 let _ = app.emit("recording-stopped", payload);
             }
@@ -509,6 +525,7 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
                 Ok(_) => {
                     let pause_audio = is_pause_audio_enabled(app);
                     if controller.start_recording(app.clone(), pause_audio).is_ok() {
+                        play_backend_sound(app, "start");
                         let _ = app.emit("recording-started", ());
                     }
                 }
