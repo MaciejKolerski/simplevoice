@@ -231,7 +231,8 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
 
     let sound_type = sound_type.to_string();
 
-    // Cross-platform beep using rodio (no external dependencies, works on Niri/Wayland)
+    // Cross-platform beep using rodio (pure Rust, reliable on Niri/Wayland/PipeWire)
+    // Uses take_duration() to prevent infinite tone / high-pitched noise
     std::thread::spawn(move || {
         let (_stream, stream_handle) = match rodio::OutputStream::try_default() {
             Ok(stream) => stream,
@@ -244,22 +245,22 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
 
         match sound_type.as_str() {
             "start" => {
-                sink.append(rodio::source::SineWave::new(880.0));
-                std::thread::sleep(std::time::Duration::from_millis(80));
+                sink.append(rodio::source::SineWave::new(880.0).take_duration(std::time::Duration::from_millis(80)));
+                sink.sleep_until_end();
             }
             "stop" => {
-                sink.append(rodio::source::SineWave::new(660.0));
-                std::thread::sleep(std::time::Duration::from_millis(120));
+                sink.append(rodio::source::SineWave::new(520.0).take_duration(std::time::Duration::from_millis(150)));
+                sink.sleep_until_end();
             }
             "done" => {
-                sink.append(rodio::source::SineWave::new(1100.0));
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                sink.append(rodio::source::SineWave::new(1320.0));
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                sink.append(rodio::source::SineWave::new(987.0).take_duration(std::time::Duration::from_millis(80)));
+                sink.sleep_until_end();
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                sink.append(rodio::source::SineWave::new(1318.0).take_duration(std::time::Duration::from_millis(120)));
+                sink.sleep_until_end();
             }
             _ => {}
         }
-        sink.sleep_until_end();
     });
 }
 
