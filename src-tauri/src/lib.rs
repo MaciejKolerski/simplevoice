@@ -15,9 +15,6 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use tauri::State;
-use rodio::{Decoder, Source};
-use std::fs::File;
-use std::io::BufReader;
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
@@ -205,39 +202,32 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
     };
     let config_path = app_local_data.join("config.json");
     if !config_path.exists() {
-        println!("Pause audio config file not found - defaulting to false");
         return false;
     }
     let content = match std::fs::read_to_string(&config_path) {
         Ok(s) => s,
-        Err(_) => {
-            println!("Could not read pause audio config - defaulting to false");
-            return false;
-        }
+        Err(_) => return false,
     };
     let json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(v) => v,
-        Err(_) => {
-            println!("Could not parse pause audio config - defaulting to false");
-            return false;
-        }
+        Err(_) => return false,
     };
     if let Some(val) = json.get("pause_audio_on_record") {
-        let value = if let Some(b) = val.as_bool() {
-            b
-        } else if let Some(s) = val.as_str() {
-            s == "true"
-        } else {
-            false
-        };
-        println!("pause_audio_on_record = {}", value);
-        return value;
+        if let Some(b) = val.as_bool() {
+            return b;
+        }
+        if let Some(s) = val.as_str() {
+            return s == "true";
+        }
     }
-    println!("pause_audio_on_record not found in config - defaulting to false");
     false
 }
 
 /// Resolves the sound file for the given event type.
+/// Looks for start.wav / stop.wav / done.wav inside the bundled resources:
+///   <app>.app/Contents/Resources/sounds/  (macOS bundle)
+///   or next to the binary in dev mode.
+/// Falls back to a built-in macOS system sound if the file is not present.
 fn resolve_sound_file(
     app_handle: &tauri::AppHandle,
     sound_type: &str,
@@ -249,6 +239,7 @@ fn resolve_sound_file(
         _ => return None,
     };
 
+    // Check bundled resources (works in both dev and release builds)
     if let Ok(res_dir) = app_handle.path().resource_dir() {
         let bundled = res_dir.join("sounds").join(fname);
         if bundled.exists() {
@@ -256,6 +247,7 @@ fn resolve_sound_file(
         }
     }
 
+    // Fallback: built-in macOS system sounds
     #[cfg(target_os = "macos")]
     {
         let fallback = match sound_type {
@@ -267,42 +259,19 @@ fn resolve_sound_file(
         return Some(std::path::PathBuf::from(fallback));
     }
 
+    #[allow(unreachable_code)]
     None
 }
 
-
 fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
-    println!("play_backend_sound called for: {}", sound_type);
     if !is_sound_feedback_enabled(app_handle) {
-        println!("Sound feedback disabled in config");
         return;
     }
-
     if let Some(path) = resolve_sound_file(app_handle, sound_type) {
-        println!("Found sound for {}: {:?}", sound_type, path);
         #[cfg(target_os = "macos")]
         {
-            println!("Launching afplay for {}", sound_type);
             let _ = std::process::Command::new("afplay").arg(&path).spawn();
         }
-        #[cfg(target_os = "linux")]
-        {
-            println!("Launching paplay/aplay for {}", sound_type);
-            let _ = std::process::Command::new("paplay")
-                .arg(&path)
-                .spawn()
-                .or_else(|_| std::process::Command::new("aplay").arg("-q").arg(&path).spawn());
-        }
-        #[cfg(target_os = "windows")]
-        {
-            println!("Launching PowerShell for {}", sound_type);
-            let _ = std::process::Command::new("powershell")
-                .arg("-c")
-                .arg(format!("(New-Object Media.SoundPlayer '{}').PlaySync()", path.display()))
-                .spawn();
-        }
-    } else {
-        println!("Could not resolve sound for {}", sound_type);
     }
 }
 
@@ -313,7 +282,6 @@ fn start_recording(
     config: tauri::State<'_, AppConfig>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    println!("start_recording command called");
     is_recording_allowed(&config, &stt)?;
     let pause_audio = is_pause_audio_enabled(&app_handle);
     controller.start_recording(app_handle.clone(), pause_audio)?;
@@ -327,7 +295,6 @@ fn stop_recording(
     controller: tauri::State<'_, AudioController>,
     app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
-    println!("stop_recording command called");
     let res = controller.stop_recording(&app_handle);
     if res.is_ok() {
         play_backend_sound(&app_handle, "stop");
@@ -582,8 +549,7 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
             if !t.trim().is_empty() {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(t.clone());
-                                     play_backend_sound(&app.app_handle(), "done");
-
+                    play_backend_sound(app, "done");
                     let _ = app.emit("copy-last-success", t.clone());
                 }
             }
@@ -998,9 +964,6 @@ async fn transcribe_audio(
         .await
         .map_err(|e| e.to_string())?
     }
-
-
-
 }
 
 #[tauri::command]
@@ -1362,7 +1325,6 @@ fn paste_text() -> Result<(), String> {
 pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
-            println!("Global shortcut handler triggered for shortcut: {:?}, state: {:?}", shortcut, event.state());
             if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                 println!("Global shortcut pressed: {:?}", shortcut);
 
@@ -1384,7 +1346,7 @@ pub fn run() {
                             if !t.trim().is_empty() {
                                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                                     let _ = clipboard.set_text(t.clone());
-                                    play_backend_sound(&app.app_handle(), "done");
+                                    play_backend_sound(app, "done");
                                     let _ = app.emit("copy-last-success", t.clone());
                                 }
                             }
@@ -1393,10 +1355,9 @@ pub fn run() {
                     Some(ShortcutAction::Record) | None => {
                         // Default: toggle recording (preserves backward compat)
                         let controller = app.state::<AudioController>();
-                        println!("Recording shortcut triggered. Is recording: {}", controller.is_recording());
                         if controller.is_recording() {
                             if let Ok(wav_path) = controller.stop_recording(app) {
-                                play_backend_sound(&app.app_handle(), "stop");
+                                play_backend_sound(app, "stop");
                                 let payload =
                                     wav_path.unwrap_or_else(|| "Recording stopped".to_string());
                                 let _ = app.emit("recording-stopped", payload);
@@ -1409,7 +1370,7 @@ pub fn run() {
                                     let pause_audio = is_pause_audio_enabled(app);
                                     if controller.start_recording(app.clone(), pause_audio).is_ok()
                                     {
-                                        play_backend_sound(&app.app_handle(), "start");
+                                        play_backend_sound(app, "start");
                                         let _ = app.emit("recording-started", ());
                                     }
                                 }
