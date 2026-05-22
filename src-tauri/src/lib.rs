@@ -272,6 +272,21 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         {
             let _ = std::process::Command::new("afplay").arg(&path).spawn();
         }
+        #[cfg(target_os = "linux")]
+        {
+            // On Linux try paplay (PulseAudio/PipeWire) then aplay
+            let _ = std::process::Command::new("paplay")
+                .arg(&path)
+                .spawn()
+                .or_else(|_| std::process::Command::new("aplay").arg("-q").arg(&path).spawn());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("powershell")
+                .arg("-c")
+                .arg(format!("(New-Object Media.SoundPlayer '{}').PlaySync()", path.display()))
+                .spawn();
+        }
     }
 }
 
