@@ -569,7 +569,8 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
             if !t.trim().is_empty() {
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(t.clone());
-                    play_backend_sound(app, "done");
+                                     play_backend_sound(&app.app_handle(), "done");
+
                     let _ = app.emit("copy-last-success", t.clone());
                 }
             }
@@ -1369,7 +1370,7 @@ pub fn run() {
                             if !t.trim().is_empty() {
                                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                                     let _ = clipboard.set_text(t.clone());
-                                    play_backend_sound(app, "done");
+                                    play_backend_sound(&app.app_handle(), "done");
                                     let _ = app.emit("copy-last-success", t.clone());
                                 }
                             }
@@ -1380,7 +1381,7 @@ pub fn run() {
                         let controller = app.state::<AudioController>();
                         if controller.is_recording() {
                             if let Ok(wav_path) = controller.stop_recording(app) {
-                                play_backend_sound(app, "stop");
+                                play_backend_sound(&app.app_handle(), "stop");
                                 let payload =
                                     wav_path.unwrap_or_else(|| "Recording stopped".to_string());
                                 let _ = app.emit("recording-stopped", payload);
@@ -1393,7 +1394,7 @@ pub fn run() {
                                     let pause_audio = is_pause_audio_enabled(app);
                                     if controller.start_recording(app.clone(), pause_audio).is_ok()
                                     {
-                                        play_backend_sound(app, "start");
+                                        play_backend_sound(&app.app_handle(), "start");
                                         let _ = app.emit("recording-started", ());
                                     }
                                 }
