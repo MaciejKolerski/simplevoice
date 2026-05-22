@@ -3610,6 +3610,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_cpus"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
+dependencies = [
+ "hermit-abi 0.5.2",
+ "libc",
+]
+
+[[package]]
 name = "num_enum"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5424,16 +5434,20 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 name = "simplevoice-app"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "arboard",
+ "base64 0.22.1",
  "chrono",
  "core-graphics",
  "cpal",
+ "crossbeam-channel",
  "enigo",
  "hound",
  "keyring",
  "macos-accessibility-client",
  "media-remote",
  "ndarray",
+ "num_cpus",
  "ort",
  "reqwest 0.12.28",
  "ringbuf",
@@ -5448,6 +5462,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
  "tauri-plugin-sql",
+ "thiserror 2.0.18",
  "tokio",
  "whisper-rs",
 ]

@@ -1,3 +1,4 @@
+use num_cpus;
 use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig};
 use std::path::Path;
 
@@ -13,7 +14,8 @@ impl SherpaEngine {
         }
 
         let mut config = OfflineRecognizerConfig::default();
-        config.model_config.num_threads = 4;
+        let n_threads = (num_cpus::get() as i32).max(2) / 2;
+        config.model_config.num_threads = n_threads;
         config.model_config.debug = false;
 
         // Auto-detect tokens.txt

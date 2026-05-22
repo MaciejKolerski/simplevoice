@@ -86,8 +86,8 @@ fn platform_resume(paused: &[String]) {
     }
 }
 
-/// Uses PowerShell + WinRT to check if any media session is currently playing.
-/// Falls back to scanning for known media-player processes if WinRT fails.
+/// Uses WinRT (GlobalSystemMediaTransportControls) + single PowerShell call
+/// to detect if any media is playing. Much faster than previous per-process loop.
 #[cfg(target_os = "windows")]
 fn windows_is_media_playing() -> bool {
     // ── Primary: WinRT GlobalSystemMediaTransportControls (Windows 10 1903+) ──
@@ -133,42 +133,33 @@ Write-Output '0'
         }
     }
 
-    // ── Fallback: check for well-known media player processes ─────────────────
+    // ── Fallback: single PowerShell call to check multiple known media players ──
     let known_procs = [
-        "Spotify",
-        "vlc",
-        "wmplayer",
-        "groove",
-        "msedge",
-        "chrome",
-        "firefox",
-        "foobar2000",
-        "winamp",
-        "musicbee",
-        "aimp",
-        "iTunes",
-        "AppleMusic",
+        "Spotify", "vlc", "wmplayer", "groove", "msedge", "chrome", "firefox",
+        "foobar2000", "winamp", "musicbee", "aimp", "iTunes", "AppleMusic",
     ];
 
-    for proc_name in &known_procs {
-        let found = std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                &format!(
-                    "if (Get-Process -Name '{}' -ErrorAction SilentlyContinue) {{ Write-Output '1' }} else {{ Write-Output '0' }}",
-                    proc_name
-                ),
-            ])
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "1")
-            .unwrap_or(false);
+    let proc_list = known_procs.join(",");
+    let fallback_script = format!(
+        "Get-Process -Name {} -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Name",
+        proc_list
+    );
 
-        if found {
-            return true;
+    let fallback_result = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &fallback_script,
+        ])
+        .output();
+
+    if let Ok(output) = fallback_result {
+        let text = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+        if !text.is_empty() {
+            return true; // any of the known media players is running
         }
     }
 

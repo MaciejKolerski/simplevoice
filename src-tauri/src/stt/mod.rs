@@ -49,7 +49,8 @@ impl EngineAdapter for WhisperEngine {
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_temperature(0.0);
-        params.set_n_threads(8);
+        let n_threads = (num_cpus::get() as i32).max(2) / 2;
+        params.set_n_threads(n_threads);
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_suppress_blank(false);
@@ -57,7 +58,6 @@ impl EngineAdapter for WhisperEngine {
         params.set_no_timestamps(false);
         params.set_logprob_thold(-1.0);
         params.set_no_speech_thold(0.6);
-        params.set_single_segment(true);
 
         state
             .full(params, samples)
@@ -117,7 +117,9 @@ impl SttController {
             let engine = sherpa::SherpaEngine::new(model_path)?;
             Box::new(engine)
         } else if model_path.ends_with(".onnx") {
-            Box::new(parakeet::ParakeetEngine::new(model_path))
+            let mut parakeet = parakeet::ParakeetEngine::new();
+            parakeet.initialize(model_path)?;
+            Box::new(parakeet)
         } else {
             let mut whisper = WhisperEngine::new();
             whisper.initialize(model_path)?;
