@@ -229,8 +229,47 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
 
 fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
     if !is_sound_feedback_enabled(app_handle) {
+        println!("Sound feedback disabled in config for {}", sound_type);
         return;
     }
+    if let Some(path) = resolve_sound_file(app_handle, sound_type) {
+        println!("Playing sound '{}' using path: {:?}", sound_type, path);
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("afplay").arg(&path).spawn();
+            println!("Launched afplay for {}", sound_type);
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let name = sound_type.to_string();
+            let data = match sound_type {
+                "start" => include_bytes!("../sounds/start.wav").as_ref(),
+                "stop" => include_bytes!("../sounds/stop.wav").as_ref(),
+                "done" => include_bytes!("../sounds/done.wav").as_ref(),
+                _ => return,
+            };
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                if name == "start" || name == "stop" {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                let cursor = Cursor::new(data);
+                if let Ok(source) = Decoder::new(cursor) {
+                    if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                        if let Ok(sink) = rodio::Sink::try_new(&handle) {
+                            sink.set_volume(0.8);
+                            sink.append(source);
+                            sink.sleep_until_end();
+                            println!("Sound {} finished", name);
+                        }
+                    }
+                }
+            });
+        }
+    } else {
+        println!("Could not resolve sound file for: {}", sound_type);
+    }
+}
+
 
     let fname = match sound_type {
         "start" => "start.wav",
