@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown } from "lucide-react";
 
@@ -23,11 +23,42 @@ export function TranscriptionsView() {
     useState<TranscriptionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // Play audio using native pw-play on Linux (avoids GStreamer in WebView)
-  const playRecording = (wavPath: string) => {
-    invoke("play_wav", { path: wavPath }).catch((err) =>
-      console.error("Failed to play audio:", err)
-    );
+  const [audioCache, setAudioCache] = useState<Record<string, string>>({});
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Load audio as base64 when expanded
+  useEffect(() => {
+    if (expandedId && !audioCache[expandedId]) {
+      const item = history.find((h) => h.id === expandedId);
+      if (item?.wav_path) {
+        invoke<string>("get_audio_base64", { path: item.wav_path })
+          .then((base64) => {
+            setAudioCache((prev) => ({ ...prev, [expandedId]: base64 }));
+          })
+          .catch((err) => console.error("Failed to load audio:", err));
+      }
+    }
+  }, [expandedId, history, audioCache]);
+
+  const togglePlayback = (id: string, wavPath: string) => {
+    if (currentlyPlaying === id) {
+      audioRef.current?.pause();
+      setCurrentlyPlaying(null);
+    } else {
+      const item = history.find((h) => h.id === id);
+      if (item && audioCache[id]) {
+        const audio = new Audio(`data:audio/wav;base64,${audioCache[id]}`);
+        audioRef.current = audio;
+        audio.play().then(() => {
+          setCurrentlyPlaying(id);
+          audio.onended = () => setCurrentlyPlaying(null);
+        });
+      } else {
+        // Fallback to native pw-play if base64 not loaded yet
+        invoke("play_wav", { path: wavPath });
+      }
+    }
   };
 
   const loadHistory = async (reset = false) => {
@@ -236,15 +267,38 @@ export function TranscriptionsView() {
 
                 {isExpanded && item.wav_path && (
                   <div className="mt-4 pt-4 border-t border-border/50">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        playRecording(item.wav_path!);
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-lg text-sm transition-colors"
-                    >
-                      ▶️ Play Recording
-                    </button>
+                    <div className="flex items-center gap-3 bg-surface-active rounded-xl p-3">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePlayback(item.id, item.wav_path!);
+                        }}
+                        className="w-9 h-9 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-transform flex-shrink-0"
+                      >
+                        {currentlyPlaying === item.id ? "❚❚" : "▶"}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-muted mb-1 font-mono">
+                          {item.duration_sec
+                            ? `${item.duration_sec.toFixed(1)}s`
+                            : "—"}
+                        </div>
+                        <div className="h-1 bg-border rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-white transition-all duration-200"
+                            style={{
+                              width:
+                                currentlyPlaying === item.id ? "65%" : "0%",
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <span className="text-[10px] font-mono text-muted whitespace-nowrap">
+                        {currentlyPlaying === item.id ? "PLAYING" : "READY"}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
