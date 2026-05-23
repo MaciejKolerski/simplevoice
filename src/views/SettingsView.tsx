@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronDown, Cpu, Shield, ExternalLink, Keyboard } from "lucide-react";
+import { ChevronDown, Cpu, Shield, ExternalLink, Keyboard, Check } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
@@ -69,9 +69,10 @@ export function SettingsView() {
   // Permission and environment states
   const [accessibilityGranted, setAccessibilityGranted] = useState(true);
   const [platform, setPlatform] = useState("unknown");
-  const [isWayland, setIsWayland] = useState(false);
+  const [desktopEnv, setDesktopEnv] = useState("none");
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [copyShortcutError, setCopyShortcutError] = useState<string | null>(null);
+  const [showManualWMInstructions, setShowManualWMInstructions] = useState(false);
 
   useEffect(() => {
     isCompletedRef.current = isCompleted;
@@ -130,10 +131,11 @@ export function SettingsView() {
           accessibility: boolean;
           platform: string;
           is_wayland: boolean;
+          desktop_env: string;
         }>("check_permissions_status");
         setAccessibilityGranted(status.accessibility);
         setPlatform(status.platform);
-        setIsWayland(status.is_wayland);
+        setDesktopEnv(status.desktop_env);
       } catch (err) {
         console.error("Failed to check permissions:", err);
       }
@@ -576,29 +578,129 @@ export function SettingsView() {
             </div>
           </div>
 
-          {/* Wayland or registration error warnings */}
-          {(isWayland || shortcutError || copyShortcutError) && (
+          {/* Linux Native / Wayland warning block */}
+          {platform === "linux" && (
             <div className="p-6 pt-0 border-t border-border">
-              <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-400 text-xs leading-relaxed flex flex-col gap-2">
-                <div className="font-semibold flex items-center gap-1.5 text-sm">
-                  <Shield size={14} /> Linux Wayland / Shortcut System Warning
-                </div>
-                {isWayland && (
+              {["niri", "hyprland", "sway", "i3"].includes(desktopEnv) ? (
+                <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-xs leading-relaxed flex flex-col gap-1.5">
+                  <div className="font-semibold flex items-center gap-1.5 text-sm">
+                    <Check size={14} /> Automatic Window Manager Shortcuts Active
+                  </div>
                   <p>
-                    You are running a Wayland session (Niri). Global keyboard shortcuts are restricted by Wayland security model.
-                    The built-in registration often doesn't work reliably on Niri.
+                    Your shortcuts were automatically written to your <strong>{desktopEnv.toUpperCase()}</strong> configuration file.
+                    They work globally (across all native Wayland & X11 windows) and apply immediately!
                   </p>
-                )}
-                <div className="mt-1 font-medium border-t border-amber-500/10 pt-2 flex flex-col gap-1">
-                  <span>Best fix for Niri (recommended):</span>
-                  <ul className="list-disc pl-4 space-y-1 text-amber-300">
-                    <li>Open your Niri config: <code className="bg-black/50 px-1 py-0.5 rounded font-mono">~/.config/niri/config.kdl</code></li>
-                    <li>Add this bind:</li>
-                    <li className="pl-6"><code className="bg-black/50 px-1 py-0.5 rounded font-mono">binds { "Mod+Space" { spawn "simplevoice" "--toggle"; } }</code></li>
-                    <li>Restart Niri (Mod+Shift+E or log out/in)</li>
-                  </ul>
-                  <p className="text-[10px] mt-2 opacity-75">This is the most reliable way on Niri. The app's built-in shortcuts have Wayland limitations.</p>
+                  <button
+                    onClick={() => setShowManualWMInstructions(!showManualWMInstructions)}
+                    className="text-left text-[11px] text-amber-400 hover:text-amber-300 underline font-medium mt-1 cursor-pointer select-none transition-colors bg-transparent border-0 p-0"
+                  >
+                    {showManualWMInstructions ? "Hide details / config path" : "Show config path & configuration details"}
+                  </button>
+                  
+                  {showManualWMInstructions && (
+                    <div className="mt-3 font-medium border-t border-emerald-500/10 pt-3 flex flex-col gap-3">
+                      <p className="text-muted text-[11px]">
+                        The app automatically appended custom bind entries to your configuration file. Here is the format:
+                      </p>
+                      
+                      {desktopEnv === "niri" && (
+                        <div className="flex flex-col gap-1">
+                          <span className="font-semibold text-amber-300">Niri (~/.config/niri/config.kdl):</span>
+                          <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
+{`binds {
+    "Mod+Space" { spawn "simplevoice" "--toggle"; }
+    "Mod+Shift+C" { spawn "simplevoice" "--copy-last"; }
+}`}
+                          </pre>
+                        </div>
+                      )}
+
+                      {desktopEnv === "hyprland" && (
+                        <div className="flex flex-col gap-1">
+                          <span className="font-semibold text-amber-300">Hyprland (~/.config/hypr/hyprland.conf):</span>
+                          <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
+{`bind = SUPER, Space, exec, simplevoice --toggle
+bind = SUPER_SHIFT, C, exec, simplevoice --copy-last`}
+                          </pre>
+                        </div>
+                      )}
+
+                      {(desktopEnv === "sway" || desktopEnv === "i3") && (
+                        <div className="flex flex-col gap-1">
+                          <span className="font-semibold text-amber-300">Sway / i3 (~/.config/sway/config or ~/.config/i3/config):</span>
+                          <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
+{`bindsym Mod4+Space exec simplevoice --toggle
+bindsym Mod4+Shift+c exec simplevoice --copy-last`}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
+              ) : ["gnome", "kde", "xfce", "cinnamon", "mate"].includes(desktopEnv) ? (
+                <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-xs leading-relaxed flex flex-col gap-1.5">
+                  <div className="font-semibold flex items-center gap-1.5 text-sm">
+                    <Check size={14} /> Native Linux Shortcut Integration Active
+                  </div>
+                  <p>
+                    Your shortcuts are registered directly in the <strong>{
+                      desktopEnv === "gnome" ? "GNOME" :
+                      desktopEnv === "kde" ? "KDE Plasma" :
+                      desktopEnv === "xfce" ? "XFCE" :
+                      desktopEnv === "cinnamon" ? "Cinnamon" : "MATE"
+                    }</strong> keyboard configuration using built-in settings. They apply immediately!
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-400 text-xs leading-relaxed flex flex-col gap-2">
+                  <div className="font-semibold flex items-center gap-1.5 text-sm">
+                    <Shield size={14} /> Linux {desktopEnv === "unknown" ? "Window Manager" : desktopEnv.toUpperCase()} / Shortcut Notice
+                  </div>
+                  <p>
+                    Global hotkeys cannot be registered automatically under your desktop environment's security model.
+                    For the best experience, add these custom binds to your config file:
+                  </p>
+                  
+                  <div className="mt-1 font-medium border-t border-amber-500/10 pt-2 flex flex-col gap-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="font-semibold text-amber-300">Niri (~/.config/niri/config.kdl):</span>
+                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
+{`binds {
+    "Mod+Space" { spawn "simplevoice" "--toggle"; }
+    "Mod+Shift+C" { spawn "simplevoice" "--copy-last"; }
+}`}
+                      </pre>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <span className="font-semibold text-amber-300">Hyprland (~/.config/hypr/hyprland.conf):</span>
+                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
+{`bind = SUPER, Space, exec, simplevoice --toggle
+bind = SUPER_SHIFT, C, exec, simplevoice --copy-last`}
+                      </pre>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <span className="font-semibold text-amber-300">Sway / i3 (~/.config/sway/config or ~/.config/i3/config):</span>
+                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
+{`bindsym Mod4+Space exec simplevoice --toggle
+bindsym Mod4+Shift+c exec simplevoice --copy-last`}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Fallback generic error warning if registration fails on other platforms */}
+          {platform !== "linux" && (shortcutError || copyShortcutError) && (
+            <div className="p-6 pt-0 border-t border-border">
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs leading-relaxed flex flex-col gap-2">
+                <div className="font-semibold flex items-center gap-1.5 text-sm">
+                  <Shield size={14} /> Shortcut Registration Error
+                </div>
+                <p>{shortcutError || copyShortcutError}</p>
               </div>
             </div>
           )}

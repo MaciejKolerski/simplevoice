@@ -1,5 +1,6 @@
 mod audio;
 mod error;
+mod linux_shortcuts;
 mod media_control;
 mod stt;
 use audio::AudioController;
@@ -593,21 +594,29 @@ fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
 /// Re-registers all shortcuts in the registry with the OS.
 /// Called whenever any shortcut changes.
 fn sync_all_shortcuts(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    use tauri_plugin_global_shortcut::GlobalShortcutExt;
-
-    let global_shortcut = app_handle.global_shortcut();
-    let _ = global_shortcut.unregister_all();
-
-    let registry = app_handle.state::<ShortcutRegistry>();
-    let entries = registry.entries.lock().unwrap();
-
-    for entry in entries.iter() {
-        global_shortcut
-            .register(entry.shortcut)
-            .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app_handle;
+        Ok(())
     }
 
-    Ok(())
+    #[cfg(not(target_os = "linux"))]
+    {
+        use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+        let global_shortcut = app_handle.global_shortcut();
+        let _ = global_shortcut.unregister_all();
+
+        let registry = app_handle.state::<ShortcutRegistry>();
+        let entries = registry.entries.lock().unwrap();
+
+        for entry in entries.iter() {
+            global_shortcut
+                .register(entry.shortcut)
+                .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+        }
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -629,7 +638,28 @@ fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Resu
     }
 
     drop(entries);
-    sync_all_shortcuts(&app_handle)?;
+    let sync_res = sync_all_shortcuts(&app_handle);
+
+    #[cfg(target_os = "linux")]
+    {
+        if shortcut_str.trim().is_empty() {
+            let _ = linux_shortcuts::unregister_native_shortcut("toggle");
+        } else {
+            let exe_path = std::env::current_exe()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let toggle_cmd = format!("\"{}\" --toggle", exe_path);
+            let _ = linux_shortcuts::register_native_shortcut(
+                "SimpleVoice Toggle Recording",
+                &toggle_cmd,
+                &shortcut_str,
+                "toggle",
+            );
+        }
+    }
+
+    sync_res?;
 
     println!(
         "Successfully registered global recording shortcut: {}",
@@ -660,7 +690,28 @@ fn register_copy_shortcut(
     }
 
     drop(entries);
-    sync_all_shortcuts(&app_handle)?;
+    let sync_res = sync_all_shortcuts(&app_handle);
+
+    #[cfg(target_os = "linux")]
+    {
+        if shortcut_str.trim().is_empty() {
+            let _ = linux_shortcuts::unregister_native_shortcut("copy");
+        } else {
+            let exe_path = std::env::current_exe()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let copy_cmd = format!("\"{}\" --copy-last", exe_path);
+            let _ = linux_shortcuts::register_native_shortcut(
+                "SimpleVoice Copy Last Transcription",
+                &copy_cmd,
+                &shortcut_str,
+                "copy",
+            );
+        }
+    }
+
+    sync_res?;
 
     println!(
         "Successfully registered global copy-last shortcut: {}",
@@ -1284,6 +1335,10 @@ struct PermissionsStatus {
     platform: String,
     /// Whether the current session is running under Wayland (Linux only, false elsewhere)
     is_wayland: bool,
+    /// Detected Linux desktop environment (e.g. "gnome", "kde", "unknown", or "none" for non-Linux)
+    desktop_env: String,
+    /// The active GDK backend
+    gdk_backend: String,
 }
 
 /// Returns the aggregated permissions status for the current platform.
@@ -1319,10 +1374,20 @@ fn check_permissions_status() -> PermissionsStatus {
         false
     };
 
+    let desktop_env = if cfg!(target_os = "linux") {
+        linux_shortcuts::detect_desktop_environment()
+    } else {
+        "none".to_string()
+    };
+
+    let gdk_backend = std::env::var("GDK_BACKEND").unwrap_or_else(|_| "default".to_string());
+
     PermissionsStatus {
         accessibility,
         platform: platform.to_string(),
         is_wayland,
+        desktop_env,
+        gdk_backend,
     }
 }
 
@@ -1393,6 +1458,12 @@ fn paste_text() -> Result<(), String> {
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        // Disable DMA-BUF renderer in WebKitGTK to prevent black screens/GBM failures on some GPUs
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
             if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
@@ -1442,6 +1513,9 @@ pub fn run() {
             // Check if the application was invoked with the toggle argument
             if argv.iter().any(|arg| arg == "--toggle" || arg == "toggle") {
                 toggle_recording(app);
+            } else if argv.iter().any(|arg| arg == "--copy-last" || arg == "copy-last" || arg == "--copy" || arg == "copy") {
+                let last_transcription = app.state::<LastTranscription>();
+                let _ = copy_last_transcription(last_transcription, app.clone());
             } else if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
@@ -1482,7 +1556,31 @@ pub fn run() {
         })
         .setup(|app| {
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                if let Some(window) = app.get_webview_window("main") {
+                    // Enforce macOS constraints programmatically since they are removed from tauri.conf.json
+                    let _ = window.set_max_size(Some(tauri::Size::Logical(tauri::LogicalSize {
+                        width: 1200.0,
+                        height: 900.0,
+                    })));
+                    let _ = window.set_maximizable(false);
+                }
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                // Repair any malformed shell comments (#) to correct C-style comments (//) in KDL config on startup
+                linux_shortcuts::repair_wm_configs();
+
+                if let Some(window) = app.get_webview_window("main") {
+                    // Set window size on Linux to be different from macOS (e.g. 950x700)
+                    let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+                        width: 950.0,
+                        height: 700.0,
+                    }));
+                }
+            }
 
             let app_handle = app.handle().clone();
 
