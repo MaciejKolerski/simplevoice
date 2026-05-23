@@ -585,18 +585,19 @@ export function SettingsView() {
                 </div>
                 {isWayland && (
                   <p>
-                    You are running a Wayland session. Global keyboard shortcuts have limited support due to security restrictions.
-                    The app will attempt to register them, but they may not work reliably.
+                    You are running a Wayland session (Niri). Global keyboard shortcuts are restricted by Wayland security model.
+                    The built-in registration often doesn't work reliably on Niri.
                   </p>
                 )}
                 <div className="mt-1 font-medium border-t border-amber-500/10 pt-2 flex flex-col gap-1">
-                  <span>Recommended fix (no manual system shortcuts needed):</span>
+                  <span>Best fix for Niri (recommended):</span>
                   <ul className="list-disc pl-4 space-y-1 text-amber-300">
-                    <li>Install: <code className="bg-black/50 px-1 py-0.5 rounded font-mono">xdg-desktop-portal xdg-desktop-portal-gtk</code></li>
-                    <li>Run: <code className="bg-black/50 px-1 py-0.5 rounded font-mono">sudo pacman -S xdg-desktop-portal xdg-desktop-portal-gtk</code></li>
-                    <li>Log out and log back in (or restart your session)</li>
+                    <li>Open your Niri config: <code className="bg-black/50 px-1 py-0.5 rounded font-mono">~/.config/niri/config.kdl</code></li>
+                    <li>Add this bind:</li>
+                    <li className="pl-6"><code className="bg-black/50 px-1 py-0.5 rounded font-mono">binds { "Mod+Space" { spawn "simplevoice" "--toggle"; } }</code></li>
+                    <li>Restart Niri (Mod+Shift+E or log out/in)</li>
                   </ul>
-                  <p className="text-[10px] mt-2 opacity-75">This enables proper global shortcut support on Wayland via portals.</p>
+                  <p className="text-[10px] mt-2 opacity-75">This is the most reliable way on Niri. The app's built-in shortcuts have Wayland limitations.</p>
                 </div>
               </div>
             </div>
