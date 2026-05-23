@@ -273,8 +273,14 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         {
             let _ = std::process::Command::new("afplay").arg(&path).spawn();
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "linux")]
         {
+            // Use pw-play (part of PipeWire, already installed on most modern Arch setups)
+            let _ = std::process::Command::new("pw-play").arg(&path).spawn();
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            // Windows fallback using rodio
             std::thread::spawn(move || {
                 if let Ok(file) = std::fs::File::open(&path) {
                     if let Ok(source) = rodio::Decoder::new(std::io::BufReader::new(file)) {
@@ -1174,6 +1180,11 @@ fn get_audio_base64(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn play_wav(path: String) {
+    let _ = std::process::Command::new("pw-play").arg(path).spawn();
+}
+
+#[tauri::command]
 async fn get_usage_stats(pool: State<'_, SqlitePool>) -> Result<UsageStats, String> {
     let totals: (i32, i32, f64) = sqlx::query_as(
         "SELECT COUNT(*) as total_transcriptions, 
@@ -1507,6 +1518,7 @@ pub fn run() {
             save_transcription_data,
             get_transcriptions,
             get_audio_base64,
+            play_wav,
             get_usage_stats,
             set_transcribing,
             get_model_status,

@@ -23,58 +23,36 @@ export function TranscriptionsView() {
     useState<TranscriptionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [audioCache, setAudioCache] = useState<Record<string, string>>({});
-  const PAGE_SIZE = 30;
+  // Play audio using native pw-play on Linux (avoids GStreamer in WebView)
+  const playRecording = (wavPath: string) => {
+    invoke("play_wav", { path: wavPath }).catch((err) =>
+      console.error("Failed to play audio:", err)
+    );
+  };
 
   const loadHistory = async (reset = false) => {
-    const currentOffset = reset ? 0 : offset;
-    const isReset = reset;
-
+    const newOffset = reset ? 0 : offset;
     try {
-      const result = await invoke<TranscriptionItem[]>("get_transcriptions", {
-        limit: PAGE_SIZE,
-        offset: currentOffset,
+      const data = await invoke<TranscriptionItem[]>("get_transcriptions", {
+        limit: 20,
+        offset: newOffset,
       });
-
-      if (isReset) {
-        setHistory(result);
-        setOffset(PAGE_SIZE);
+      if (reset) {
+        setHistory(data);
+        setOffset(data.length);
       } else {
-        setHistory((prev) => [...prev, ...result]);
-        setOffset((prev) => prev + PAGE_SIZE);
+        setHistory((prev) => [...prev, ...data]);
+        setOffset((prev) => prev + data.length);
       }
-      setHasMore(result.length === PAGE_SIZE);
+      setHasMore(data.length === 20);
     } catch (err) {
-      console.error("Failed to load transcription history from DB:", err);
+      console.error("Failed to load history:", err);
     }
   };
 
   useEffect(() => {
     loadHistory(true);
-
-    const handleNewTranscription = () => {
-      loadHistory(true); // refresh first page on new entry
-    };
-
-    window.addEventListener("transcription-added", handleNewTranscription);
-    return () => {
-      window.removeEventListener("transcription-added", handleNewTranscription);
-    };
   }, []);
-
-  // Load audio base64 on demand when expanded (reliable cross-platform data URL)
-  useEffect(() => {
-    if (expandedId && !audioCache[expandedId]) {
-      const item = history.find((h) => h.id === expandedId);
-      if (item?.wav_path) {
-        invoke<string>("get_audio_base64", { path: item.wav_path })
-          .then((base64) => {
-            setAudioCache((prev) => ({ ...prev, [expandedId]: base64 }));
-          })
-          .catch((err) => console.error("Failed to load audio:", err));
-      }
-    }
-  }, [expandedId, history, audioCache]);
 
   const handleCopy = async (id: string, text: string) => {
     try {
@@ -258,16 +236,15 @@ export function TranscriptionsView() {
 
                 {isExpanded && item.wav_path && (
                   <div className="mt-4 pt-4 border-t border-border/50">
-                    {audioCache[item.id] ? (
-                      <audio
-                        src={`data:audio/wav;base64,${audioCache[item.id]}`}
-                        controls
-                        className="w-full accent-white"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <div className="text-muted text-sm py-8 text-center">Loading audio...</div>
-                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        playRecording(item.wav_path!);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-lg text-sm transition-colors"
+                    >
+                      ▶️ Play Recording
+                    </button>
                   </div>
                 )}
               </div>

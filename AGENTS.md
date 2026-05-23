@@ -19,6 +19,7 @@
 
 - `src-tauri/src/main.rs` only calls `simplevoice_app_lib::run()`
 - `whisper-rs` must have `metal` feature **only on macOS** (see Cargo.toml). On Linux it fails with "Foundation" framework error.
+- Sound feedback on Linux uses `pw-play` (PipeWire). Avoids GStreamer dependency (`autoaudiosink` error).
 - Frontend ignores `**/src-tauri/**` in Vite watch
 - macOS-specific code for accessibility and media remote
 - Rust rebuilds are slow due to heavy native deps (ort, sherpa-onnx, whisper-rs, cpal, etc.)
