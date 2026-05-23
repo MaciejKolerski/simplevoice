@@ -19,8 +19,9 @@
 
 - `src-tauri/src/main.rs` only calls `simplevoice_app_lib::run()`
 - `whisper-rs` must have `metal` feature **only on macOS** (see Cargo.toml). On Linux it fails with "Foundation" framework error.
-- Sound feedback on Linux uses `pw-play` (PipeWire). 
-- Audio playback in TranscriptionsView (<audio> element) requires `gst-plugins-good` on Linux (`sudo pacman -S gst-plugins-good`) to avoid "autoaudiosink not found" error.
+- Sound feedback on Linux uses `pw-play` (PipeWire).
+- Audio playback in TranscriptionsView requires `gst-plugins-good` (`sudo pacman -S gst-plugins-good`).
+- **Global shortcuts on Wayland** require `xdg-desktop-portal xdg-desktop-portal-gtk` + logout/login for reliable registration. The app shows instructions in Settings.
 - Frontend ignores `**/src-tauri/**` in Vite watch
 - macOS-specific code for accessibility and media remote
 - Rust rebuilds are slow due to heavy native deps (ort, sherpa-onnx, whisper-rs, cpal, etc.)

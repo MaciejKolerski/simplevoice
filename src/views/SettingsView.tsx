@@ -585,22 +585,18 @@ export function SettingsView() {
                 </div>
                 {isWayland && (
                   <p>
-                    You are running a Wayland session. Global keyboard shortcuts are restricted by Wayland security policy. 
-                    Standard hotkeys registered here may not trigger.
-                  </p>
-                )}
-                {!isWayland && (shortcutError || copyShortcutError) && (
-                  <p>
-                    Active shortcut registration failed. This is common under Linux systems without XWayland fallback.
+                    You are running a Wayland session. Global keyboard shortcuts have limited support due to security restrictions.
+                    The app will attempt to register them, but they may not work reliably.
                   </p>
                 )}
                 <div className="mt-1 font-medium border-t border-amber-500/10 pt-2 flex flex-col gap-1">
-                  <span>How to fix:</span>
-                  <ul className="list-disc pl-4 space-y-1">
-                    <li>Create a custom keyboard shortcut in your system settings (GNOME, KDE, etc.).</li>
-                    <li>Set the shortcut command to: <code className="bg-black/50 px-1 py-0.5 rounded font-mono font-bold text-amber-300">simplevoice --toggle</code></li>
-                    <li>This will reliably toggle recording using our built-in Single Instance handler.</li>
+                  <span>Recommended fix (no manual system shortcuts needed):</span>
+                  <ul className="list-disc pl-4 space-y-1 text-amber-300">
+                    <li>Install: <code className="bg-black/50 px-1 py-0.5 rounded font-mono">xdg-desktop-portal xdg-desktop-portal-gtk</code></li>
+                    <li>Run: <code className="bg-black/50 px-1 py-0.5 rounded font-mono">sudo pacman -S xdg-desktop-portal xdg-desktop-portal-gtk</code></li>
+                    <li>Log out and log back in (or restart your session)</li>
                   </ul>
+                  <p className="text-[10px] mt-2 opacity-75">This enables proper global shortcut support on Wayland via portals.</p>
                 </div>
               </div>
             </div>
