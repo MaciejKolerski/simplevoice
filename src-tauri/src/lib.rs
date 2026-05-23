@@ -1212,6 +1212,7 @@ async fn delete_transcription_cmd(
 async fn get_transcriptions(limit: Option<i32>, offset: Option<i32>, pool: State<'_, SqlitePool>) -> Result<Vec<Transcription>, String> {
     let limit = limit.unwrap_or(30);
     let offset = offset.unwrap_or(0);
+    println!("DEBUG: get_transcriptions called with limit={}, offset={}", limit, offset);
     let transcriptions = sqlx::query_as::<_, Transcription>(
         "SELECT id, timestamp, date, text, model, wav_path, duration_sec FROM transcriptions ORDER BY id DESC LIMIT ? OFFSET ?"
     )
@@ -1219,7 +1220,11 @@ async fn get_transcriptions(limit: Option<i32>, offset: Option<i32>, pool: State
     .bind(offset)
     .fetch_all(&*pool)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        println!("ERROR: get_transcriptions failed: {}", e);
+        e.to_string()
+    })?;
+    println!("DEBUG: get_transcriptions returned {} rows", transcriptions.len());
     Ok(transcriptions)
 }
 

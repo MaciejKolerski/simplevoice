@@ -61,6 +61,14 @@ export function TranscriptionsView() {
 
   useEffect(() => {
     loadHistory(true);
+
+    const handleTranscriptionAdded = () => {
+      loadHistory(true);
+    };
+    window.addEventListener("transcription-added", handleTranscriptionAdded);
+    return () => {
+      window.removeEventListener("transcription-added", handleTranscriptionAdded);
+    };
   }, []);
 
   const handleCopy = async (id: string, text: string) => {
