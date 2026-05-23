@@ -33,7 +33,7 @@ num_cpus = "1.16"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-whisper-rs = { version = "0.16.0", features = ["metal"] }
+whisper-rs = { version = "0.16.0", default-features = false }
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 ort = { version = "2.0.0-rc.9", features = ["ndarray"] }
 ndarray = "0.17"
@@ -52,10 +52,9 @@ rodio = "0.20"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 macos-accessibility-client = "0.0.1"
-
-[target.'cfg(target_os="macos")'.dependencies]
 core-graphics = "0.25.0"
 media-remote = "0.3.7"
+whisper-rs = { version = "0.16.0", features = ["metal"] }
 
 
 
