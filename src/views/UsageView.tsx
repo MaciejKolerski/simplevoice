@@ -72,7 +72,10 @@ export function UsageView() {
 
   const loadHistory = async () => {
     try {
-      const result = await invoke<TranscriptionItem[]>("get_transcriptions");
+      const result = await invoke<TranscriptionItem[]>("get_transcriptions", {
+        limit: 100,
+        offset: 0,
+      });
       setHistory(result);
     } catch (err) {
       console.error(

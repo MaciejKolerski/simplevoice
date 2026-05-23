@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ChevronDown } from "lucide-react";
 
 interface TranscriptionItem {
   id: string;
@@ -8,30 +9,51 @@ interface TranscriptionItem {
   text: string;
   model: string;
   wav_path?: string;
+  duration_sec?: number;
 }
 
 export function TranscriptionsView() {
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] =
     useState<TranscriptionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [audioCache, setAudioCache] = useState<Record<string, string>>({});
+  const PAGE_SIZE = 30;
 
-  const loadHistory = async () => {
+  const loadHistory = async (reset = false) => {
+    const currentOffset = reset ? 0 : offset;
+    const isReset = reset;
+
     try {
-      const result = await invoke<TranscriptionItem[]>("get_transcriptions");
-      setHistory(result);
+      const result = await invoke<TranscriptionItem[]>("get_transcriptions", {
+        limit: PAGE_SIZE,
+        offset: currentOffset,
+      });
+
+      if (isReset) {
+        setHistory(result);
+        setOffset(PAGE_SIZE);
+      } else {
+        setHistory((prev) => [...prev, ...result]);
+        setOffset((prev) => prev + PAGE_SIZE);
+      }
+      setHasMore(result.length === PAGE_SIZE);
     } catch (err) {
       console.error("Failed to load transcription history from DB:", err);
     }
   };
 
   useEffect(() => {
-    loadHistory();
+    loadHistory(true);
 
     const handleNewTranscription = () => {
-      loadHistory();
+      loadHistory(true); // refresh first page on new entry
     };
 
     window.addEventListener("transcription-added", handleNewTranscription);
@@ -39,6 +61,20 @@ export function TranscriptionsView() {
       window.removeEventListener("transcription-added", handleNewTranscription);
     };
   }, []);
+
+  // Load audio base64 on demand when expanded (reliable cross-platform data URL)
+  useEffect(() => {
+    if (expandedId && !audioCache[expandedId]) {
+      const item = history.find((h) => h.id === expandedId);
+      if (item?.wav_path) {
+        invoke<string>("get_audio_base64", { path: item.wav_path })
+          .then((base64) => {
+            setAudioCache((prev) => ({ ...prev, [expandedId]: base64 }));
+          })
+          .catch((err) => console.error("Failed to load audio:", err));
+      }
+    }
+  }, [expandedId, history, audioCache]);
 
   const handleCopy = async (id: string, text: string) => {
     try {
@@ -59,11 +95,11 @@ export function TranscriptionsView() {
   const handleConfirmClearHistory = async () => {
     setShowConfirmModal(false);
     try {
-      // The backend command now handles both disk cleanup AND database clearing
       await invoke("clear_history_cmd");
 
       setHistory([]);
-      // Dispatch event to update other views (like UsageView charts)
+      setOffset(0);
+      setHasMore(true);
       window.dispatchEvent(new Event("transcription-added"));
     } catch (err) {
       console.error("Failed to clear history:", err);
@@ -81,20 +117,29 @@ export function TranscriptionsView() {
 
     setIsDeleting(item.id);
     try {
-      // Use the new backend command that handles both DB and File deletion
       await invoke("delete_transcription_cmd", {
         id: item.id,
         path: item.wav_path,
       });
 
-      await loadHistory();
-      // Dispatch event to update other views (like UsageView charts)
+      await loadHistory(true); // refresh from start after delete
       window.dispatchEvent(new Event("transcription-added"));
     } catch (err) {
       console.error("Failed to delete item:", err);
     } finally {
       setIsDeleting(null);
     }
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    await loadHistory(false);
+    setLoadingMore(false);
+  };
+
+  const toggleExpanded = (id: string) => {
+    setExpandedId(expandedId === id ? null : id);
   };
 
   return (
@@ -131,69 +176,114 @@ export function TranscriptionsView() {
         </div>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-          {history.map((item, idx) => {
+          {history.map((item) => {
             const isCopied = copiedId === item.id;
+            const isExpanded = expandedId === item.id;
             return (
               <div
                 key={item.id}
-                className={`flex items-start p-5 transition-colors hover:bg-surface-hover gap-6 ${
-                  idx < history.length - 1 ? "border-b border-border" : ""
+                className={`group flex flex-col p-5 transition-all hover:bg-surface-hover border-b border-border last:border-b-0 cursor-pointer ${
+                  isExpanded ? "bg-surface-hover" : ""
                 }`}
+                onClick={() => toggleExpanded(item.id)}
               >
-                <div className="flex-1 min-w-0">
-                  <div className="mb-2 flex flex-wrap gap-2.5 items-center">
-                    <span className="mono text-muted-dark text-xs font-mono">
-                      {item.date}, {item.timestamp}
-                    </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-surface-active text-muted border border-border">
-                      {item.model}
-                    </span>
+                <div className="flex items-start gap-6">
+                  <div className="flex-1 min-w-0">
+                    <div className="mb-2 flex flex-wrap gap-2.5 items-center">
+                      <span className="mono text-muted-dark text-xs font-mono">
+                        {item.date}, {item.timestamp}
+                      </span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-surface-active text-muted border border-border">
+                        {item.model}
+                      </span>
+                      {item.duration_sec && (
+                        <span className="text-[10px] text-muted font-mono">
+                          {item.duration_sec.toFixed(1)}s
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-fg leading-relaxed text-[13px] break-words select-text pr-12">
+                      "{item.text}"
+                    </div>
                   </div>
-                  <div className="text-fg leading-relaxed text-[13px] break-words select-text">
-                    "{item.text}"
+                  <div className="flex-none flex items-center gap-2 self-start pt-1">
+                    <ChevronDown
+                      size={18}
+                      className={`text-muted transition-transform group-hover:text-fg ${isExpanded ? "rotate-180" : ""}`}
+                    />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteItem(item);
+                      }}
+                      disabled={isDeleting === item.id}
+                      className="btn btn-small btn-outline text-red-400 hover:text-red-300 hover:border-red-400/50 w-9 h-9 p-0 flex items-center justify-center transition-all cursor-pointer"
+                      title="Delete"
+                    >
+                      {isDeleting === item.id ? (
+                        <span className="w-3 h-3 border-2 border-red-400/40 border-t-red-400 rounded-full animate-spin" />
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.25"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopy(item.id, item.text);
+                      }}
+                      className={`btn btn-small w-20 transition-all ${
+                        isCopied
+                          ? "btn-outline border-emerald-500/30 text-emerald-400"
+                          : "btn-outline"
+                      }`}
+                    >
+                      {isCopied ? "Copied!" : "Copy"}
+                    </button>
                   </div>
                 </div>
-                <div className="flex-none flex items-center justify-end pl-4 gap-2">
-                  <button
-                    onClick={() => deleteItem(item)}
-                    disabled={isDeleting === item.id}
-                    className="btn btn-small btn-outline text-red-400 hover:text-red-300 hover:border-red-400/50 w-10 px-0 flex justify-center transition-all cursor-pointer"
-                    title="Delete item"
-                  >
-                    {isDeleting === item.id ? (
-                      <span className="w-3 h-3 border-2 border-red-400/40 border-t-red-400 rounded-full animate-spin"></span>
+
+                {isExpanded && item.wav_path && (
+                  <div className="mt-4 pt-4 border-t border-border/50">
+                    {audioCache[item.id] ? (
+                      <audio
+                        src={`data:audio/wav;base64,${audioCache[item.id]}`}
+                        controls
+                        className="w-full accent-white"
+                        onClick={(e) => e.stopPropagation()}
+                      />
                     ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M3 6h18"></path>
-                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                      </svg>
+                      <div className="text-muted text-sm py-8 text-center">Loading audio...</div>
                     )}
-                  </button>
-                  <button
-                    onClick={() => handleCopy(item.id, item.text)}
-                    className={`btn btn-small w-20 transition-all ${
-                      isCopied
-                        ? "btn-outline border-emerald-500/30 text-emerald-400"
-                        : "btn-outline"
-                    }`}
-                  >
-                    {isCopied ? "Copied!" : "Copy"}
-                  </button>
-                </div>
+                  </div>
+                )}
               </div>
             );
           })}
+          {hasMore && (
+            <div className="p-4 border-t border-border flex justify-center bg-secondary">
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="btn btn-small btn-outline px-8 transition-all"
+              >
+                {loadingMore ? "Loading..." : "Load more older transcriptions"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

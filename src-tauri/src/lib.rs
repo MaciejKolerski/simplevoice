@@ -15,6 +15,7 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use tauri::State;
+use base64::Engine;
 
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
@@ -1151,14 +1152,25 @@ async fn delete_transcription_cmd(
 }
 
 #[tauri::command]
-async fn get_transcriptions(pool: State<'_, SqlitePool>) -> Result<Vec<Transcription>, String> {
+async fn get_transcriptions(limit: Option<i32>, offset: Option<i32>, pool: State<'_, SqlitePool>) -> Result<Vec<Transcription>, String> {
+    let limit = limit.unwrap_or(30);
+    let offset = offset.unwrap_or(0);
     let transcriptions = sqlx::query_as::<_, Transcription>(
-        "SELECT id, timestamp, date, text, model, wav_path, duration_sec FROM transcriptions ORDER BY id DESC"
+        "SELECT id, timestamp, date, text, model, wav_path, duration_sec FROM transcriptions ORDER BY id DESC LIMIT ? OFFSET ?"
     )
+    .bind(limit)
+    .bind(offset)
     .fetch_all(&*pool)
     .await
     .map_err(|e| e.to_string())?;
     Ok(transcriptions)
+}
+
+#[tauri::command]
+fn get_audio_base64(path: String) -> Result<String, String> {
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(base64)
 }
 
 #[tauri::command]
@@ -1494,6 +1506,7 @@ pub fn run() {
             delete_transcription_cmd,
             save_transcription_data,
             get_transcriptions,
+            get_audio_base64,
             get_usage_stats,
             set_transcribing,
             get_model_status,
