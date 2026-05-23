@@ -13,6 +13,8 @@
     "core:window:allow-close",
     "core:window:allow-set-title",
     "dialog:allow-ask",
-    "dialog:allow-message"
+    "dialog:allow-message",
+    "autostart:allow-is-enabled",
+    "autostart:default"
   ]
 }

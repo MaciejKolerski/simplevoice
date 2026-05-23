@@ -362,3 +362,28 @@
     opacity: 1;
   }
 }
+
+@keyframes waveform {
+  0%, 100% { height: 4px; }
+  50% { height: 18px; }
+}
+
+.animate-waveform {
+  animation: waveform 0.8s infinite ease-in-out;
+}
+
+/* Media Player Styling */
+audio {
+  width: 100%;
+  height: 52px;
+}
+
+audio::-webkit-media-controls-panel {
+  background-color: #1a1a1a;
+  border-radius: 12px;
+}
+
+audio::-webkit-media-controls-play-button,
+audio::-webkit-media-controls-mute-button {
+  color: #10b981;
+}

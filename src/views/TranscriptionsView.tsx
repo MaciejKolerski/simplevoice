@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronDown, Play } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 interface TranscriptionItem {
   id: string;
@@ -23,12 +23,21 @@ export function TranscriptionsView() {
     useState<TranscriptionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [audioCache, setAudioCache] = useState<Record<string, string>>({});
 
-  const playRecording = (wavPath: string) => {
-    invoke("play_wav", { path: wavPath }).catch((err) =>
-      console.error("Failed to play audio:", err)
-    );
-  };
+  // Load audio as base64 when expanded for native player
+  useEffect(() => {
+    if (expandedId && !audioCache[expandedId]) {
+      const item = history.find((h) => h.id === expandedId);
+      if (item?.wav_path) {
+        invoke<string>("get_audio_base64", { path: item.wav_path })
+          .then((base64) => {
+            setAudioCache((prev) => ({ ...prev, [expandedId]: base64 }));
+          })
+          .catch((err) => console.error("Failed to load audio:", err));
+      }
+    }
+  }, [expandedId, history, audioCache]);
 
   const loadHistory = async (reset = false) => {
     const newOffset = reset ? 0 : offset;
@@ -236,25 +245,20 @@ export function TranscriptionsView() {
 
                 {isExpanded && item.wav_path && (
                   <div className="mt-4 pt-4 border-t border-border/50">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        playRecording(item.wav_path!);
-                      }}
-                      className="flex items-center gap-3 bg-surface-active hover:bg-surface-hover transition-colors rounded-2xl px-5 py-3 w-full group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-white group-hover:bg-emerald-500/20 transition-colors">
-                        <Play size={18} className="ml-0.5" />
+                    {audioCache[item.id] ? (
+                      <div className="bg-surface-active rounded-2xl p-4">
+                        <audio
+                          src={`data:audio/wav;base64,${audioCache[item.id]}`}
+                          controls
+                          className="w-full accent-emerald-400"
+                          onClick={(e) => e.stopPropagation()}
+                        />
                       </div>
-                      <div className="flex-1 text-left">
-                        <div className="text-sm font-medium text-white">Odtwórz nagranie</div>
-                        {item.duration_sec && (
-                          <div className="text-xs text-muted font-mono">
-                            {item.duration_sec.toFixed(1)}s • Kliknij aby odtworzyć
-                          </div>
-                        )}
+                    ) : (
+                      <div className="text-muted text-sm py-12 text-center border border-dashed border-border rounded-2xl">
+                        Ładowanie nagrania...
                       </div>
-                    </button>
+                    )}
                   </div>
                 )}
               </div>

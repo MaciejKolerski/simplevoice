@@ -1181,7 +1181,18 @@ fn get_audio_base64(path: String) -> Result<String, String> {
 
 #[tauri::command]
 fn play_wav(path: String) {
-    let _ = std::process::Command::new("pw-play").arg(path).spawn();
+    std::thread::spawn(move || {
+        if let Ok(file) = std::fs::File::open(&path) {
+            if let Ok(source) = rodio::Decoder::new(std::io::BufReader::new(file)) {
+                if let Ok((_stream, handle)) = rodio::OutputStream::try_default() {
+                    if let Ok(sink) = rodio::Sink::try_new(&handle) {
+                        sink.append(source);
+                        sink.sleep_until_end();
+                    }
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]
