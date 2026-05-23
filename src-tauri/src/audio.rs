@@ -216,6 +216,7 @@ impl AudioController {
                                 let app_handle_save_clone = app_handle_clone.clone();
                                 std::thread::spawn(move || {
                                     let pcm_len = samples.len();
+
                                     let mut saved_path = None;
                                     if pcm_len > 0 {
                                         let app_local_data =
@@ -404,10 +405,9 @@ impl AudioController {
 
         let _ = crate::rebuild_tray_menu(app_handle);
 
-        let pcm_len = samples.len();
-
         // Run the saving logic in a helper to safely catch early-return errors
         let save_result = self.save_wav_file(app_handle, &samples, start_time);
+
 
         // WAV saved - switch to transcribing state (blue dot stays on)
         {

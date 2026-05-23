@@ -115,10 +115,9 @@ impl SherpaEngine {
 
             config.model_config.canary.encoder = Some(encoder.to_string_lossy().to_string());
             config.model_config.canary.decoder = Some(decoder.to_string_lossy().to_string());
-            config.model_config.canary.src_lang = Some("en".to_string());
-            config.model_config.canary.tgt_lang = Some("en".to_string());
             config.model_config.canary.use_pnc = true;
             config.model_config.model_type = Some("canary".to_string());
+            // src_lang/tgt_lang set dynamically via stream.set_option in transcribe() for multilingual support (including pl)
         } else {
             return Err("Unsupported or unrecognized ONNX model directory structure. Ensure it contains the necessary encoder, decoder, joiner, or Moonshine ONNX files.".to_string());
         }

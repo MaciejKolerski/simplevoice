@@ -56,8 +56,8 @@ impl WhisperEngine {
 impl EngineAdapter for WhisperEngine {
     fn initialize(&mut self, model_path: &str) -> Result<(), String> {
         let mut params = WhisperContextParameters::default();
-        params.use_gpu = true;
-        params.flash_attn = true;
+        params.use_gpu = cfg!(target_os = "macos");
+        params.flash_attn = cfg!(target_os = "macos");
 
         let ctx = WhisperContext::new_with_params(model_path, params)
             .map_err(|e| {
@@ -77,7 +77,7 @@ impl EngineAdapter for WhisperEngine {
     }
 
     fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
-        let ctx = self.context.as_ref().ok_or("No model context loaded in WhisperEngine")?;
+        let _ctx = self.context.as_ref().ok_or("No model context loaded in WhisperEngine")?;
         let state_mutex = self.state.as_ref().ok_or("No Whisper state initialized")?;
         let mut state_guard = state_mutex.lock().map_err(|e| format!("State lock error: {}", e))?;
         let state = &mut *state_guard;
@@ -175,6 +175,11 @@ impl SttController {
 
     pub fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
         let prepared = prepare_samples(samples);
+
+        // Prevent hangs on slower platforms (Linux/Windows CPU) for very long recordings
+        if prepared.len() > 16_000 * 90 {
+            return Err("Recording too long (>90s). Use shorter clips or a smaller/faster model (e.g. Moonshine).".to_string());
+        }
 
         let engine_arc = {
             let s = self.state.lock().unwrap();
