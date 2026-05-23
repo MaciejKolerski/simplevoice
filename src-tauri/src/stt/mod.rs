@@ -1,9 +1,38 @@
 use std::sync::Mutex;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 pub mod cloud;
 pub mod parakeet;
 pub mod sherpa;
+
+// Prepares PCM samples for local STT engines: trims leading/trailing silence (threshold 0.015)
+// and normalizes RMS gain to ~0.7. Reduces effective audio length for faster inference.
+fn prepare_samples(samples: &[f32]) -> Vec<f32> {
+    if samples.is_empty() {
+        return vec![];
+    }
+
+    let threshold = 0.015;
+    let mut start = 0;
+    while start < samples.len() && samples[start].abs() < threshold {
+        start += 1;
+    }
+    let mut end = samples.len();
+    while end > start && samples[end - 1].abs() < threshold {
+        end -= 1;
+    }
+
+    let trimmed = if end > start + 100 {
+        &samples[start..end]
+    } else {
+        samples
+    };
+
+    let sum_sq: f32 = trimmed.iter().map(|&x| x * x).sum();
+    let rms = (sum_sq / trimmed.len() as f32).sqrt().max(0.001);
+    let gain = 0.70 / rms;
+    trimmed.iter().map(|&s| (s * gain).clamp(-1.0, 1.0)).collect()
+}
 
 pub trait EngineAdapter: Send + Sync {
     fn initialize(&mut self, model_path: &str) -> Result<(), String>;
@@ -12,19 +41,23 @@ pub trait EngineAdapter: Send + Sync {
 
 pub struct WhisperEngine {
     context: Option<WhisperContext>,
+    state: Option<Mutex<WhisperState>>,
 }
 
 impl WhisperEngine {
     pub fn new() -> Self {
-        Self { context: None }
+        Self {
+            context: None,
+            state: None,
+        }
     }
 }
 
 impl EngineAdapter for WhisperEngine {
     fn initialize(&mut self, model_path: &str) -> Result<(), String> {
         let mut params = WhisperContextParameters::default();
-        params.use_gpu = false;
-        params.flash_attn = false;
+        params.use_gpu = true;
+        params.flash_attn = true;
 
         let ctx = WhisperContext::new_with_params(model_path, params)
             .map_err(|e| {
@@ -33,39 +66,45 @@ impl EngineAdapter for WhisperEngine {
                     model_path, e
                 )
             })?;
-        self.context = Some(ctx);
-        Ok(())
-    }
 
-    fn transcribe(&self, samples: &[f32], _language: Option<&str>) -> Result<String, String> {
-        let ctx = self
-            .context
-            .as_ref()
-            .ok_or("No model context loaded in WhisperEngine")?;
-
-        let mut state = ctx
+        let whisper_state = ctx
             .create_state()
             .map_err(|e| format!("Failed to create Whisper state: {}", e))?;
 
+        self.context = Some(ctx);
+        self.state = Some(Mutex::new(whisper_state));
+        Ok(())
+    }
+
+    fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
+        let ctx = self.context.as_ref().ok_or("No model context loaded in WhisperEngine")?;
+        let state_mutex = self.state.as_ref().ok_or("No Whisper state initialized")?;
+        let mut state_guard = state_mutex.lock().map_err(|e| format!("State lock error: {}", e))?;
+        let state = &mut *state_guard;
+
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_temperature(0.0);
-        let n_threads = (num_cpus::get() as i32).max(2) / 2;
+        let n_threads = (num_cpus::get() as i32).min(8).max(4);
         params.set_n_threads(n_threads);
         params.set_print_progress(false);
         params.set_print_realtime(false);
-        params.set_suppress_blank(false);
+        params.set_suppress_blank(true);
         params.set_suppress_nst(false);
-        params.set_no_timestamps(false);
+        params.set_no_timestamps(true);
         params.set_logprob_thold(-1.0);
         params.set_no_speech_thold(0.6);
 
-        state
-            .full(params, samples)
+        match language {
+            Some(lang) if !lang.trim().is_empty() && lang != "auto" => params.set_language(Some(lang)),
+            _ => params.set_language(None),
+        }
+        params.set_translate(false);
+
+        state.full(params, samples)
             .map_err(|e| format!("Whisper inference run failed: {}", e))?;
 
         let mut text = String::new();
         let num_segments = state.full_n_segments();
-
         for i in 0..num_segments {
             if let Some(segment) = state.get_segment(i) {
                 if let Ok(segment_text) = segment.to_str() {
@@ -135,12 +174,14 @@ impl SttController {
     }
 
     pub fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
+        let prepared = prepare_samples(samples);
+
         let engine_arc = {
             let s = self.state.lock().unwrap();
             s.engine.clone()
         };
 
         let engine = engine_arc.ok_or("No speech-to-text model loaded. Please load a model first.")?;
-        engine.transcribe(samples, language)
+        engine.transcribe(&prepared, language)
     }
 }

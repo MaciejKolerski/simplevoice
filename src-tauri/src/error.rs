@@ -27,8 +27,6 @@ pub enum AppError {
     Recording(String),
 }
 
-pub type Result<T> = std::result::Result<T, AppError>;
-
 impl From<AppError> for InvokeError {
     fn from(err: AppError) -> Self {
         InvokeError::from_anyhow(anyhow::anyhow!("{}", err))
@@ -44,14 +42,5 @@ impl From<String> for AppError {
 impl From<&str> for AppError {
     fn from(s: &str) -> Self {
         AppError::Command(s.to_string())
-    }
-}
-
-pub fn sanitize_error(err: &AppError) -> String {
-    let msg = err.to_string().to_lowercase();
-    if msg.contains("key") || msg.contains("api") || msg.contains("token") {
-        "Configuration error. Check your API keys in Models view.".to_string()
-    } else {
-        err.to_string()
     }
 }

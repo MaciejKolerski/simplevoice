@@ -185,10 +185,7 @@ impl AudioController {
                             let timeout_samples =
                                 (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
                             if silence_samples >= timeout_samples {
-                                println!(
-                                    "VAD: Silence detected. Auto-stopping recording after {} ms.",
-                                    vad_silence_duration_ms
-                                );
+
 
                                 // Transition recording state to stop
                                 s.is_recording = false;
@@ -249,10 +246,6 @@ impl AudioController {
                                                 let _ = writer.finalize();
                                                 let path_str =
                                                     wav_path.to_string_lossy().to_string();
-                                                println!(
-                                                    "Saved VAD debug WAV file to {}",
-                                                    path_str
-                                                );
                                                 saved_path = Some(path_str);
                                             }
                                         }
@@ -372,7 +365,6 @@ impl AudioController {
                 }
                 let _ = writer.finalize();
                 let path_str = wav_path.to_string_lossy().to_string();
-                println!("Saved debug WAV file to {}", path_str);
                 return Ok(Some(path_str));
             }
         }
@@ -413,7 +405,6 @@ impl AudioController {
         let _ = crate::rebuild_tray_menu(app_handle);
 
         let pcm_len = samples.len();
-        println!("Recorded {} samples (16kHz)", pcm_len);
 
         // Run the saving logic in a helper to safely catch early-return errors
         let save_result = self.save_wav_file(app_handle, &samples, start_time);
