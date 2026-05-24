@@ -13,8 +13,30 @@ impl ParakeetEngine {
 
 impl super::EngineAdapter for ParakeetEngine {
     fn initialize(&mut self, model_path: &str) -> Result<(), String> {
-        let session = Session::builder()
-            .map_err(|e| format!("Failed to create ONNX session builder: {}", e))?
+        let mut builder = Session::builder()
+            .map_err(|e| format!("Failed to create ONNX session builder: {}", e))?;
+
+        #[cfg(target_os = "windows")]
+        {
+            builder = builder
+                .with_execution_providers([
+                    ort::execution_providers::DirectMLExecutionProvider::default().build(),
+                ])
+                .map_err(|e| format!("Failed to register DirectML provider: {}", e))?;
+            println!("[ParakeetEngine] Registered DirectML provider.");
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            builder = builder
+                .with_execution_providers([
+                    ort::execution_providers::CUDAExecutionProvider::default().build(),
+                ])
+                .map_err(|e| format!("Failed to register CUDA provider: {}", e))?;
+            println!("[ParakeetEngine] Registered CUDA provider.");
+        }
+
+        let session = builder
             .commit_from_file(model_path)
             .map_err(|e| format!("Failed to load ONNX model from {}: {}", model_path, e))?;
         self.session = Some(Mutex::new(session));

@@ -56,13 +56,35 @@ impl WhisperEngine {
 impl EngineAdapter for WhisperEngine {
     fn initialize(&mut self, model_path: &str) -> Result<(), String> {
         let mut params = WhisperContextParameters::default();
-        params.use_gpu = cfg!(target_os = "macos");
+        params.use_gpu = true;
         params.flash_attn = cfg!(target_os = "macos");
 
-        let ctx = WhisperContext::new_with_params(model_path, params)
+        match WhisperContext::new_with_params(model_path, params) {
+            Ok(ctx) => {
+                if let Ok(whisper_state) = ctx.create_state() {
+                    self.context = Some(ctx);
+                    self.state = Some(Mutex::new(whisper_state));
+                    println!("[WhisperEngine] Successfully initialized model using GPU.");
+                    return Ok(());
+                }
+            }
+            Err(e) => {
+                println!(
+                    "[WhisperEngine] Failed to initialize GPU context: {}. Falling back to CPU...",
+                    e
+                );
+            }
+        }
+
+        // Fallback to CPU
+        let mut params_cpu = WhisperContextParameters::default();
+        params_cpu.use_gpu = false;
+        params_cpu.flash_attn = false;
+
+        let ctx = WhisperContext::new_with_params(model_path, params_cpu)
             .map_err(|e| {
                 format!(
-                    "Failed to initialize Whisper context from {}: {}",
+                    "Failed to initialize Whisper context (CPU fallback) from {}: {}",
                     model_path, e
                 )
             })?;
@@ -73,6 +95,7 @@ impl EngineAdapter for WhisperEngine {
 
         self.context = Some(ctx);
         self.state = Some(Mutex::new(whisper_state));
+        println!("[WhisperEngine] Successfully initialized model using CPU.");
         Ok(())
     }
 

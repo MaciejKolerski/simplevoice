@@ -56,5 +56,15 @@ core-graphics = "0.25.0"
 media-remote = "0.3.7"
 whisper-rs = { version = "0.16.0", features = ["metal"] }
 
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+whisper-rs = { version = "0.16.0", default-features = false, features = ["vulkan"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "2.0.0-rc.9", features = ["ndarray", "directml"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
+
+
 
 
