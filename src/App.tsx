@@ -168,9 +168,9 @@ function App() {
           });
 
           if (text && text.trim().length > 0) {
-            // Step 2: Copy to clipboard, play done chime, and auto-paste
-            await navigator.clipboard.writeText(text);
+            console.log(`[FRONTEND] Transcription successful, text length: ${text.length}`);
 
+            // Clipboard is now set in Rust backend (arboard). Play sound + auto-paste.
             try {
               await invoke("play_done_sound");
             } catch (e) {
@@ -178,8 +178,8 @@ function App() {
             }
 
             try {
-              // We don't await paste_text because it launches a thread that might outlive the invoke
-              invoke("paste_text").catch((err) =>
+              // Pass text so wtype can type it directly on Wayland (more reliable than Ctrl+V)
+              invoke("paste_text", { text }).catch((err) =>
                 console.error("Paste failed:", err),
               );
             } catch (e) {

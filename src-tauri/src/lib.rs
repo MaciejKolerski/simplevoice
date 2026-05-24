@@ -1024,28 +1024,42 @@ async fn transcribe_audio(
         s.last_samples.clone()
     });
 
-    if engine == "openai-cloud" {
-        let provider_name = provider.unwrap_or_else(|| "openai".to_string());
-        let key = get_secure_api_key(provider_name.clone())?;
-        if key.trim().is_empty() {
-            return Err(format!("ASR API Key for {} is missing or empty. Please set it in models/engines settings.", provider_name));
+    let text = {
+        if engine == "openai-cloud" {
+            let provider_name = provider.unwrap_or_else(|| "openai".to_string());
+            let key = get_secure_api_key(provider_name.clone())?;
+            if key.trim().is_empty() {
+                return Err(format!("ASR API Key for {} is missing or empty. Please set it in models/engines settings.", provider_name));
+            }
+            crate::stt::cloud::transcribe_cloud(
+                &final_samples,
+                &key,
+                Some(&provider_name),
+                model.as_deref(),
+                base_url.as_deref(),
+                language.as_deref(),
+            )
+            .await
+            .map_err(|e| e.to_string())?
+        } else {
+            let result: Result<String, String> = tauri::async_runtime::spawn_blocking(move || {
+                controller.transcribe(&final_samples, language.as_deref())
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            result?
         }
-        crate::stt::cloud::transcribe_cloud(
-            &final_samples,
-            &key,
-            Some(&provider_name),
-            model.as_deref(),
-            base_url.as_deref(),
-            language.as_deref(),
-        )
-        .await
-    } else {
-        tauri::async_runtime::spawn_blocking(move || {
-            controller.transcribe(&final_samples, language.as_deref())
-        })
-        .await
-        .map_err(|e| e.to_string())?
+    };
+
+    // Copy to system clipboard using arboard + wl-copy (reliable on Wayland/X11 even when minimized)
+    if !text.trim().is_empty() {
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text(text.clone());
+        }
+        let _ = std::process::Command::new("wl-copy").arg(text.clone()).status();
     }
+
+    Ok(text)
 }
 
 #[tauri::command]
@@ -1399,12 +1413,26 @@ fn check_permissions_status() -> PermissionsStatus {
 // ─── Keyboard Simulation ─────────────────────────────────────────────────────
 
 #[tauri::command]
-fn paste_text() -> Result<(), String> {
-    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+fn paste_text(text: String) -> Result<(), String> {
+    let is_wayland = if cfg!(target_os = "linux") {
+        std::env::var("WAYLAND_DISPLAY").is_ok()
+            || std::env::var("XDG_SESSION_TYPE")
+                .map(|v| v.to_lowercase() == "wayland")
+                .unwrap_or(false)
+    } else {
+        false
+    };
 
-    if std::env::var("WAYLAND_DISPLAY").is_ok() {
-        return Err("Auto-paste is not natively supported on Wayland. The text has been copied to your clipboard!".into());
+    if is_wayland {
+        // On Wayland we type the text directly with wtype (more reliable than Ctrl+V simulation).
+        // No window popup, works even if app is minimized.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let _ = std::process::Command::new("wtype").arg(text).status();
+        return Ok(());
     }
+
+    // X11/macOS/Windows: simulate Ctrl+V / Cmd+V with enigo
+    use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
     let settings = Settings::default();
     let mut enigo = Enigo::new(&settings).map_err(|e| {
@@ -1412,8 +1440,8 @@ fn paste_text() -> Result<(), String> {
         {
             format!(
                 "Failed to initialize keyboard simulation. \
-                     Please grant Accessibility permissions in System Settings > \
-                     Privacy & Security > Accessibility. Error: {}",
+                 Please grant Accessibility permissions in System Settings > \
+                 Privacy & Security > Accessibility. Error: {}",
                 e
             )
         }

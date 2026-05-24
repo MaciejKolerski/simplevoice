@@ -21,6 +21,7 @@
 - `whisper-rs` must have `metal` feature **only on macOS** (see Cargo.toml). On Linux it fails with "Foundation" framework error.
 - Sound feedback on Linux uses `pw-play` (PipeWire).
 - Audio playback in TranscriptionsView requires `gst-plugins-good` (`sudo pacman -S gst-plugins-good`).
+- Auto-paste on **Wayland** tries `wtype` if available (recommended for full auto-paste). Always falls back to clipboard. Text is copied — press Ctrl+V if wtype not installed. (enigo used on X11.)
 - **Global shortcuts on Wayland/Niri** are limited. On Niri best to add bind in `~/.config/niri/config.kdl`: `binds { "Mod+Space" { spawn "simplevoice" "--toggle"; } }`. The app shows specific instructions in Settings.
 - Frontend ignores `**/src-tauri/**` in Vite watch
 - macOS-specific code for accessibility and media remote
