@@ -12,7 +12,7 @@ impl ParakeetEngine {
 }
 
 impl super::EngineAdapter for ParakeetEngine {
-    fn initialize(&mut self, model_path: &str) -> Result<(), String> {
+    fn initialize(&mut self, model_path: &str, _use_gpu: bool) -> Result<(), String> {
         let session = Session::builder()
             .map_err(|e| format!("Failed to create ONNX session builder: {}", e))?
             .commit_from_file(model_path)

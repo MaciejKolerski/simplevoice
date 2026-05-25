@@ -130,7 +130,7 @@ impl SherpaEngine {
 }
 
 impl super::EngineAdapter for SherpaEngine {
-    fn initialize(&mut self, _model_path: &str) -> Result<(), String> {
+    fn initialize(&mut self, _model_path: &str, _use_gpu: bool) -> Result<(), String> {
         Ok(())
     }
 
