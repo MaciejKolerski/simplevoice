@@ -915,10 +915,15 @@ async fn load_model(
     let controller = stt_controller.inner().clone();
     let model_path_clone = model_path.clone();
 
-    // Always load on CPU at startup to prevent Vulkan crashes.
-    // GPU is applied only on manual toggle or delayed auto-reload.
+    // Use current gpu_enabled setting (true on macOS/Windows by default).
+    // Linux defaults to false to avoid Vulkan crashes at startup.
+    let use_gpu = {
+        let app_config = app_handle.state::<AppConfig>();
+        let c = app_config.active.lock().unwrap();
+        c.gpu_enabled
+    };
     let res =
-        tauri::async_runtime::spawn_blocking(move || controller.load_model(&model_path_clone, false))
+        tauri::async_runtime::spawn_blocking(move || controller.load_model(&model_path_clone, use_gpu))
             .await;
 
     {
