@@ -95,8 +95,14 @@ impl EngineAdapter for WhisperEngine {
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_temperature(0.0);
-        // Fewer CPU threads when using GPU (Metal/CoreML handle inference). More threads help only on CPU.
-        let n_threads = if cfg!(target_os = "macos") { 4 } else { (num_cpus::get() as i32).min(8).max(4) };
+        // Optimize thread count per platform for fastest transcription.
+        // On macOS (Metal) use ~half the cores (preprocessing bottleneck), clamp to 2-6.
+        // On other platforms use 4-8.
+        let n_threads = if cfg!(target_os = "macos") {
+            ((num_cpus::get() as i32) / 2).clamp(2, 6)
+        } else {
+            (num_cpus::get() as i32).clamp(4, 8)
+        };
         params.set_n_threads(n_threads);
         params.set_print_progress(false);
         params.set_print_realtime(false);

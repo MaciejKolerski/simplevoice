@@ -71,6 +71,7 @@ export function SettingsView() {
   const [accessibilityGranted, setAccessibilityGranted] = useState(true);
   const [platform, setPlatform] = useState("unknown");
   const [desktopEnv, setDesktopEnv] = useState("none");
+  const isMac = platform === "macos";
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [copyShortcutError, setCopyShortcutError] = useState<string | null>(null);
   const [showManualWMInstructions, setShowManualWMInstructions] = useState(false);
@@ -514,24 +515,26 @@ export function SettingsView() {
             </label>
           </div>
 
-          <div className="flex justify-between items-center p-6 border-b border-border">
-            <div>
-              <div className="text-fg font-medium mb-1">GPU Acceleration</div>
-               <div className="text-xs text-muted">
-                 Use GPU (Vulkan on Linux/Windows, Metal on macOS) for faster transcription.
-                 Falls back to CPU if no compatible GPU is available.
-               </div>
-            </div>
+           {!isMac && (
+           <div className="flex justify-between items-center p-6 border-b border-border">
+             <div>
+               <div className="text-fg font-medium mb-1">GPU Acceleration</div>
+                <div className="text-xs text-muted">
+                  Use GPU (Vulkan on Linux/Windows) for faster transcription.
+                  Falls back to CPU if no compatible GPU is available.
+                </div>
+             </div>
 
-            <label className="toggle cursor-pointer">
-              <input
-                type="checkbox"
-                checked={gpuEnabled}
-                onChange={(e) => handleGpuToggle(e.target.checked)}
-              />
-              <span className="toggle-bg"></span>
-            </label>
-          </div>
+             <label className="toggle cursor-pointer">
+               <input
+                 type="checkbox"
+                 checked={gpuEnabled}
+                 onChange={(e) => handleGpuToggle(e.target.checked)}
+               />
+               <span className="toggle-bg"></span>
+             </label>
+           </div>
+           )}
 
           <div className="flex justify-between items-center p-6 border-b border-border">
             <div>
