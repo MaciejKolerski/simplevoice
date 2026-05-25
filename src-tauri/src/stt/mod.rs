@@ -54,7 +54,9 @@ impl WhisperEngine {
 
 impl EngineAdapter for WhisperEngine {
     fn initialize(&mut self, model_path: &str, use_gpu: bool) -> Result<(), String> {
-        if use_gpu {
+        // On macOS always try Metal first (safe, no Vulkan crashes). GPU flag is mainly for Linux.
+        let try_gpu = use_gpu || cfg!(target_os = "macos");
+        if try_gpu {
             if let Ok(result) = std::panic::catch_unwind(|| {
                 let mut params = WhisperContextParameters::default();
                 params.use_gpu = true;
@@ -93,7 +95,8 @@ impl EngineAdapter for WhisperEngine {
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_temperature(0.0);
-        let n_threads = (num_cpus::get() as i32).min(8).max(4);
+        // Fewer CPU threads when using GPU (Metal/CoreML handle inference). More threads help only on CPU.
+        let n_threads = if cfg!(target_os = "macos") { 4 } else { (num_cpus::get() as i32).min(8).max(4) };
         params.set_n_threads(n_threads);
         params.set_print_progress(false);
         params.set_print_realtime(false);
