@@ -915,9 +915,11 @@ async fn load_model(
     let controller = stt_controller.inner().clone();
     let model_path_clone = model_path.clone();
 
-    // Use current gpu_enabled setting (true on macOS/Windows by default).
-    // Linux defaults to false to avoid Vulkan crashes at startup.
-    let use_gpu = {
+    // On Linux always start on CPU to prevent Vulkan crashes.
+    // On macOS/Windows we can safely use GPU at startup.
+    let use_gpu = if cfg!(target_os = "linux") {
+        false
+    } else {
         let app_config = app_handle.state::<AppConfig>();
         let c = app_config.active.lock().unwrap();
         c.gpu_enabled
@@ -1689,8 +1691,8 @@ pub fn run() {
 
             let _ = rebuild_tray_menu(app.handle());
 
-            // Delayed GPU reload after startup (if gpu_enabled=true)
-            let gpu_enabled = {
+            // Delayed GPU reload after startup — only on Linux
+            let gpu_enabled = cfg!(target_os = "linux") && {
                 let app_config = app.state::<AppConfig>();
                 let c = app_config.active.lock().unwrap();
                 c.gpu_enabled
