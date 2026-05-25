@@ -35,6 +35,7 @@ export function SettingsView() {
   const [vadEnabled, setVadEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
+  const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
   const [autostartEnabled, setAutostartEnabled] = useState(false);
 
@@ -303,6 +304,19 @@ export function SettingsView() {
     loadDevices();
   }, []);
 
+  // Load GPU setting
+  useEffect(() => {
+    const loadGpuSetting = async () => {
+      try {
+        const enabled = await invoke<boolean>("get_gpu_enabled");
+        setGpuEnabled(enabled);
+      } catch (err) {
+        console.error("Failed to load GPU setting:", err);
+      }
+    };
+    loadGpuSetting();
+  }, []);
+
   useEffect(() => {
     const unlisten = listen<string | null>("device-changed", (event) => {
       setSelectedDevice(event.payload || "default");
@@ -358,6 +372,24 @@ export function SettingsView() {
       await enable();
     } else {
       await disable();
+    }
+  };
+
+  const handleGpuToggle = async (checked: boolean) => {
+    setGpuEnabled(checked);
+    try {
+      await invoke("set_gpu_enabled", { enabled: checked });
+      console.log(`[Settings] GPU toggled to: ${checked}`);
+
+      const activeModel = localStorage.getItem("active_local_model_path");
+      if (activeModel) {
+        console.log(`[Settings] Reloading model with GPU=${checked}: ${activeModel}`);
+        await invoke("load_model", { modelPath: activeModel });
+      } else {
+        console.log("[Settings] No active model to reload");
+      }
+    } catch (err) {
+      console.error("Failed to set GPU state:", err);
     }
   };
 
@@ -477,6 +509,25 @@ export function SettingsView() {
                 type="checkbox"
                 checked={autostartEnabled}
                 onChange={(e) => handleAutostartToggle(e.target.checked)}
+              />
+              <span className="toggle-bg"></span>
+            </label>
+          </div>
+
+          <div className="flex justify-between items-center p-6 border-b border-border">
+            <div>
+              <div className="text-fg font-medium mb-1">GPU Acceleration</div>
+               <div className="text-xs text-muted">
+                 Use GPU (Vulkan on Linux/Windows, Metal on macOS) for faster transcription.
+                 Falls back to CPU if no compatible GPU is available.
+               </div>
+            </div>
+
+            <label className="toggle cursor-pointer">
+              <input
+                type="checkbox"
+                checked={gpuEnabled}
+                onChange={(e) => handleGpuToggle(e.target.checked)}
               />
               <span className="toggle-bg"></span>
             </label>

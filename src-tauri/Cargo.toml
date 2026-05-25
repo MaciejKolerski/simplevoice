@@ -56,5 +56,8 @@ core-graphics = "0.25.0"
 media-remote = "0.3.7"
 whisper-rs = { version = "0.16.0", features = ["metal"] }
 
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+whisper-rs = { version = "0.16.0", default-features = false, features = ["vulkan"] }
+
 
 

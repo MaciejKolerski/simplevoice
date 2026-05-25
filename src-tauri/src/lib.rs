@@ -120,6 +120,7 @@ fn set_selected_device(
 pub struct ActiveConfig {
     pub engine: String,
     pub provider: String,
+    pub gpu_enabled: bool,
 }
 
 pub struct AppConfig {
@@ -914,8 +915,10 @@ async fn load_model(
     let controller = stt_controller.inner().clone();
     let model_path_clone = model_path.clone();
 
+    // Always load on CPU at startup to prevent Vulkan crashes.
+    // GPU is applied only on manual toggle or delayed auto-reload.
     let res =
-        tauri::async_runtime::spawn_blocking(move || controller.load_model(&model_path_clone))
+        tauri::async_runtime::spawn_blocking(move || controller.load_model(&model_path_clone, false))
             .await;
 
     {
@@ -1095,6 +1098,38 @@ fn load_config(app_handle: tauri::AppHandle) -> Result<String, String> {
     } else {
         Ok("{}".to_string())
     }
+}
+
+#[tauri::command]
+fn get_gpu_enabled(config: tauri::State<'_, AppConfig>) -> bool {
+    let c = config.active.lock().unwrap();
+    c.gpu_enabled
+}
+
+#[tauri::command]
+fn set_gpu_enabled(enabled: bool, config: tauri::State<'_, AppConfig>, app_handle: tauri::AppHandle) {
+    {
+        let mut c = config.active.lock().unwrap();
+        c.gpu_enabled = enabled;
+    }
+
+    // Persist gpu_enabled to config.json
+    if let Ok(app_local_data) = app_handle.path().app_local_data_dir() {
+        let config_path = app_local_data.join("config.json");
+        if let Ok(existing) = std::fs::read_to_string(&config_path) {
+            if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&existing) {
+                if let Some(obj) = json.as_object_mut() {
+                    obj.insert("gpu_enabled".to_string(), serde_json::json!(enabled));
+                    let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&json).unwrap_or_default());
+                }
+            }
+        } else {
+            let json = serde_json::json!({ "gpu_enabled": enabled });
+            let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&json).unwrap_or_default());
+        }
+    }
+
+    let _ = rebuild_tray_menu(&app_handle);
 }
 
 #[tauri::command]
@@ -1573,6 +1608,7 @@ pub fn run() {
             active: Mutex::new(ActiveConfig {
                 engine: "local".to_string(),
                 provider: "openai".to_string(),
+                gpu_enabled: !cfg!(target_os = "linux"),
             }),
         })
         .manage(LastTranscription {
@@ -1617,6 +1653,21 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
 
+            // Load persisted gpu_enabled from config.json
+            if let Ok(app_local_data) = app_handle.path().app_local_data_dir() {
+                let config_path = app_local_data.join("config.json");
+                if let Ok(content) = std::fs::read_to_string(&config_path) {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(enabled) = json.get("gpu_enabled").and_then(|v| v.as_bool()) {
+                            if let Some(app_config) = app_handle.try_state::<AppConfig>() {
+                                let mut c = app_config.active.lock().unwrap();
+                                c.gpu_enabled = enabled;
+                            }
+                        }
+                    }
+                }
+            }
+
             // Initialize SQLite connection pool once (fixes connection leak)
             let pool = tauri::async_runtime::block_on(async {
                 let app_dir = app_handle
@@ -1632,6 +1683,33 @@ pub fn run() {
             app.manage(pool);
 
             let _ = rebuild_tray_menu(app.handle());
+
+            // Delayed GPU reload after startup (if gpu_enabled=true)
+            let gpu_enabled = {
+                let app_config = app.state::<AppConfig>();
+                let c = app_config.active.lock().unwrap();
+                c.gpu_enabled
+            };
+
+            if gpu_enabled {
+                let stt_controller = app.state::<SttController>().inner().clone();
+                let app_handle = app.handle().clone();
+
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                    let active_path = {
+                        let s = stt_controller.state.lock().unwrap();
+                        s.active_model_path.clone()
+                    };
+
+                    if let Some(path) = active_path {
+                        let _ = stt_controller.load_model(&path, true);
+                        let _ = app_handle.emit("model-status-changed", ());
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1643,6 +1721,8 @@ pub fn run() {
             set_vad_enabled,
             scan_models,
             load_model,
+            get_gpu_enabled,
+            set_gpu_enabled,
             get_active_model,
             get_models_dir,
             transcribe_audio,

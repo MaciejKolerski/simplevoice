@@ -7,7 +7,11 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=Accelerate");
     }
 
-    // CUDA support is enabled via environment variables (see README or run with CUDA_HOME=/opt/cuda)
+    #[cfg(not(target_os = "macos"))]
+    {
+        println!("cargo:rustc-link-lib=vulkan");
+    }
+
     tauri_build::build()
 }
 

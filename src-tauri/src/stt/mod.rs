@@ -5,8 +5,6 @@ pub mod cloud;
 pub mod parakeet;
 pub mod sherpa;
 
-// Prepares PCM samples for local STT engines: trims leading/trailing silence (threshold 0.015)
-// and normalizes RMS gain to ~0.7. Reduces effective audio length for faster inference.
 fn prepare_samples(samples: &[f32]) -> Vec<f32> {
     if samples.is_empty() {
         return vec![];
@@ -35,9 +33,10 @@ fn prepare_samples(samples: &[f32]) -> Vec<f32> {
 }
 
 pub trait EngineAdapter: Send + Sync {
-    fn initialize(&mut self, model_path: &str) -> Result<(), String>;
+    fn initialize(&mut self, model_path: &str, use_gpu: bool) -> Result<(), String>;
     fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String>;
 }
+
 
 pub struct WhisperEngine {
     context: Option<WhisperContext>,
@@ -54,25 +53,35 @@ impl WhisperEngine {
 }
 
 impl EngineAdapter for WhisperEngine {
-    fn initialize(&mut self, model_path: &str) -> Result<(), String> {
+    fn initialize(&mut self, model_path: &str, use_gpu: bool) -> Result<(), String> {
+        if use_gpu {
+            if let Ok(result) = std::panic::catch_unwind(|| {
+                let mut params = WhisperContextParameters::default();
+                params.use_gpu = true;
+                params.flash_attn = cfg!(target_os = "macos");
+
+                WhisperContext::new_with_params(model_path, params)
+                    .and_then(|ctx| ctx.create_state().map(|state| (ctx, state)))
+            }) {
+                if let Ok((ctx, state)) = result {
+                    self.context = Some(ctx);
+                    self.state = Some(Mutex::new(state));
+                    return Ok(());
+                }
+            }
+        }
+
         let mut params = WhisperContextParameters::default();
-        params.use_gpu = cfg!(target_os = "macos");
-        params.flash_attn = cfg!(target_os = "macos");
+        params.use_gpu = false;
+        params.flash_attn = false;
 
         let ctx = WhisperContext::new_with_params(model_path, params)
-            .map_err(|e| {
-                format!(
-                    "Failed to initialize Whisper context from {}: {}",
-                    model_path, e
-                )
-            })?;
-
-        let whisper_state = ctx
-            .create_state()
+            .map_err(|e| format!("Failed to initialize Whisper context: {}", e))?;
+        let state = ctx.create_state()
             .map_err(|e| format!("Failed to create Whisper state: {}", e))?;
 
         self.context = Some(ctx);
-        self.state = Some(Mutex::new(whisper_state));
+        self.state = Some(Mutex::new(state));
         Ok(())
     }
 
@@ -139,17 +148,7 @@ impl SttController {
         }
     }
 
-    pub fn load_model(&self, model_path: &str) -> Result<(), String> {
-        {
-            let s = self.state.lock().unwrap();
-
-            if let Some(ref active) = s.active_model_path {
-                if active == model_path {
-                    return Ok(());
-                }
-            }
-        }
-
+    pub fn load_model(&self, model_path: &str, use_gpu: bool) -> Result<(), String> {
         let path = std::path::Path::new(model_path);
 
         let engine: Box<dyn EngineAdapter> = if path.is_dir() {
@@ -157,11 +156,11 @@ impl SttController {
             Box::new(engine)
         } else if model_path.ends_with(".onnx") {
             let mut parakeet = parakeet::ParakeetEngine::new();
-            parakeet.initialize(model_path)?;
+            parakeet.initialize(model_path, use_gpu)?;
             Box::new(parakeet)
         } else {
             let mut whisper = WhisperEngine::new();
-            whisper.initialize(model_path)?;
+            whisper.initialize(model_path, use_gpu)?;
             Box::new(whisper)
         };
 
@@ -176,7 +175,6 @@ impl SttController {
     pub fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
         let prepared = prepare_samples(samples);
 
-        // Prevent hangs on slower platforms (Linux/Windows CPU) for very long recordings
         if prepared.len() > 16_000 * 90 {
             return Err("Recording too long (>90s). Use shorter clips or a smaller/faster model (e.g. Moonshine).".to_string());
         }
