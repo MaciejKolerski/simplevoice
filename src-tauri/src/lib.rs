@@ -1815,6 +1815,41 @@ pub fn run() {
                     let _ = window.set_maximizable(false);
                 }
                 update_recording_window_visibility(app.handle());
+
+                // Monitor the Command key state on macOS to toggle window click-through (allow dragging when Cmd is held)
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let mut last_command_state = false;
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        if let Some(window) = app_handle.get_webview_window("recording_window") {
+                            if let Ok(visible) = window.is_visible() {
+                                if visible {
+                                    let command_pressed = unsafe {
+                                        use objc2::msg_send;
+                                        use objc2::runtime::AnyClass;
+                                        if let Some(nsevent_class) = AnyClass::get(std::ffi::CStr::from_bytes_with_nul(b"NSEvent\0").unwrap()) {
+                                            let flags: usize = msg_send![nsevent_class, modifierFlags];
+                                            (flags & 0x0010_0000) != 0
+                                        } else {
+                                            false
+                                        }
+                                    };
+
+                                    if command_pressed != last_command_state {
+                                        last_command_state = command_pressed;
+                                        let window_clone = window.clone();
+                                        let _ = app_handle.run_on_main_thread(move || {
+                                            let _ = window_clone.set_ignore_cursor_events(!command_pressed);
+                                        });
+                                    }
+                                } else {
+                                    last_command_state = false;
+                                }
+                            }
+                        }
+                    }
+                });
             }
 
             #[cfg(target_os = "linux")]

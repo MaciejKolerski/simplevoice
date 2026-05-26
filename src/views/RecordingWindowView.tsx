@@ -75,7 +75,8 @@ export function RecordingWindowView() {
     <div className="w-full h-full flex items-center justify-center select-none pointer-events-none">
       {/* Sleek Glassmorphic Pill */}
       <div
-        className="flex items-center justify-center px-6 h-[54px] rounded-full border border-white/10 bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 gap-4"
+        data-tauri-drag-region
+        className="flex items-center justify-center px-6 h-[54px] rounded-full border border-white/10 bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 gap-4 pointer-events-auto cursor-grab active:cursor-grabbing"
         style={{ width: "310px" }}
       >
         {/* Left Side Status Indicator / Icon */}
@@ -98,7 +99,7 @@ export function RecordingWindowView() {
         <div className="flex items-center justify-center flex-1">
           {status === "transcribing" ? (
             // A gorgeous smooth wave effect during transcription
-            <div className="flex items-end justify-center gap-1.5 h-10">
+            <div className="flex items-center justify-center gap-1.5 h-10">
               {Array.from({ length: 9 }).map((_, i) => (
                 <div
                   key={i}
@@ -112,7 +113,7 @@ export function RecordingWindowView() {
             </div>
           ) : (
             // Interactive waveform for recording or idle
-            <div className="flex items-end justify-center gap-1.5 h-10">
+            <div className="flex items-center justify-center gap-1.5 h-10">
               {barHeights.map((height, i) => {
                 // Color gets more vibrant at the center
                 const opacity = 0.3 + multipliers[i] * 0.7;
