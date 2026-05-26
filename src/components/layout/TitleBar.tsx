@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Menu } from "lucide-react";
+import { Menu, Minus, Square, X } from "lucide-react";
 
 interface TitleBarProps {
   activeViewName: string;
@@ -52,8 +52,32 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
         </span>
       </div>
 
-      {/* Right placeholder for balance */}
-      <div data-tauri-drag-region className="w-[240px] h-full"></div>
+      {/* Right section: Window controls (Windows/Linux) */}
+      {!isMac && (
+        <div className="flex items-center h-full ml-auto title-bar-no-drag">
+          <button
+            className="h-full px-4 hover:bg-white/10 transition-colors flex items-center justify-center"
+            onClick={() => invoke("minimize_window")}
+          >
+            <Minus size={14} />
+          </button>
+          <button
+            className="h-full px-4 hover:bg-white/10 transition-colors flex items-center justify-center"
+            onClick={() => invoke("maximize_window")}
+          >
+            <Square size={13} />
+          </button>
+          <button
+            className="h-full px-4 hover:bg-red-500/80 hover:text-white transition-colors flex items-center justify-center"
+            onClick={() => invoke("close_window")}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Right placeholder for balance on macOS */}
+      {isMac && <div data-tauri-drag-region className="w-[80px] h-full"></div>}
     </div>
   );
 }
