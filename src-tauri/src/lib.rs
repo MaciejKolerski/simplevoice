@@ -265,6 +265,9 @@ extern "C" {
 }
 
 #[cfg(target_os = "macos")]
+static WINDOW_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(target_os = "macos")]
 pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     let mode = get_recording_window_mode(app);
     let controller = app.state::<AudioController>();
@@ -278,19 +281,22 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
         };
 
         if should_show {
-            // Position the window bottom-center dynamically
-            if let Some(monitor) = window.current_monitor().ok().flatten() {
-                let size = monitor.size();
-                let pos = monitor.position();
-                let scale_factor = monitor.scale_factor();
+            // Position the window bottom-center dynamically only on the very first show
+            if !WINDOW_INITIALIZED.load(std::sync::atomic::Ordering::Relaxed) {
+                if let Some(monitor) = window.current_monitor().ok().flatten() {
+                    let size = monitor.size();
+                    let pos = monitor.position();
+                    let scale_factor = monitor.scale_factor();
 
-                let win_w = 360.0;
-                let win_h = 90.0;
+                    let win_w = 360.0;
+                    let win_h = 90.0;
 
-                let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
-                let y = pos.y + (size.height as f64 - win_h * scale_factor - 80.0 * scale_factor) as i32;
+                    let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
+                    let y = pos.y + (size.height as f64 - win_h * scale_factor - 80.0 * scale_factor) as i32;
 
-                let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+                    WINDOW_INITIALIZED.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
             }
 
             let _ = window.show();
