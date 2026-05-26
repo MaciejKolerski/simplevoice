@@ -1681,11 +1681,21 @@ pub fn run() {
                     .path()
                     .app_config_dir()
                     .expect("Failed to get app config directory");
+                let _ = std::fs::create_dir_all(&app_dir);
                 let db_path = app_dir.join("simplevoice.db");
-                let db_url = format!("sqlite:{}", db_path.to_string_lossy());
-                SqlitePool::connect(&db_url)
+                let options = sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(db_path)
+                    .create_if_missing(true);
+                let pool = SqlitePool::connect_with(options)
                     .await
-                    .expect("Failed to create SQLite pool")
+                    .expect("Failed to create SQLite pool");
+                
+                // Run database migrations to ensure all tables exist
+                let _ = sqlx::migrate!("./migrations")
+                    .run(&pool)
+                    .await;
+                
+                pool
             });
             app.manage(pool);
 
