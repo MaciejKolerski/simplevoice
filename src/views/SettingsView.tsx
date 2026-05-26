@@ -38,6 +38,7 @@ export function SettingsView() {
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
   const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [recordingWindowMode, setRecordingWindowMode] = useState("always");
 
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
@@ -124,6 +125,12 @@ export function SettingsView() {
     setAsrLanguage(savedLang);
 
     isEnabled().then(setAutostartEnabled);
+
+    const savedOverlayMode = localStorage.getItem("recording_window_mode") || "always";
+    setRecordingWindowMode(savedOverlayMode);
+    invoke("set_recording_window_mode", { mode: savedOverlayMode }).catch((err) => {
+      console.error("Failed to initialize recording window mode:", err);
+    });
   }, []);
 
   // Check system permissions and Wayland status on mount and periodically
@@ -370,6 +377,16 @@ export function SettingsView() {
     localStorage.setItem("asr_language", val);
   };
 
+  const handleRecordingWindowModeChange = async (val: string) => {
+    setRecordingWindowMode(val);
+    localStorage.setItem("recording_window_mode", val);
+    try {
+      await invoke("set_recording_window_mode", { mode: val });
+    } catch (err) {
+      console.error("Failed to set recording window mode:", err);
+    }
+  };
+
   const handleAutostartToggle = async (checked: boolean) => {
     setAutostartEnabled(checked);
     if (checked) {
@@ -577,7 +594,7 @@ export function SettingsView() {
             </label>
           </div>
 
-          <div className="flex justify-between items-center p-6">
+          <div className="flex justify-between items-center p-6 border-b border-border">
             <div>
               <div className="text-fg font-medium mb-1">Pause System Audio</div>
               <div className="text-muted text-[13px]">
@@ -595,6 +612,32 @@ export function SettingsView() {
               <span className="toggle-bg"></span>
             </label>
           </div>
+
+          {isMac && (
+            <div className="flex justify-between items-center p-6">
+              <div>
+                <div className="text-fg font-medium mb-1">Recording Overlay Window</div>
+                <div className="text-muted text-[13px]">
+                  Display a floating wavebar on your screen reacting to voice.
+                </div>
+              </div>
+
+              <div className="relative w-48">
+                <select
+                  value={recordingWindowMode}
+                  onChange={(e) => handleRecordingWindowModeChange(e.target.value)}
+                  className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-sm font-medium"
+                >
+                  <option value="always">Always Show</option>
+                  <option value="recording">Show During Recording</option>
+                  <option value="never">Do Not Show</option>
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
+                  <ChevronDown size={16} />
+                </div>
+              </div>
+            </div>
+          )}
           </div>
 
         {/* SECTION: Keyboard Shortcuts */}

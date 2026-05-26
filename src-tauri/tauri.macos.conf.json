@@ -1,5 +1,6 @@
 {
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -21,6 +22,19 @@
           "x": 12,
           "y": 21
         }
+      },
+      {
+        "label": "recording_window",
+        "title": "Recording Window",
+        "width": 360,
+        "height": 90,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "shadow": false,
+        "skipTaskbar": true
       }
     ]
   }

@@ -166,17 +166,18 @@ impl AudioController {
                 // Read from consumer
                 let read = consumer.pop_slice(&mut local_buf);
                 if read > 0 {
+                    // Compute RMS of the newly read samples for visualizer
+                    let mut sum_sq = 0.0;
+                    for &sample in &local_buf[..read] {
+                        sum_sq += sample * sample;
+                    }
+                    let rms = (sum_sq / read as f32).sqrt();
+                    let _ = app_handle_clone.emit("audio-amplitude", rms);
+
                     let mut s = state_clone.lock().unwrap();
                     s.buffer.extend_from_slice(&local_buf[..read]);
 
                     if vad_enabled {
-                        // Compute RMS of the newly read samples
-                        let mut sum_sq = 0.0;
-                        for &sample in &local_buf[..read] {
-                            sum_sq += sample * sample;
-                        }
-                        let rms = (sum_sq / read as f32).sqrt();
-
                         if rms >= vad_threshold {
                             has_spoken = true;
                             silence_samples = 0;
@@ -185,13 +186,16 @@ impl AudioController {
                             let timeout_samples =
                                 (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
                             if silence_samples >= timeout_samples {
-
-
                                 // Transition recording state to stop
                                 s.is_recording = false;
                                 s.is_saving = true;
                                 if let Some(wrapper) = s.stream.take() {
                                     let _ = wrapper.0.pause();
+                                }
+
+                                #[cfg(target_os = "macos")]
+                                {
+                                    crate::update_recording_window_visibility(&app_handle_clone);
                                 }
 
                                 // Capture which media apps were paused so we can resume them

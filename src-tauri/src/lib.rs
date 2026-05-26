@@ -1,5 +1,6 @@
 mod audio;
 mod error;
+#[cfg(target_os = "linux")]
 mod linux_shortcuts;
 mod media_control;
 mod stt;
@@ -230,6 +231,94 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
     false
 }
 
+pub(crate) fn get_recording_window_mode(app_handle: &tauri::AppHandle) -> String {
+    let app_local_data = match app_handle.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return "always".to_string(),
+    };
+    let config_path = app_local_data.join("config.json");
+    if !config_path.exists() {
+        return "always".to_string();
+    }
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(s) => s,
+        Err(_) => return "always".to_string(),
+    };
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return "always".to_string(),
+    };
+    if let Some(val) = json.get("recording_window_mode") {
+        if let Some(s) = val.as_str() {
+            return s.to_string();
+        }
+    }
+    "always".to_string()
+}
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn object_setClass(
+        obj: *mut objc2::runtime::AnyObject,
+        new_class: &objc2::runtime::AnyClass,
+    ) -> *const objc2::runtime::AnyClass;
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
+    let mode = get_recording_window_mode(app);
+    let controller = app.state::<AudioController>();
+    let is_recording = controller.is_recording();
+
+    if let Some(window) = app.get_webview_window("recording_window") {
+        let should_show = match mode.as_str() {
+            "always" => true,
+            "recording" => is_recording,
+            "never" | _ => false,
+        };
+
+        if should_show {
+            // Position the window bottom-center dynamically
+            if let Some(monitor) = window.current_monitor().ok().flatten() {
+                let size = monitor.size();
+                let pos = monitor.position();
+                let scale_factor = monitor.scale_factor();
+
+                let win_w = 360.0;
+                let win_h = 90.0;
+
+                let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
+                let y = pos.y + (size.height as f64 - win_h * scale_factor - 80.0 * scale_factor) as i32;
+
+                let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+            }
+
+            let _ = window.show();
+            let _ = window.set_ignore_cursor_events(true);
+
+            if let Ok(ns_win) = window.ns_window() {
+                unsafe {
+                    use objc2::msg_send;
+                    if let Some(panel_class) = objc2::runtime::AnyClass::get(std::ffi::CStr::from_bytes_with_nul(b"NSPanel\0").unwrap()) {
+                        let obj_ptr = ns_win as *mut objc2::runtime::AnyObject;
+                        let _ = object_setClass(obj_ptr, panel_class);
+                    }
+                    let _: () = msg_send![ns_win as *mut objc2::runtime::AnyObject, setStyleMask: 128 as usize];
+                    let _: () = msg_send![ns_win as *mut objc2::runtime::AnyObject, setCollectionBehavior: 273 as usize];
+                    let _: () = msg_send![ns_win as *mut objc2::runtime::AnyObject, setLevel: 1000 as isize];
+                    let _: () = msg_send![ns_win as *mut objc2::runtime::AnyObject, orderFrontRegardless];
+                }
+            }
+        } else {
+            let _ = window.hide();
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn update_recording_window_visibility(_app: &tauri::AppHandle) {}
+
+
 /// Resolves the sound file for the given event type.
 /// Looks for start.wav / stop.wav / done.wav inside the bundled resources:
 ///   <app>.app/Contents/Resources/sounds/  (macOS bundle)
@@ -315,6 +404,7 @@ fn start_recording(
     controller.start_recording(app_handle.clone(), pause_audio)?;
     play_backend_sound(&app_handle, "start");
     let _ = rebuild_tray_menu(&app_handle);
+    update_recording_window_visibility(&app_handle);
     Ok(())
 }
 
@@ -326,6 +416,7 @@ fn stop_recording(
     let res = controller.stop_recording(&app_handle);
     if res.is_ok() {
         play_backend_sound(&app_handle, "stop");
+        update_recording_window_visibility(&app_handle);
     }
     let _ = rebuild_tray_menu(&app_handle);
     res
@@ -338,6 +429,7 @@ fn set_transcribing(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     controller.set_transcribing(active);
+    let _ = app_handle.emit("transcribing-status", active);
     let _ = rebuild_tray_menu(&app_handle);
     Ok(())
 }
@@ -532,6 +624,7 @@ fn toggle_recording(app: &tauri::AppHandle) {
             play_backend_sound(app, "stop");
             let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
             let _ = app.emit("recording-stopped", payload);
+            update_recording_window_visibility(app);
         }
     } else {
         let stt = app.state::<SttController>();
@@ -542,6 +635,7 @@ fn toggle_recording(app: &tauri::AppHandle) {
                 if controller.start_recording(app.clone(), pause_audio).is_ok() {
                     play_backend_sound(app, "start");
                     let _ = app.emit("recording-started", ());
+                    update_recording_window_visibility(app);
                 }
             }
             Err(reason) => {
@@ -1152,6 +1246,30 @@ fn set_gpu_enabled(enabled: bool, config: tauri::State<'_, AppConfig>, app_handl
 }
 
 #[tauri::command]
+fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    let app_local_data = app_handle.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
+    let config_path = app_local_data.join("config.json");
+
+    let mut json = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("recording_window_mode".to_string(), serde_json::json!(mode));
+        let pretty = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+        std::fs::write(&config_path, pretty).map_err(|e| e.to_string())?;
+    }
+
+    update_recording_window_visibility(&app_handle);
+    Ok(())
+}
+
+
+#[tauri::command]
 fn minimize_window(window: tauri::Window) {
     let _ = window.minimize();
 }
@@ -1177,7 +1295,6 @@ async fn save_transcription_data(
     model: String,
     pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
-    println!("DEBUG: save_transcription_data called with wav_path='{}', text='{}' (len={})", wav_path, text, text.len());
 
     let wav_path_buf = std::path::PathBuf::from(&wav_path);
     let parent_dir = wav_path_buf
@@ -1232,7 +1349,6 @@ async fn save_transcription_data(
     .await
         .map_err(|e| e.to_string())?;
 
-    println!("DEBUG: save_transcription_data completed successfully for id={}", id);
     Ok(())
 }
 
@@ -1299,7 +1415,6 @@ async fn delete_transcription_cmd(
 async fn get_transcriptions(limit: Option<i32>, offset: Option<i32>, pool: State<'_, SqlitePool>) -> Result<Vec<Transcription>, String> {
     let limit = limit.unwrap_or(30);
     let offset = offset.unwrap_or(0);
-    println!("DEBUG: get_transcriptions called with limit={}, offset={}", limit, offset);
     let transcriptions = sqlx::query_as::<_, Transcription>(
         "SELECT id, timestamp, date, text, model, wav_path, duration_sec FROM transcriptions ORDER BY id DESC LIMIT ? OFFSET ?"
     )
@@ -1308,10 +1423,8 @@ async fn get_transcriptions(limit: Option<i32>, offset: Option<i32>, pool: State
     .fetch_all(&*pool)
     .await
     .map_err(|e| {
-        println!("ERROR: get_transcriptions failed: {}", e);
         e.to_string()
     })?;
-    println!("DEBUG: get_transcriptions returned {} rows", transcriptions.len());
     Ok(transcriptions)
 }
 
@@ -1490,10 +1603,15 @@ fn check_permissions_status() -> PermissionsStatus {
         false
     };
 
-    let desktop_env = if cfg!(target_os = "linux") {
-        linux_shortcuts::detect_desktop_environment()
-    } else {
-        "none".to_string()
+    let desktop_env = {
+        #[cfg(target_os = "linux")]
+        {
+            linux_shortcuts::detect_desktop_environment()
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            "none".to_string()
+        }
     };
 
     let gdk_backend = std::env::var("GDK_BACKEND").unwrap_or_else(|_| "default".to_string());
@@ -1598,8 +1716,6 @@ pub fn run() {
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
             if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                println!("Global shortcut pressed: {:?}", shortcut);
-
                 // Determine action by looking up the shortcut in the registry
                 let action = {
                     let registry = app.state::<ShortcutRegistry>();
@@ -1698,6 +1814,7 @@ pub fn run() {
                     })));
                     let _ = window.set_maximizable(false);
                 }
+                update_recording_window_visibility(app.handle());
             }
 
             #[cfg(target_os = "linux")]
@@ -1802,7 +1919,8 @@ pub fn run() {
             check_accessibility_permission,
             request_accessibility_permission,
             open_accessibility_settings,
-            check_permissions_status
+            check_permissions_status,
+            set_recording_window_mode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
