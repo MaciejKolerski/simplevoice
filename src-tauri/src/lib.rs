@@ -1140,6 +1140,25 @@ fn set_gpu_enabled(enabled: bool, config: tauri::State<'_, AppConfig>, app_handl
 }
 
 #[tauri::command]
+fn minimize_window(window: tauri::Window) {
+    let _ = window.minimize();
+}
+
+#[tauri::command]
+fn maximize_window(window: tauri::Window) {
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    } else {
+        let _ = window.maximize();
+    }
+}
+
+#[tauri::command]
+fn close_window(window: tauri::Window) {
+    let _ = window.close();
+}
+
+#[tauri::command]
 async fn save_transcription_data(
     wav_path: String,
     text: String,
@@ -1748,6 +1767,9 @@ pub fn run() {
             get_secure_api_key,
             delete_secure_api_key,
             has_secure_api_key,
+            minimize_window,
+            maximize_window,
+            close_window,
             update_active_config,
             open_folder,
             save_config,
