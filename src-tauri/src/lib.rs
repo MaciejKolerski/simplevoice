@@ -912,6 +912,11 @@ async fn load_model(
 ) -> Result<(), String> {
     {
         let mut s = stt_controller.state.lock().unwrap();
+        // Guard: block duplicate concurrent loads of the same model (React StrictMode double mount)
+        if s.loading_model_path.as_deref() == Some(&model_path) {
+            eprintln!("[load_model] Already loading {}, skipping duplicate", model_path);
+            return Ok(());
+        }
         s.loading_model_path = Some(model_path.clone());
     }
     let _ = app_handle.emit("model-status-changed", ());
@@ -919,18 +924,21 @@ async fn load_model(
     let controller = stt_controller.inner().clone();
     let model_path_clone = model_path.clone();
 
-    // On Linux always start on CPU to prevent Vulkan crashes.
-    // On macOS/Windows we can safely use GPU at startup.
-    let use_gpu = if cfg!(target_os = "linux") {
-        false
-    } else {
-        let app_config = app_handle.state::<AppConfig>();
-        let c = app_config.active.lock().unwrap();
-        c.gpu_enabled
-    };
-    let res =
-        tauri::async_runtime::spawn_blocking(move || controller.load_model(&model_path_clone, use_gpu))
-            .await;
+    let app_config = app_handle.state::<AppConfig>();
+    let use_gpu = app_config.active.lock().unwrap().gpu_enabled;
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        if use_gpu {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                controller.load_model(&model_path_clone, true)
+            })) {
+                Ok(result) => result,
+                Err(_) => controller.load_model(&model_path_clone, false),
+            }
+        } else {
+            controller.load_model(&model_path_clone, false)
+        }
+    })
+    .await;
 
     {
         let mut s = stt_controller.state.lock().unwrap();
@@ -1748,32 +1756,6 @@ pub fn run() {
             app.manage(pool);
 
             let _ = rebuild_tray_menu(app.handle());
-
-            // Delayed GPU reload after startup — only on Linux
-            let gpu_enabled = cfg!(target_os = "linux") && {
-                let app_config = app.state::<AppConfig>();
-                let c = app_config.active.lock().unwrap();
-                c.gpu_enabled
-            };
-
-            if gpu_enabled {
-                let stt_controller = app.state::<SttController>().inner().clone();
-                let app_handle = app.handle().clone();
-
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-                    let active_path = {
-                        let s = stt_controller.state.lock().unwrap();
-                        s.active_model_path.clone()
-                    };
-
-                    if let Some(path) = active_path {
-                        let _ = stt_controller.load_model(&path, true);
-                        let _ = app_handle.emit("model-status-changed", ());
-                    }
-                });
-            }
 
             Ok(())
         })
