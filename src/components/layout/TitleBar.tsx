@@ -23,11 +23,9 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
   }, []);
 
   return (
-    <div data-tauri-drag-region className="title-bar select-none">
-      {/* Left section with Traffic Light space (macOS only) and Menu Toggle */}
-      <div data-tauri-drag-region className="flex items-center w-[240px]">
-        {isMac && (
-          /* Space for native traffic lights */
+    <div data-tauri-drag-region className="title-bar select-none relative">
+      <div data-tauri-drag-region className="flex items-center w-[240px] pl-4">
+        {isMac && !isWindows && (
           <div data-tauri-drag-region className="w-[80px] h-full"></div>
         )}
 
@@ -45,7 +43,7 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
       {/* Center Title section */}
       <div
         data-tauri-drag-region
-        className="flex items-center gap-2 text-[12px] font-medium text-muted"
+        className="absolute left-1/2 -translate-x-1/2 h-full flex items-center gap-2 text-[12px] font-medium text-muted"
       >
         <span data-tauri-drag-region>SimpleVoice</span>
         <span data-tauri-drag-region>/</span>
@@ -79,7 +77,9 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
       )}
 
       {/* Right placeholder for balance on macOS */}
-      {isMac && <div data-tauri-drag-region className="w-[80px] h-full"></div>}
+      {isMac && !isWindows && (
+        <div data-tauri-drag-region className="w-[80px] h-full mr-4"></div>
+      )}
     </div>
   );
 }
