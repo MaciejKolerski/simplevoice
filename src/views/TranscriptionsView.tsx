@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, FileText } from "lucide-react";
 
 interface TranscriptionItem {
   id: string;
@@ -161,7 +161,7 @@ export function TranscriptionsView() {
       {history.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
           <div className="w-12 h-12 rounded-full bg-surface-active flex items-center justify-center text-muted mb-4 opacity-50">
-            "
+            <FileText size={20} />
           </div>
           <h3 className="text-white font-medium mb-1">No transcriptions yet</h3>
           <p className="text-muted text-sm max-w-sm leading-relaxed">
