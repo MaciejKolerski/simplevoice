@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronDown, FileText } from "lucide-react";
+import { ChevronDown, History } from "lucide-react";
 
 interface TranscriptionItem {
   id: string;
@@ -25,7 +25,6 @@ export function TranscriptionsView() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [audioCache, setAudioCache] = useState<Record<string, string>>({});
 
-  // Load audio as base64 when expanded for native player
   useEffect(() => {
     if (expandedId && !audioCache[expandedId]) {
       const item = history.find((h) => h.id === expandedId);
@@ -67,7 +66,10 @@ export function TranscriptionsView() {
     };
     window.addEventListener("transcription-added", handleTranscriptionAdded);
     return () => {
-      window.removeEventListener("transcription-added", handleTranscriptionAdded);
+      window.removeEventListener(
+        "transcription-added",
+        handleTranscriptionAdded,
+      );
     };
   }, []);
 
@@ -160,13 +162,12 @@ export function TranscriptionsView() {
 
       {history.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
-          <div className="w-12 h-12 rounded-full bg-surface-active flex items-center justify-center text-muted mb-4 opacity-50">
-            <FileText size={20} />
-          </div>
-          <h3 className="text-white font-medium mb-1">No transcriptions yet</h3>
-          <p className="text-muted text-sm max-w-sm leading-relaxed">
-            Record some audio using your global shortcut to start transcribing
-            speech to text.
+          <History size={48} className="text-muted mb-4 opacity-50" />
+          <h3 className="text-white font-medium mb-2">No transcriptions yet</h3>
+          <p className="text-muted text-sm max-w-md mb-6 leading-relaxed">
+            Use your global shortcut to start recording audio. Once finished,
+            the recorded speech will be transcribed and stored here in your
+            history.
           </p>
         </div>
       ) : (
