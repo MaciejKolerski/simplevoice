@@ -5493,6 +5493,8 @@ dependencies = [
  "media-remote",
  "ndarray",
  "num_cpus",
+ "objc2",
+ "objc2-foundation",
  "ort",
  "reqwest 0.12.28",
  "ringbuf",

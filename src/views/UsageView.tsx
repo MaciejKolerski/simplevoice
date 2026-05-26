@@ -468,7 +468,7 @@ export function UsageView() {
             <select
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value as any)}
-              className="input pl-3 pr-8 py-1.5 w-full text-xs h-9 bg-black border-border rounded-md appearance-none cursor-pointer"
+              className="input pl-3 pr-8 py-2 w-full text-xs bg-black border-border rounded-md appearance-none cursor-pointer"
             >
               <option value="7days">Last 7 days</option>
               <option value="30days">Last 30 days</option>

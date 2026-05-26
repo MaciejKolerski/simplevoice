@@ -18,6 +18,10 @@ use sqlx::{FromRow, SqlitePool};
 use tauri::State;
 use base64::Engine;
 
+#[cfg(target_os = "macos")]
+#[link(name = "AVFoundation", kind = "framework")]
+extern "C" {}
+
 /// Stores the most recent transcription text so the "Copy Last" shortcut
 /// can re-copy it to the clipboard without re-transcribing.
 pub struct LastTranscription {
@@ -1411,6 +1415,8 @@ fn open_accessibility_settings() -> Result<(), String> {
 struct PermissionsStatus {
     /// Whether Accessibility permission is granted (macOS only, always true elsewhere)
     accessibility: bool,
+    /// Whether Microphone permission is granted (macOS only, always true elsewhere)
+    microphone: bool,
     /// The current platform identifier
     platform: String,
     /// Whether the current session is running under Wayland (Linux only, false elsewhere)
@@ -1428,6 +1434,28 @@ fn check_permissions_status() -> PermissionsStatus {
         #[cfg(target_os = "macos")]
         {
             macos_accessibility_client::accessibility::application_is_trusted()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            true
+        }
+    };
+
+    let microphone = {
+        #[cfg(target_os = "macos")]
+        {
+            unsafe {
+                let name = std::ffi::CStr::from_bytes_with_nul(b"AVCaptureDevice\0").unwrap();
+                let cls = objc2::runtime::AnyClass::get(name);
+                if let Some(cls) = cls {
+                    let media_type = objc2_foundation::ns_string!("soun");
+                    let status: objc2::ffi::NSInteger = objc2::msg_send![cls, authorizationStatusForMediaType: media_type];
+                    // AVAuthorizationStatusAuthorized is 3
+                    status == 3
+                } else {
+                    false
+                }
+            }
         }
         #[cfg(not(target_os = "macos"))]
         {
@@ -1464,6 +1492,7 @@ fn check_permissions_status() -> PermissionsStatus {
 
     PermissionsStatus {
         accessibility,
+        microphone,
         platform: platform.to_string(),
         is_wayland,
         desktop_env,

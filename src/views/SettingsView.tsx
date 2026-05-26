@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronDown, Cpu, Shield, ExternalLink, Keyboard, Check } from "lucide-react";
+import { ChevronDown, Cpu, Shield, Keyboard, Check } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
@@ -69,6 +69,7 @@ export function SettingsView() {
 
   // Permission and environment states
   const [accessibilityGranted, setAccessibilityGranted] = useState(true);
+  const [microphoneGranted, setMicrophoneGranted] = useState(true);
   const [platform, setPlatform] = useState("unknown");
   const [desktopEnv, setDesktopEnv] = useState("none");
   const isMac = platform === "macos";
@@ -131,11 +132,13 @@ export function SettingsView() {
       try {
         const status = await invoke<{
           accessibility: boolean;
+          microphone: boolean;
           platform: string;
           is_wayland: boolean;
           desktop_env: string;
         }>("check_permissions_status");
         setAccessibilityGranted(status.accessibility);
+        setMicrophoneGranted(status.microphone);
         setPlatform(status.platform);
         setDesktopEnv(status.desktop_env);
       } catch (err) {
@@ -812,30 +815,49 @@ bindsym Mod4+Shift+c exec simplevoice --copy-last`}
 
               <div className="flex justify-between items-center p-6">
                 <div className="flex-1">
-                  <div className="text-fg font-medium mb-1">Microphone</div>
+                  <div className="text-fg font-medium mb-1 flex items-center gap-2">
+                    Microphone
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        microphoneGranted
+                          ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                          : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse"
+                      }`}
+                    />
+                  </div>
                   <div className="text-muted text-[13px]">
-                    Required for audio capture. Managed by macOS automatically
-                    on first use.
+                    Required for audio capture.
+                    {!microphoneGranted && (
+                      <span className="text-amber-400 font-medium">
+                        {" "}
+                        Not granted — recording will not work.
+                      </span>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={async () => {
-                    try {
-                      await invoke("open_folder", {
-                        path: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-                      });
-                    } catch {
-                      // Fallback: open System Settings directly
-                      await invoke("open_folder", {
-                        path: "/System/Library/PreferencePanes/Security.prefPane",
-                      });
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border cursor-pointer transition-all duration-200 bg-surface-active text-muted hover:text-white hover:border-muted border-border"
-                >
-                  <ExternalLink size={12} />
-                  Open Settings
-                </button>
+                {!microphoneGranted ? (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await invoke("open_folder", {
+                          path: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+                        });
+                      } catch {
+                        // Fallback: open System Settings directly
+                        await invoke("open_folder", {
+                          path: "/System/Library/PreferencePanes/Security.prefPane",
+                        });
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border cursor-pointer transition-all duration-200 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 border-amber-500/30"
+                  >
+                    Grant Access
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center px-3 py-1.5 rounded text-xs font-medium text-emerald-400">
+                    ✓ Granted
+                  </span>
+                )}
               </div>
             </div>
           </>

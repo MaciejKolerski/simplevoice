@@ -55,6 +55,8 @@ macos-accessibility-client = "0.0.1"
 core-graphics = "0.25.0"
 media-remote = "0.3.7"
 whisper-rs = { version = "0.16.0", features = ["metal"] }
+objc2 = "0.6.4"
+objc2-foundation = "0.3.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 whisper-rs = { version = "0.16.0", default-features = false, features = ["vulkan"] }
