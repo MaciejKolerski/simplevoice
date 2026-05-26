@@ -9,11 +9,13 @@ interface TitleBarProps {
 
 export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
   const [isMac, setIsMac] = useState(false);
+  const [isWindows, setIsWindows] = useState(false);
 
   useEffect(() => {
     invoke<{ platform: string }>("check_permissions_status")
       .then((status) => {
         setIsMac(status.platform === "macos");
+        setIsWindows(status.platform === "windows");
       })
       .catch(() => {
         setIsMac(false);
@@ -52,8 +54,8 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
         </span>
       </div>
 
-      {/* Right section: Window controls (Windows/Linux) */}
-      {!isMac && (
+      {/* Right section: Window controls (Windows) */}
+      {isWindows && (
         <div className="flex items-center h-full ml-auto title-bar-no-drag">
           <button
             className="h-full px-4 hover:bg-white/10 transition-colors flex items-center justify-center"
