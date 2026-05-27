@@ -44,3 +44,10 @@ impl From<&str> for AppError {
         AppError::Command(s.to_string())
     }
 }
+
+#[cfg(feature = "candle")]
+impl From<candle_core::Error> for AppError {
+    fn from(err: candle_core::Error) -> Self {
+        AppError::Model(err.to_string())
+    }
+}

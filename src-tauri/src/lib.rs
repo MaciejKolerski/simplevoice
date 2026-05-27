@@ -931,6 +931,10 @@ struct LocalModel {
     quality: u8,
     speed: u8,
     is_active: bool,
+    format: String,
+    architecture: Option<String>,
+    hf_model_id: Option<String>,
+    needs_conversion: bool,
 }
 
 #[tauri::command]
@@ -955,108 +959,35 @@ fn scan_models(
     let entries = std::fs::read_dir(&models_dir).map_err(|e| e.to_string())?;
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_file()
-            && path
-                .extension()
-                .is_some_and(|ext| ext == "gguf" || ext == "bin")
-        {
-            let filename = path.file_name().unwrap().to_string_lossy().to_string();
-            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
-
-            let size_formatted = if size_bytes >= 1_073_741_824 {
-                format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
-            } else {
-                format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
+        if let Ok(info) = crate::stt::factory::AsrFactory::detect(&path, active_path.as_deref()) {
+            let format_str = match info.format {
+                crate::stt::traits::ModelFormat::GgmlBin => "ggml_bin".to_string(),
+                crate::stt::traits::ModelFormat::Gguf => "gguf".to_string(),
+                crate::stt::traits::ModelFormat::HfSafetensors => "hf_safetensors".to_string(),
+                crate::stt::traits::ModelFormat::HfPytorch => "hf_pytorch".to_string(),
+                crate::stt::traits::ModelFormat::Onnx => "onnx".to_string(),
+                crate::stt::traits::ModelFormat::Nemo => "nemo".to_string(),
             };
-
-            let filename_lower = filename.to_lowercase();
-            let (quality, speed, name) =
-                if filename_lower.contains("large") || size_bytes > 2_000_000_000 {
-                    (95, 40, "Whisper Large")
-                } else if filename_lower.contains("medium") || size_bytes > 1_000_000_000 {
-                    (85, 60, "Whisper Medium")
-                } else if filename_lower.contains("small") || size_bytes > 400_000_000 {
-                    (75, 80, "Whisper Small")
-                } else if filename_lower.contains("base") || size_bytes > 140_000_000 {
-                    (65, 90, "Whisper Base")
-                } else {
-                    (50, 98, "Whisper Tiny")
-                };
-
-            let display_name = format!("{} ({})", name, filename);
-            let is_active = Some(path.to_string_lossy().to_string()) == active_path;
 
             models.push(LocalModel {
-                name: display_name,
-                filename,
-                path: path.to_string_lossy().to_string(),
-                size_bytes,
-                size_formatted,
-                quality,
-                speed,
-                is_active,
+                name: info.display_name,
+                filename: info.filename,
+                path: info.path,
+                size_bytes: info.size_bytes,
+                size_formatted: info.size_formatted,
+                quality: info.quality_score,
+                speed: info.speed_score,
+                is_active: info.is_active,
+                format: format_str,
+                architecture: info.architecture,
+                hf_model_id: info.hf_model_id,
+                needs_conversion: info.needs_conversion,
             });
-        } else if path.is_dir() {
-            let has_tokens = path.join("tokens.txt").exists();
-            let has_onnx = if let Ok(sub_entries) = std::fs::read_dir(&path) {
-                sub_entries
-                    .filter_map(|e| e.ok())
-                    .any(|e| e.path().extension().is_some_and(|ext| ext == "onnx"))
-            } else {
-                false
-            };
-
-            if has_tokens && has_onnx {
-                let mut size_bytes = 0u64;
-                if let Ok(sub_entries) = std::fs::read_dir(&path) {
-                    for sub_entry in sub_entries.filter_map(|e| e.ok()) {
-                        if sub_entry.path().is_file() {
-                            size_bytes += sub_entry.metadata().map(|m| m.len()).unwrap_or(0);
-                        }
-                    }
-                }
-
-                let size_formatted = if size_bytes >= 1_073_741_824 {
-                    format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
-                } else {
-                    format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
-                };
-
-                let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                let filename_lower = filename.to_lowercase();
-
-                let (name, quality, speed) = if filename_lower.contains("moonshine")
-                    || path.join("preprocess.onnx").exists()
-                {
-                    ("Moonshine ASR", 90, 85)
-                } else if filename_lower.contains("canary") {
-                    ("NVIDIA Canary-Qwen", 94, 60)
-                } else if filename_lower.contains("parakeet") || path.join("joiner.onnx").exists() {
-                    ("NVIDIA Parakeet TDT", 88, 92)
-                } else {
-                    ("ONNX Model", 80, 70)
-                };
-
-                let display_name = format!("{} ({})", name, filename);
-                let is_active = Some(path.to_string_lossy().to_string()) == active_path;
-
-                models.push(LocalModel {
-                    name: display_name,
-                    filename,
-                    path: path.to_string_lossy().to_string(),
-                    size_bytes,
-                    size_formatted,
-                    quality,
-                    speed,
-                    is_active,
-                });
-            }
         }
     }
 
     Ok(models)
 }
-
 #[derive(serde::Serialize, Clone)]
 struct ModelStatus {
     active: Option<String>,

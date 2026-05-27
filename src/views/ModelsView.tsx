@@ -17,6 +17,10 @@ interface LocalModel {
   quality: number;
   speed: number;
   is_active: boolean;
+  format: string;
+  architecture: string | null;
+  hf_model_id: string | null;
+  needs_conversion: boolean;
 }
 
 export function ModelsView() {

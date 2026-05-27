@@ -1,7 +1,12 @@
 use std::sync::Mutex;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 pub mod cloud;
+pub mod traits;
+pub mod factory;
+pub mod ggml_whisper;
+
+#[cfg(feature = "candle")]
+pub mod candle;
 
 fn prepare_samples(samples: &[f32]) -> Vec<f32> {
     if samples.is_empty() {
@@ -30,98 +35,10 @@ fn prepare_samples(samples: &[f32]) -> Vec<f32> {
     trimmed.iter().map(|&s| (s * gain).clamp(-1.0, 1.0)).collect()
 }
 
-pub struct WhisperEngine {
-    _context: WhisperContext,
-    state: Mutex<WhisperState>,
-}
-
-impl WhisperEngine {
-    pub fn initialize(model_path: &str, use_gpu: bool) -> Result<Self, String> {
-        // On macOS always try Metal first (safe, no Vulkan crashes). GPU flag is mainly for Linux.
-        let try_gpu = use_gpu || cfg!(target_os = "macos");
-        if try_gpu {
-            if let Ok(result) = std::panic::catch_unwind(|| {
-                let mut params = WhisperContextParameters::default();
-                params.use_gpu = true;
-                params.flash_attn = cfg!(target_os = "macos");
-
-                WhisperContext::new_with_params(model_path, params)
-                    .and_then(|ctx| ctx.create_state().map(|state| (ctx, state)))
-            }) {
-                if let Ok((ctx, state)) = result {
-                    return Ok(Self {
-                        _context: ctx,
-                        state: Mutex::new(state),
-                    });
-                }
-            }
-        }
-
-        let mut params = WhisperContextParameters::default();
-        params.use_gpu = false;
-        params.flash_attn = false;
-
-        let ctx = WhisperContext::new_with_params(model_path, params)
-            .map_err(|e| format!("Failed to initialize Whisper context: {}", e))?;
-        let state = ctx.create_state()
-            .map_err(|e| format!("Failed to create Whisper state: {}", e))?;
-
-        Ok(Self {
-            _context: ctx,
-            state: Mutex::new(state),
-        })
-    }
-
-    pub fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
-        let mut state_guard = self.state.lock().map_err(|e| format!("State lock error: {}", e))?;
-        let state = &mut *state_guard;
-
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        params.set_temperature(0.0);
-        // Optimize thread count per platform for fastest transcription.
-        // On macOS (Metal) use ~half the cores (preprocessing bottleneck), clamp to 2-6.
-        // On other platforms use 4-8.
-        let n_threads = if cfg!(target_os = "macos") {
-            ((num_cpus::get() as i32) / 2).clamp(2, 6)
-        } else {
-            (num_cpus::get() as i32).clamp(4, 8)
-        };
-        params.set_n_threads(n_threads);
-        params.set_print_progress(false);
-        params.set_print_realtime(false);
-        params.set_suppress_blank(true);
-        params.set_suppress_nst(false);
-        params.set_no_timestamps(true);
-        params.set_logprob_thold(-1.0);
-        params.set_no_speech_thold(0.6);
-
-        match language {
-            Some(lang) if !lang.trim().is_empty() && lang != "auto" => params.set_language(Some(lang)),
-            _ => params.set_language(None),
-        }
-        params.set_translate(false);
-
-        state.full(params, samples)
-            .map_err(|e| format!("Whisper inference run failed: {}", e))?;
-
-        let mut text = String::new();
-        let num_segments = state.full_n_segments();
-        for i in 0..num_segments {
-            if let Some(segment) = state.get_segment(i) {
-                if let Ok(segment_text) = segment.to_str() {
-                    text.push_str(segment_text);
-                }
-            }
-        }
-
-        Ok(text.trim().to_string())
-    }
-}
-
 pub struct SttState {
     pub active_model_path: Option<String>,
     pub loading_model_path: Option<String>,
-    pub engine: Option<std::sync::Arc<WhisperEngine>>,
+    pub engine: Option<std::sync::Arc<dyn traits::AsrEngine>>,
 }
 
 #[derive(Clone)]
@@ -141,13 +58,15 @@ impl SttController {
     }
 
     pub fn load_model(&self, model_path: &str, use_gpu: bool) -> Result<(), String> {
-        let whisper = WhisperEngine::initialize(model_path, use_gpu)?;
+        let path = std::path::Path::new(model_path);
+        let engine = factory::AsrFactory::load(path, use_gpu)
+            .map_err(|e| format!("Failed to load model: {}", e))?;
 
         let mut s = self.state.lock().unwrap();
-        s.engine = Some(std::sync::Arc::new(whisper));
+        s.engine = Some(std::sync::Arc::from(engine));
         s.active_model_path = Some(model_path.to_string());
 
-        println!("Successfully loaded Whisper model: {}", model_path);
+        println!("Successfully loaded ASR model: {}", model_path);
         Ok(())
     }
 
@@ -163,7 +82,8 @@ impl SttController {
             s.engine.clone()
         };
 
-        let engine = engine_arc.ok_or("No speech-to-text model loaded. Please load a Whisper model first.")?;
+        let engine = engine_arc.ok_or("No speech-to-text model loaded. Please load an ASR model first.")?;
         engine.transcribe(&prepared, language)
+            .map_err(|e| format!("Transcription failed: {}", e))
     }
 }

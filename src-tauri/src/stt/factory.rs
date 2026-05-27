@@ -1,0 +1,204 @@
+use std::path::Path;
+use crate::error::AppError;
+use crate::stt::traits::{AsrEngine, ModelFormat, ModelInfo};
+use crate::stt::ggml_whisper::GgmlWhisperEngine;
+
+pub struct AsrFactory;
+
+impl AsrFactory {
+    /// Wykrywa format i tworzy odpowiedni engine.
+    pub fn load(path: &Path, use_gpu: bool) -> Result<Box<dyn AsrEngine>, AppError> {
+        let format = Self::detect_format(path)?;
+        match format {
+            ModelFormat::GgmlBin => {
+                let engine = GgmlWhisperEngine::initialize(&path.to_string_lossy(), use_gpu)?;
+                Ok(Box::new(engine))
+            }
+            ModelFormat::HfSafetensors | ModelFormat::HfPytorch => {
+                #[cfg(feature = "candle")]
+                {
+                    let info = Self::detect(path, None)?;
+                    match info.architecture.as_deref() {
+                        Some("WhisperForConditionalGeneration") | Some("Whisper") => {
+                            let engine = super::candle::whisper::CandleWhisperEngine::initialize(path, use_gpu)?;
+                            Ok(Box::new(engine))
+                        }
+                        _ => Err(AppError::Model(format!(
+                            "Architecture {:?} not supported natively by Candle. Try converting to ONNX.",
+                            info.architecture
+                        ))),
+                    }
+                }
+                #[cfg(not(feature = "candle"))]
+                {
+                    Err(AppError::Model("Candle support is not compiled in. Build with --features candle.".to_string()))
+                }
+            }
+            _ => Err(AppError::Model(format!(
+                "Format {:?} is not supported yet or not compiled in",
+                format
+            ))),
+        }
+    }
+
+    /// Wykrywa format modelu bez wczytywania go do pamięci.
+    pub fn detect_format(path: &Path) -> Result<ModelFormat, AppError> {
+        if path.is_file() {
+            match path.extension().and_then(|e| e.to_str()) {
+                Some("gguf")  => return Ok(ModelFormat::Gguf),
+                Some("onnx")  => return Ok(ModelFormat::Onnx),
+                Some("nemo")  => return Ok(ModelFormat::Nemo),
+                Some("bin")   => return Ok(ModelFormat::GgmlBin),  // zakładamy GGML
+                _             => {}
+            }
+        }
+        if path.is_dir() {
+            if path.join("model.safetensors").exists()
+                || path.join("model.safetensors.index.json").exists()
+            {
+                return Ok(ModelFormat::HfSafetensors);
+            }
+            if path.join("pytorch_model.bin").exists() {
+                return Ok(ModelFormat::HfPytorch);
+            }
+            // Check for ONNX directories (Moonshine, etc.)
+            let has_onnx = if let Ok(sub_entries) = std::fs::read_dir(path) {
+                sub_entries
+                    .filter_map(|e| e.ok())
+                    .any(|e| e.path().extension().is_some_and(|ext| ext == "onnx"))
+            } else {
+                false
+            };
+            if has_onnx {
+                return Ok(ModelFormat::Onnx);
+            }
+        }
+        Err(AppError::Model(format!("Unrecognized model format at: {}", path.display())))
+    }
+
+    /// Odczytuje metadane modelu bez ładowania wag.
+    pub fn detect(path: &Path, active_path: Option<&str>) -> Result<ModelInfo, AppError> {
+        let format = Self::detect_format(path)?;
+        let filename = path.file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("")
+            .to_string();
+        
+        let path_str = path.to_string_lossy().to_string();
+        let is_active = Some(path_str.as_str()) == active_path;
+
+        let size_bytes = if path.is_file() {
+            path.metadata()?.len()
+        } else {
+            // Katalog: sumujemy rozmiar plików
+            let mut sum = 0;
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    if entry.path().is_file() {
+                        sum += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    }
+                }
+            }
+            sum
+        };
+
+        let size_formatted = if size_bytes >= 1_073_741_824 {
+            format!("{:.2} GB", size_bytes as f64 / 1_073_741_824.0)
+        } else {
+            format!("{:.0} MB", size_bytes as f64 / 1_048_576.0)
+        };
+
+        let mut architecture = None;
+        let mut hf_model_id = None;
+        let mut needs_conversion = false;
+
+        if path.is_dir() {
+            let config_path = path.join("config.json");
+            if config_path.exists() {
+                if let Ok(config_content) = std::fs::read_to_string(config_path) {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&config_content) {
+                        architecture = json["architectures"][0].as_str().map(|s| s.to_string());
+                        hf_model_id = json["_name_or_path"].as_str().map(|s| s.to_string());
+                    }
+                }
+            }
+
+            if format == ModelFormat::HfSafetensors || format == ModelFormat::HfPytorch {
+                let has_onnx = if let Ok(entries) = std::fs::read_dir(path) {
+                    entries.flatten().any(|e| e.path().extension().is_some_and(|ext| ext == "onnx"))
+                } else {
+                    false
+                };
+
+                let is_natively_supported = match architecture.as_deref() {
+                    Some("WhisperForConditionalGeneration") | Some("Whisper") => true,
+                    Some(a) if is_ctc_arch(a) => true,
+                    _ => false,
+                };
+
+                if !has_onnx && !is_natively_supported {
+                    needs_conversion = true;
+                }
+            }
+        }
+
+        let filename_lower = filename.to_lowercase();
+        let (display_name, quality_score, speed_score) = match format {
+            ModelFormat::GgmlBin | ModelFormat::Gguf => {
+                let (q, s, name) = if filename_lower.contains("large") || size_bytes > 2_000_000_000 {
+                    (95, 40, "Whisper Large")
+                } else if filename_lower.contains("medium") || size_bytes > 1_000_000_000 {
+                    (85, 60, "Whisper Medium")
+                } else if filename_lower.contains("small") || size_bytes > 400_000_000 {
+                    (75, 80, "Whisper Small")
+                } else if filename_lower.contains("base") || size_bytes > 140_000_000 {
+                    (65, 90, "Whisper Base")
+                } else {
+                    (50, 98, "Whisper Tiny")
+                };
+                (format!("{} ({})", name, filename), q, s)
+            }
+            ModelFormat::HfSafetensors | ModelFormat::HfPytorch => {
+                let name = hf_model_id.clone().unwrap_or_else(|| filename.clone());
+                (format!("HF: {}", name), 85, 75)
+            }
+            ModelFormat::Onnx => {
+                let (name, q, s) = if filename_lower.contains("moonshine") || path.join("preprocess.onnx").exists() {
+                    ("Moonshine ASR", 90, 85)
+                } else if filename_lower.contains("canary") {
+                    ("NVIDIA Canary-Qwen", 94, 60)
+                } else if filename_lower.contains("parakeet") || path.join("joiner.onnx").exists() {
+                    ("NVIDIA Parakeet TDT", 88, 92)
+                } else {
+                    ("ONNX Model", 80, 70)
+                };
+                (format!("{} ({})", name, filename), q, s)
+            }
+            ModelFormat::Nemo => {
+                (format!("NVIDIA NeMo ({})", filename), 90, 60)
+            }
+        };
+
+        Ok(ModelInfo {
+            path: path_str,
+            format,
+            architecture,
+            hf_model_id,
+            display_name,
+            filename,
+            size_bytes,
+            size_formatted,
+            quality_score,
+            speed_score,
+            is_active,
+            needs_conversion,
+        })
+    }
+}
+
+fn is_ctc_arch(arch: &str) -> bool {
+    matches!(arch,
+        "Wav2Vec2ForCTC" | "HubertForCTC" | "UniSpeechSatForCTC" |
+        "WavLMForCTC"    | "MCTCTForCTC"  | "SEWForCTC"
+    )
+}
