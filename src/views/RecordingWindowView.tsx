@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Mic } from "lucide-react";
 
 export function RecordingWindowView() {
   const [status, setStatus] = useState<"idle" | "recording" | "transcribing">("idle");
@@ -62,12 +61,12 @@ export function RecordingWindowView() {
       // amplitude from backend is typically in range [0.0, 0.2] depending on microphone gain.
       // We multiply it to get a responsive scale.
       const normalizedAmp = Math.min(amplitude * 6.0, 1.0);
-      return 4 + normalizedAmp * 36 * mult; // Min 4px, Max 40px
+      return 3 + normalizedAmp * 21 * mult; // Min 3px, Max 24px
     } else if (status === "transcribing") {
-      return 15;
+      return 10;
     } else {
       // Idle state: tiny dots
-      return 4;
+      return 3;
     }
   });
 
@@ -76,36 +75,19 @@ export function RecordingWindowView() {
       {/* Sleek Glassmorphic Pill */}
       <div
         data-tauri-drag-region
-        className="flex items-center justify-center px-6 h-[54px] rounded-full border border-white/10 bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 gap-4 pointer-events-auto cursor-grab active:cursor-grabbing"
-        style={{ width: "310px" }}
+        className="flex items-center justify-center px-5 h-[36px] rounded-full border border-white/10 bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing"
       >
-        {/* Left Side Status Indicator / Icon */}
+        {/* Visualizer centered */}
         <div className="flex items-center justify-center">
-          {status === "recording" ? (
-            <div className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-            </div>
-          ) : status === "transcribing" ? (
-            // A small rotating loader
-            <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin"></div>
-          ) : (
-            // Idle microphone icon
-            <Mic className="w-4 h-4 text-white/50" />
-          )}
-        </div>
-
-        {/* Center / Right Visualizer */}
-        <div className="flex items-center justify-center flex-1">
           {status === "transcribing" ? (
             // A gorgeous smooth wave effect during transcription
-            <div className="flex items-center justify-center gap-1.5 h-10">
+            <div className="flex items-center justify-center gap-1 h-6">
               {Array.from({ length: 9 }).map((_, i) => (
                 <div
                   key={i}
-                  className="w-1.5 rounded-full bg-gradient-to-t from-[#6366f1] to-[#a855f7] animate-[pulse_1s_infinite_ease-in-out]"
+                  className="w-1 rounded-full bg-gradient-to-t from-[#6366f1] to-[#a855f7] animate-[pulse_1s_infinite_ease-in-out]"
                   style={{
-                    height: "18px",
+                    height: "10px",
                     animationDelay: `${i * 0.1}s`,
                   }}
                 />
@@ -113,14 +95,14 @@ export function RecordingWindowView() {
             </div>
           ) : (
             // Interactive waveform for recording or idle
-            <div className="flex items-center justify-center gap-1.5 h-10">
+            <div className="flex items-center justify-center gap-1 h-6">
               {barHeights.map((height, i) => {
                 // Color gets more vibrant at the center
                 const opacity = 0.3 + multipliers[i] * 0.7;
                 return (
                   <div
                     key={i}
-                    className="w-1.5 rounded-full transition-[height] duration-75 ease-out"
+                    className="w-1 rounded-full transition-[height] duration-75 ease-out"
                     style={{
                       height: `${height}px`,
                       opacity,
@@ -133,11 +115,6 @@ export function RecordingWindowView() {
               })}
             </div>
           )}
-        </div>
-
-        {/* Right Side Text Label */}
-        <div className="text-[11px] font-medium tracking-wide text-white/70 uppercase w-20 text-right pr-1">
-          {status === "recording" ? "Rec..." : status === "transcribing" ? "STT..." : "Ready"}
         </div>
       </div>
     </div>

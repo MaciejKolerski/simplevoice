@@ -346,11 +346,11 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
                         let pos = monitor.position();
                         let scale_factor = monitor.scale_factor();
 
-                        let win_w = 360.0;
-                        let win_h = 90.0;
+                        let win_w = 200.0;
 
                         let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
-                        let y = pos.y + (size.height as f64 - win_h * scale_factor - 80.0 * scale_factor) as i32;
+                        // Align near the top of the screen (centered in X, right below macOS system menu bar in Y)
+                        let y = pos.y + (36.0 * scale_factor) as i32;
 
                         let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
                     }
@@ -1325,6 +1325,15 @@ fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Resu
 
     if let Some(obj) = json.as_object_mut() {
         obj.insert("recording_window_mode".to_string(), serde_json::json!(mode));
+        if mode == "never" {
+            obj.insert("recording_window_has_custom_pos".to_string(), serde_json::json!(false));
+            obj.remove("recording_window_x");
+            obj.remove("recording_window_y");
+            #[cfg(target_os = "macos")]
+            {
+                WINDOW_INITIALIZED.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         let pretty = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
         std::fs::write(&config_path, pretty).map_err(|e| e.to_string())?;
     }
