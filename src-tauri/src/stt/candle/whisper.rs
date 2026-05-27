@@ -165,6 +165,8 @@ impl CandleWhisperEngine {
         let model = Whisper::load(&vb, config.clone())
             .map_err(|e| AppError::Model(format!("Failed to load whisper model: {}", e)))?;
 
+        println!("[Candle Whisper] Model initialized successfully on device: {:?}", device);
+
         Ok(Self {
             model: Mutex::new(model),
             tokenizer,
@@ -256,6 +258,7 @@ impl CandleWhisperEngine {
         tokens.push(transcribe_token);
         tokens.push(no_timestamps_token);
 
+        let loop_start = std::time::Instant::now();
         for i in 0..sample_len {
             let tokens_t = Tensor::new(tokens.as_slice(), &self.device)
                 .map_err(|e| AppError::Model(e.to_string()))?;
@@ -266,15 +269,11 @@ impl CandleWhisperEngine {
                 .map_err(|e| AppError::Model(format!("Decoder forward failed: {}", e)))?;
             
             let (_, seq_len, _) = ys.dims3().map_err(|e| AppError::Model(e.to_string()))?;
-            let logits = ys.i((..1, seq_len - 1..))?
+            let logits = model.decoder.final_linear(&ys.i((..1, seq_len - 1..))?)?
                 .i(0)?
                 .i(0)?;
-            
-            let logits = model.decoder.final_linear(&logits)
-                .map_err(|e| AppError::Model(e.to_string()))?;
                 
-            let logits_v: Vec<f32> = logits.to_vec1()
-                .map_err(|e| AppError::Model(e.to_string()))?;
+            let logits_v: Vec<f32> = logits.to_vec1()?;
             
             let next_token = logits_v
                 .iter()
@@ -288,6 +287,7 @@ impl CandleWhisperEngine {
                 break;
             }
         }
+        println!("[Candle Whisper] decode_segment finished in {:.2?}", loop_start.elapsed());
         
         let text = self.tokenizer.decode(&tokens, true)
             .map_err(|e| AppError::Model(format!("Decoding failed: {}", e)))?;
@@ -301,10 +301,16 @@ impl AsrEngine for CandleWhisperEngine {
         samples: &[f32],
         language: Option<&str>,
     ) -> Result<String, AppError> {
+        let start_time = std::time::Instant::now();
+        println!("[Candle Whisper] Starting transcription of {} samples ({:.2}s)...", samples.len(), samples.len() as f32 / 16000.0);
+        
         let mel_bytes = match self.config.num_mel_bins {
             80 => MEL_FILTERS_80,
             128 => MEL_FILTERS_128,
-            n => return Err(AppError::Model(format!("Unsupported num_mel_bins: {}", n))),
+            n => {
+                println!("[Candle Whisper] Error: Unsupported num_mel_bins {}", n);
+                return Err(AppError::Model(format!("Unsupported num_mel_bins: {}", n)));
+            }
         };
         
         let mel_filters: Vec<f32> = mel_bytes
@@ -312,6 +318,7 @@ impl AsrEngine for CandleWhisperEngine {
             .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
             .collect();
 
+        println!("[Candle Whisper] Computing Mel Spectrogram...");
         let mel = audio::pcm_to_mel(&self.config, samples, &mel_filters);
         
         let mel_len = mel.len();
@@ -328,14 +335,19 @@ impl AsrEngine for CandleWhisperEngine {
             match language {
                 Some(lang) if lang != "auto" && !lang.trim().is_empty() => {
                     let token_name = format!("<|{}|>", lang);
-                    self.tokenizer.token_to_id(&token_name)
+                    let id = self.tokenizer.token_to_id(&token_name);
+                    println!("[Candle Whisper] Using language: {} (token id: {:?})", lang, id);
+                    id
                 }
                 _ => {
-                    // Try to auto-detect language
-                    self.detect_language(&mut model, &mel_t).ok()
+                    println!("[Candle Whisper] Auto-detecting language...");
+                    let id = self.detect_language(&mut model, &mel_t).ok();
+                    println!("[Candle Whisper] Auto-detection returned token id: {:?}", id);
+                    id
                 }
             }
         } else {
+            println!("[Candle Whisper] Model is English-only, skipping language tokens.");
             None
         };
 
@@ -344,13 +356,21 @@ impl AsrEngine for CandleWhisperEngine {
         let n_frames = 3000;
         let mut seek = 0;
         let mut full_text = String::new();
+        let num_segments = (content_frames + n_frames - 1) / n_frames;
+        let mut segment_idx = 0;
 
+        println!("[Candle Whisper] Starting decoding loop ({} segments)...", num_segments);
         while seek < content_frames {
+            segment_idx += 1;
             let segment_size = usize::min(content_frames - seek, n_frames);
+            println!("[Candle Whisper] Decoding segment {}/{} (seek: {}, size: {})...", segment_idx, num_segments, seek, segment_size);
+            
             let mel_segment = mel_t.narrow(2, seek, segment_size)
                 .map_err(|e| AppError::Model(e.to_string()))?;
             
             let segment_text = self.decode_segment(&mut model, &mel_segment, language_token)?;
+            println!("[Candle Whisper] Segment {} text: {:?}", segment_idx, segment_text);
+            
             if !segment_text.trim().is_empty() {
                 if !full_text.is_empty() {
                     full_text.push(' ');
@@ -361,6 +381,7 @@ impl AsrEngine for CandleWhisperEngine {
             seek += segment_size;
         }
 
+        println!("[Candle Whisper] Transcription completed in {:.2?}!", start_time.elapsed());
         Ok(full_text)
     }
 
@@ -377,7 +398,6 @@ impl AsrEngine for CandleWhisperEngine {
     }
 
     fn gpu_accelerated(&self) -> bool {
-        // Under macOS, metal is enabled.
-        cfg!(target_os = "macos")
+        !matches!(self.device, Device::Cpu)
     }
 }

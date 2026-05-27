@@ -23,6 +23,49 @@ interface LocalModel {
   needs_conversion: boolean;
 }
 
+const getFormatBadge = (format: string) => {
+  switch (format) {
+    case "ggml_bin":
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-purple-400 bg-purple-400/5 border border-purple-400/20 shrink-0">
+          GGML
+        </span>
+      );
+    case "gguf":
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-blue-400 bg-blue-400/5 border border-blue-400/20 shrink-0">
+          GGUF
+        </span>
+      );
+    case "hf_safetensors":
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 shrink-0">
+          HF Safetensors
+        </span>
+      );
+    case "hf_pytorch":
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-pink-400 bg-pink-400/5 border border-pink-400/20 shrink-0">
+          HF PyTorch
+        </span>
+      );
+    case "onnx":
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-cyan-400 bg-cyan-400/5 border border-cyan-400/20 shrink-0">
+          ONNX
+        </span>
+      );
+    case "nemo":
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-orange-400 bg-orange-400/5 border border-orange-400/20 shrink-0">
+          NeMo ⚠️
+        </span>
+      );
+    default:
+      return null;
+  }
+};
+
 export function ModelsView() {
   const [models, setModels] = useState<LocalModel[]>([]);
   const [modelsDir, setModelsDir] = useState<string>("");
@@ -33,6 +76,7 @@ export function ModelsView() {
 
   const [activeModelPath, setActiveModelPath] = useState<string | null>(null);
   const [loadingModelPath, setLoadingModelPath] = useState<string | null>(null);
+  const [filterFormat, setFilterFormat] = useState<string>("all");
 
   // Custom BYOK states
   const [asrProvider, setAsrProvider] = useState<
@@ -336,112 +380,163 @@ export function ModelsView() {
             )}
           </div>
         ) : (
-          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-            {models.map((model, idx) => {
-              const isActive = model.path === activeModelPath;
-              const isLoading =
-                model.path === loadingModelPath || loadingPath === model.path;
-              return (
-                <div
-                  key={idx}
-                  className={`flex flex-col lg:flex-row items-start lg:items-center p-5 transition-colors hover:bg-surface-hover gap-6 ${
-                    idx < models.length - 1 ? "border-b border-border" : ""
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="m-0 font-medium text-white truncate text-sm">
-                        {model.name}
-                      </h3>
-                      {isActive && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium text-emerald-400 bg-emerald-400/5 border border-emerald-400/20 shrink-0">
-                          <Check size={10} />
-                          Active
-                        </span>
-                      )}
-                      {isLoading && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium text-sky-400 bg-sky-400/5 border border-sky-400/20 shrink-0 animate-pulse">
-                          Loading...
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-muted text-xs truncate max-w-md">
-                      File:{" "}
-                      <span className="font-mono text-[11px] text-fg/80">
-                        {model.filename}
-                      </span>
-                    </div>
-                  </div>
+          <div className="flex flex-col gap-4">
+            {/* Format Filter */}
+            <div className="flex flex-wrap gap-1.5 pb-1">
+              <button
+                onClick={() => setFilterFormat("all")}
+                className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all duration-200 cursor-pointer border ${
+                  filterFormat === "all"
+                    ? "bg-white text-black border-white shadow-sm"
+                    : "bg-surface-active text-muted border-border hover:text-white hover:border-muted"
+                }`}
+              >
+                All formats
+              </button>
+              {Array.from(new Set(models.map(m => m.format))).map(fmt => {
+                const label = fmt === "ggml_bin" ? "GGML" : fmt.toUpperCase().replace("HF_", "").replace("_", " ");
+                return (
+                  <button
+                    key={fmt}
+                    onClick={() => setFilterFormat(fmt)}
+                    className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all duration-200 cursor-pointer border ${
+                      filterFormat === fmt
+                        ? "bg-white text-black border-white shadow-sm"
+                        : "bg-surface-active text-muted border-border hover:text-white hover:border-muted"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 w-full lg:w-auto">
-                    <div className="flex flex-col gap-2 w-full sm:w-[150px]">
-                      <div className="text-[10px] text-muted-dark font-semibold uppercase tracking-wider flex justify-between items-center">
-                        <span>Quality</span>
-                        <span className="text-white font-mono">
-                          {model.quality}%
-                        </span>
-                      </div>
-                      <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-white rounded-full transition-all duration-500"
-                          style={{ width: `${model.quality}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2 w-full sm:w-[150px]">
-                      <div className="text-[10px] text-muted-dark font-semibold uppercase tracking-wider flex justify-between items-center">
-                        <span>Speed</span>
-                        <span className="text-white font-mono">
-                          {model.speed}x
-                        </span>
-                      </div>
-                      <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-white rounded-full transition-all duration-500"
-                          style={{
-                            width: `${Math.min(model.speed * 20, 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 border-border/50 pt-4 sm:pt-0">
-                      <div className="text-xs font-mono text-muted">
-                        {model.size_formatted}
-                      </div>
-                      {isActive ? (
-                        <button
-                          className="btn btn-outline btn-small disabled opacity-50 cursor-not-allowed w-20"
-                          disabled
-                        >
-                          Loaded
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleLoadModel(model.path)}
-                          disabled={
-                            isLoading ||
-                            loadingModelPath !== null ||
-                            loadingPath !== null
-                          }
-                          className="btn btn-primary btn-small w-20 flex items-center justify-center cursor-pointer"
-                        >
-                          {isLoading ? (
-                            <span className="flex items-center gap-1.5 justify-center">
-                              <span className="w-1 h-1 rounded-full bg-white animate-ping"></span>
-                              <span>...</span>
-                            </span>
-                          ) : (
-                            "Load"
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+            <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+              {models.filter(model => filterFormat === "all" || model.format === filterFormat).length === 0 ? (
+                <div className="p-8 text-center text-xs text-muted leading-normal">
+                  No models match the selected format filter.
                 </div>
-              );
-            })}
+              ) : (
+                models
+                  .filter(model => filterFormat === "all" || model.format === filterFormat)
+                  .map((model, idx, filteredArr) => {
+                    const isActive = model.path === activeModelPath;
+                    const isLoading =
+                      model.path === loadingModelPath || loadingPath === model.path;
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex flex-col lg:flex-row items-start lg:items-center p-5 transition-colors hover:bg-surface-hover gap-6 ${
+                          idx < filteredArr.length - 1 ? "border-b border-border" : ""
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-1 flex-wrap">
+                            <h3 className="m-0 font-medium text-white truncate text-sm">
+                              {model.name}
+                            </h3>
+                            {getFormatBadge(model.format)}
+                            {isActive && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium text-emerald-400 bg-emerald-400/5 border border-emerald-400/20 shrink-0">
+                                <Check size={10} />
+                                Active
+                              </span>
+                            )}
+                            {isLoading && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium text-sky-400 bg-sky-400/5 border border-sky-400/20 shrink-0 animate-pulse">
+                                Loading...
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-muted text-xs truncate max-w-md">
+                            File:{" "}
+                            <span className="font-mono text-[11px] text-fg/80">
+                              {model.filename}
+                            </span>
+                          </div>
+                          {model.format === "nemo" && (
+                            <div className="text-[10px] text-orange-400/90 mt-1 leading-normal font-medium max-w-md">
+                              ⚠️ Requires Python 3 & nemo_toolkit installed in your local system environment.
+                            </div>
+                          )}
+                          {model.format === "onnx" && (
+                            <div className="text-[10px] text-cyan-400/90 mt-1 leading-normal font-medium max-w-md">
+                              ℹ️ Powered by ONNX Runtime. Runs efficiently on CPU.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 w-full lg:w-auto">
+                          <div className="flex flex-col gap-2 w-full sm:w-[150px]">
+                            <div className="text-[10px] text-muted-dark font-semibold uppercase tracking-wider flex justify-between items-center">
+                              <span>Quality</span>
+                              <span className="text-white font-mono">
+                                {model.quality}%
+                              </span>
+                            </div>
+                            <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-white rounded-full transition-all duration-500"
+                                style={{ width: `${model.quality}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2 w-full sm:w-[150px]">
+                            <div className="text-[10px] text-muted-dark font-semibold uppercase tracking-wider flex justify-between items-center">
+                              <span>Speed</span>
+                              <span className="text-white font-mono">
+                                {model.speed}x
+                              </span>
+                            </div>
+                            <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-white rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${Math.min(model.speed * 20, 100)}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 border-border/50 pt-4 sm:pt-0">
+                            <div className="text-xs font-mono text-muted">
+                              {model.size_formatted}
+                            </div>
+                            {isActive ? (
+                              <button
+                                className="btn btn-outline btn-small disabled opacity-50 cursor-not-allowed w-20"
+                                disabled
+                              >
+                                Loaded
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleLoadModel(model.path)}
+                                disabled={
+                                  isLoading ||
+                                  loadingModelPath !== null ||
+                                  loadingPath !== null
+                                }
+                                className="btn btn-primary btn-small w-20 flex items-center justify-center cursor-pointer"
+                              >
+                                {isLoading ? (
+                                  <span className="flex items-center gap-1.5 justify-center">
+                                    <span className="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span>...</span>
+                                  </span>
+                                ) : (
+                                  "Load"
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
           </div>
         )
       ) : (

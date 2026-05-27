@@ -4,6 +4,8 @@ pub mod cloud;
 pub mod traits;
 pub mod factory;
 pub mod ggml_whisper;
+pub mod onnx_engine;
+pub mod nemo_engine;
 
 #[cfg(feature = "candle")]
 pub mod candle;

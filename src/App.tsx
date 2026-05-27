@@ -204,8 +204,10 @@ function App() {
             console.log("Transcription successful:", text);
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to transcribe recording:", err);
+        const msg = typeof err === "string" ? err : err?.message || String(err);
+        setErrorMessage(msg);
       } finally {
         setIsTranscribing(false);
         invoke("set_transcribing", { active: false }).catch(() => {});

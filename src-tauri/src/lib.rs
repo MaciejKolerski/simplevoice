@@ -3,7 +3,7 @@ mod error;
 #[cfg(target_os = "linux")]
 mod linux_shortcuts;
 mod media_control;
-mod stt;
+pub mod stt;
 use audio::AudioController;
 use std::sync::Mutex;
 use stt::SttController;

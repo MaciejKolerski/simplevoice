@@ -6,11 +6,11 @@ use crate::stt::ggml_whisper::GgmlWhisperEngine;
 pub struct AsrFactory;
 
 impl AsrFactory {
-    /// Wykrywa format i tworzy odpowiedni engine.
+    /// Detects the format and creates the corresponding engine.
     pub fn load(path: &Path, use_gpu: bool) -> Result<Box<dyn AsrEngine>, AppError> {
         let format = Self::detect_format(path)?;
         match format {
-            ModelFormat::GgmlBin => {
+            ModelFormat::GgmlBin | ModelFormat::Gguf => {
                 let engine = GgmlWhisperEngine::initialize(&path.to_string_lossy(), use_gpu)?;
                 Ok(Box::new(engine))
             }
@@ -18,15 +18,18 @@ impl AsrFactory {
                 #[cfg(feature = "candle")]
                 {
                     let info = Self::detect(path, None)?;
-                    match info.architecture.as_deref() {
-                        Some("WhisperForConditionalGeneration") | Some("Whisper") => {
-                            let engine = super::candle::whisper::CandleWhisperEngine::initialize(path, use_gpu)?;
-                            Ok(Box::new(engine))
-                        }
-                        _ => Err(AppError::Model(format!(
+                    let arch = info.architecture.as_deref().unwrap_or("");
+                    if arch == "WhisperForConditionalGeneration" || arch == "Whisper" {
+                        let engine = super::candle::whisper::CandleWhisperEngine::initialize(path, use_gpu)?;
+                        Ok(Box::new(engine))
+                    } else if is_ctc_arch(arch) {
+                        let engine = super::candle::wav2vec::Wav2VecEngine::initialize(path, use_gpu)?;
+                        Ok(Box::new(engine))
+                    } else {
+                        Err(AppError::Model(format!(
                             "Architecture {:?} not supported natively by Candle. Try converting to ONNX.",
                             info.architecture
-                        ))),
+                        )))
                     }
                 }
                 #[cfg(not(feature = "candle"))]
@@ -34,21 +37,36 @@ impl AsrFactory {
                     Err(AppError::Model("Candle support is not compiled in. Build with --features candle.".to_string()))
                 }
             }
-            _ => Err(AppError::Model(format!(
-                "Format {:?} is not supported yet or not compiled in",
-                format
-            ))),
+            ModelFormat::Onnx => {
+                let engine = super::onnx_engine::OnnxEngine::initialize(path, use_gpu)?;
+                Ok(Box::new(engine))
+            }
+            ModelFormat::Nemo => {
+                let engine = super::nemo_engine::NemoEngine::initialize(path, use_gpu)?;
+                Ok(Box::new(engine))
+            }
         }
     }
 
-    /// Wykrywa format modelu bez wczytywania go do pamięci.
+    /// Detects the model format without loading it into memory.
     pub fn detect_format(path: &Path) -> Result<ModelFormat, AppError> {
         if path.is_file() {
             match path.extension().and_then(|e| e.to_str()) {
                 Some("gguf")  => return Ok(ModelFormat::Gguf),
                 Some("onnx")  => return Ok(ModelFormat::Onnx),
                 Some("nemo")  => return Ok(ModelFormat::Nemo),
-                Some("bin")   => return Ok(ModelFormat::GgmlBin),  // zakładamy GGML
+                Some("bin")   => {
+                    if let Ok(mut file) = std::fs::File::open(path) {
+                        use std::io::Read;
+                        let mut header = [0u8; 4];
+                        if file.read_exact(&mut header).is_ok() {
+                            if &header[2..4] == b"gg" || &header[0..2] == b"GG" {
+                                return Ok(ModelFormat::GgmlBin);
+                            }
+                        }
+                    }
+                    return Err(AppError::Model("Invalid GGML model file (bad magic number)".to_string()));
+                }
                 _             => {}
             }
         }
@@ -76,7 +94,7 @@ impl AsrFactory {
         Err(AppError::Model(format!("Unrecognized model format at: {}", path.display())))
     }
 
-    /// Odczytuje metadane modelu bez ładowania wag.
+    /// Reads model metadata without loading weights.
     pub fn detect(path: &Path, active_path: Option<&str>) -> Result<ModelInfo, AppError> {
         let format = Self::detect_format(path)?;
         let filename = path.file_name()
@@ -90,7 +108,7 @@ impl AsrFactory {
         let size_bytes = if path.is_file() {
             path.metadata()?.len()
         } else {
-            // Katalog: sumujemy rozmiar plików
+            // Directory: sum the size of all files
             let mut sum = 0;
             if let Ok(entries) = std::fs::read_dir(path) {
                 for entry in entries.flatten() {
