@@ -78,6 +78,11 @@ export function ModelsView() {
   const [loadingModelPath, setLoadingModelPath] = useState<string | null>(null);
   const [filterFormat, setFilterFormat] = useState<string>("all");
 
+  // Conversion states
+  const [convertingPath, setConvertingPath] = useState<string | null>(null);
+  const [conversionStatus, setConversionStatus] = useState<string>("");
+  const [conversionError, setConversionError] = useState<{ path: string; message: string } | null>(null);
+
   // Custom BYOK states
   const [asrProvider, setAsrProvider] = useState<
     "openai" | "openrouter" | "anthropic" | "gemini" | "custom"
@@ -164,10 +169,18 @@ export function ModelsView() {
       unlistenStatus = fn;
     });
 
+    let unlistenConversion: (() => void) | null = null;
+    listen<string>("conversion-progress", (event) => {
+      setConversionStatus(event.payload);
+    }).then((fn) => {
+      unlistenConversion = fn;
+    });
+
     return () => {
       window.removeEventListener("asr-engine-changed", syncEngine);
       window.removeEventListener("api-keys-changed", handleKeyChange);
       if (unlistenStatus) unlistenStatus();
+      if (unlistenConversion) unlistenConversion();
     };
   }, []);
 
@@ -244,6 +257,22 @@ export function ModelsView() {
       console.error("Failed to load model:", err);
     } finally {
       setLoadingPath(null);
+    }
+  };
+
+  const handleConvertModel = async (path: string) => {
+    setConvertingPath(path);
+    setConversionStatus("Starting...");
+    setConversionError(null);
+    try {
+      await invoke("convert_model", { modelPath: path });
+      await loadModelsList();
+    } catch (err: any) {
+      console.error("Failed to convert model:", err);
+      setConversionError({ path, message: err?.toString() || "Unknown error occurred" });
+    } finally {
+      setConvertingPath(null);
+      setConversionStatus("");
     }
   };
 
@@ -464,6 +493,16 @@ export function ModelsView() {
                               ℹ️ Powered by ONNX Runtime. Runs efficiently on CPU.
                             </div>
                           )}
+                          {model.needs_conversion && (
+                            <div className="text-[10px] text-amber-400/90 mt-1 leading-normal font-medium max-w-md">
+                              ⚠️ Requires conversion to ONNX format to run on this device.
+                            </div>
+                          )}
+                          {conversionError?.path === model.path && (
+                            <div className="text-[10px] text-rose-400/95 mt-1 leading-normal font-semibold max-w-md whitespace-pre-wrap">
+                              ❌ Conversion failed: {conversionError.message}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 w-full lg:w-auto">
@@ -503,32 +542,58 @@ export function ModelsView() {
                             <div className="text-xs font-mono text-muted">
                               {model.size_formatted}
                             </div>
-                            {isActive ? (
-                              <button
-                                className="btn btn-outline btn-small disabled opacity-50 cursor-not-allowed w-20"
-                                disabled
-                              >
-                                Loaded
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleLoadModel(model.path)}
-                                disabled={
-                                  isLoading ||
-                                  loadingModelPath !== null ||
-                                  loadingPath !== null
-                                }
-                                className="btn btn-primary btn-small w-20 flex items-center justify-center cursor-pointer"
-                              >
-                                {isLoading ? (
-                                  <span className="flex items-center gap-1.5 justify-center">
-                                    <span className="w-1 h-1 rounded-full bg-white animate-ping"></span>
-                                    <span>...</span>
+                            {model.needs_conversion ? (
+                              convertingPath === model.path ? (
+                                <div className="flex flex-col items-end gap-1.5 min-w-[120px]">
+                                  <span className="text-[10px] font-mono text-amber-400 animate-pulse text-right">
+                                    {conversionStatus || "Converting..."}
                                   </span>
-                                ) : (
-                                  "Load"
-                                )}
-                              </button>
+                                  <div className="w-24 h-1 bg-surface-active rounded-full overflow-hidden">
+                                    <div className="h-full bg-amber-400 rounded-full animate-pulse" style={{ width: '100%' }} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleConvertModel(model.path)}
+                                  disabled={
+                                    convertingPath !== null ||
+                                    loadingModelPath !== null ||
+                                    loadingPath !== null
+                                  }
+                                  className="btn btn-primary btn-small bg-amber-500 hover:bg-amber-600 border-amber-500 hover:border-amber-600 text-black w-24 flex items-center justify-center cursor-pointer font-medium"
+                                >
+                                  Convert
+                                </button>
+                              )
+                            ) : (
+                              isActive ? (
+                                <button
+                                  className="btn btn-outline btn-small disabled opacity-50 cursor-not-allowed w-20"
+                                  disabled
+                                >
+                                  Loaded
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleLoadModel(model.path)}
+                                  disabled={
+                                    isLoading ||
+                                    loadingModelPath !== null ||
+                                    loadingPath !== null ||
+                                    convertingPath !== null
+                                  }
+                                  className="btn btn-primary btn-small w-20 flex items-center justify-center cursor-pointer"
+                                >
+                                  {isLoading ? (
+                                    <span className="flex items-center gap-1.5 justify-center">
+                                      <span className="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                      <span>...</span>
+                                    </span>
+                                  ) : (
+                                    "Load"
+                                  )}
+                                </button>
+                              )
                             )}
                           </div>
                         </div>

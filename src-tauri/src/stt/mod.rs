@@ -6,6 +6,7 @@ pub mod factory;
 pub mod ggml_whisper;
 pub mod onnx_engine;
 pub mod nemo_engine;
+pub mod converter;
 
 #[cfg(feature = "candle")]
 pub mod candle;
