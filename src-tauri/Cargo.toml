@@ -35,10 +35,7 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 whisper-rs = { version = "0.16.0", default-features = false }
 reqwest = { version = "0.12", features = ["json", "multipart"] }
-ort = { version = "2.0.0-rc.9", features = ["ndarray"] }
-ndarray = "0.17"
 keyring = "2.1"
-sherpa-onnx = "1.13.2"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-native-tls", "migrate"] }
 tokio = { version = "1.52.3", features = ["full"] }
 enigo = "0.6.1"

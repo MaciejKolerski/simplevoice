@@ -2,8 +2,6 @@ use std::sync::Mutex;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 pub mod cloud;
-pub mod parakeet;
-pub mod sherpa;
 
 fn prepare_samples(samples: &[f32]) -> Vec<f32> {
     if samples.is_empty() {
@@ -32,28 +30,13 @@ fn prepare_samples(samples: &[f32]) -> Vec<f32> {
     trimmed.iter().map(|&s| (s * gain).clamp(-1.0, 1.0)).collect()
 }
 
-pub trait EngineAdapter: Send + Sync {
-    fn initialize(&mut self, model_path: &str, use_gpu: bool) -> Result<(), String>;
-    fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String>;
-}
-
-
 pub struct WhisperEngine {
-    context: Option<WhisperContext>,
-    state: Option<Mutex<WhisperState>>,
+    _context: WhisperContext,
+    state: Mutex<WhisperState>,
 }
 
 impl WhisperEngine {
-    pub fn new() -> Self {
-        Self {
-            context: None,
-            state: None,
-        }
-    }
-}
-
-impl EngineAdapter for WhisperEngine {
-    fn initialize(&mut self, model_path: &str, use_gpu: bool) -> Result<(), String> {
+    pub fn initialize(model_path: &str, use_gpu: bool) -> Result<Self, String> {
         // On macOS always try Metal first (safe, no Vulkan crashes). GPU flag is mainly for Linux.
         let try_gpu = use_gpu || cfg!(target_os = "macos");
         if try_gpu {
@@ -66,9 +49,10 @@ impl EngineAdapter for WhisperEngine {
                     .and_then(|ctx| ctx.create_state().map(|state| (ctx, state)))
             }) {
                 if let Ok((ctx, state)) = result {
-                    self.context = Some(ctx);
-                    self.state = Some(Mutex::new(state));
-                    return Ok(());
+                    return Ok(Self {
+                        _context: ctx,
+                        state: Mutex::new(state),
+                    });
                 }
             }
         }
@@ -82,15 +66,14 @@ impl EngineAdapter for WhisperEngine {
         let state = ctx.create_state()
             .map_err(|e| format!("Failed to create Whisper state: {}", e))?;
 
-        self.context = Some(ctx);
-        self.state = Some(Mutex::new(state));
-        Ok(())
+        Ok(Self {
+            _context: ctx,
+            state: Mutex::new(state),
+        })
     }
 
-    fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
-        let _ctx = self.context.as_ref().ok_or("No model context loaded in WhisperEngine")?;
-        let state_mutex = self.state.as_ref().ok_or("No Whisper state initialized")?;
-        let mut state_guard = state_mutex.lock().map_err(|e| format!("State lock error: {}", e))?;
+    pub fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
+        let mut state_guard = self.state.lock().map_err(|e| format!("State lock error: {}", e))?;
         let state = &mut *state_guard;
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -138,7 +121,7 @@ impl EngineAdapter for WhisperEngine {
 pub struct SttState {
     pub active_model_path: Option<String>,
     pub loading_model_path: Option<String>,
-    pub engine: Option<std::sync::Arc<Box<dyn EngineAdapter>>>,
+    pub engine: Option<std::sync::Arc<WhisperEngine>>,
 }
 
 #[derive(Clone)]
@@ -158,26 +141,13 @@ impl SttController {
     }
 
     pub fn load_model(&self, model_path: &str, use_gpu: bool) -> Result<(), String> {
-        let path = std::path::Path::new(model_path);
-
-        let engine: Box<dyn EngineAdapter> = if path.is_dir() {
-            let engine = sherpa::SherpaEngine::new(model_path)?;
-            Box::new(engine)
-        } else if model_path.ends_with(".onnx") {
-            let mut parakeet = parakeet::ParakeetEngine::new();
-            parakeet.initialize(model_path, use_gpu)?;
-            Box::new(parakeet)
-        } else {
-            let mut whisper = WhisperEngine::new();
-            whisper.initialize(model_path, use_gpu)?;
-            Box::new(whisper)
-        };
+        let whisper = WhisperEngine::initialize(model_path, use_gpu)?;
 
         let mut s = self.state.lock().unwrap();
-        s.engine = Some(std::sync::Arc::new(engine));
+        s.engine = Some(std::sync::Arc::new(whisper));
         s.active_model_path = Some(model_path.to_string());
 
-        println!("Successfully loaded model: {}", model_path);
+        println!("Successfully loaded Whisper model: {}", model_path);
         Ok(())
     }
 
@@ -185,7 +155,7 @@ impl SttController {
         let prepared = prepare_samples(samples);
 
         if prepared.len() > 16_000 * 90 {
-            return Err("Recording too long (>90s). Use shorter clips or a smaller/faster model (e.g. Moonshine).".to_string());
+            return Err("Recording too long (>90s). Please use shorter clips.".to_string());
         }
 
         let engine_arc = {
@@ -193,7 +163,7 @@ impl SttController {
             s.engine.clone()
         };
 
-        let engine = engine_arc.ok_or("No speech-to-text model loaded. Please load a model first.")?;
+        let engine = engine_arc.ok_or("No speech-to-text model loaded. Please load a Whisper model first.")?;
         engine.transcribe(&prepared, language)
     }
 }

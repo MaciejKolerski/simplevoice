@@ -138,15 +138,7 @@ function App() {
             );
             if (activeModelPath) {
               const parts = activeModelPath.split(/[\/\\]/);
-              const fname = parts[parts.length - 1];
-              if (
-                fname.toLowerCase().includes("parakeet") ||
-                fname.toLowerCase().includes("onnx")
-              ) {
-                modelName = "NVIDIA Parakeet";
-              } else {
-                modelName = fname;
-              }
+              modelName = parts[parts.length - 1];
             }
           }
 

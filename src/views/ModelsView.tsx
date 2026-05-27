@@ -217,7 +217,7 @@ export function ModelsView() {
             Models & Engines
           </h1>
           <p className="text-xs text-muted mt-1 leading-normal">
-            Choose whether to use local Whisper/Parakeet model files or
+            Choose whether to use local Whisper model files or
             high-speed cloud speech recognition.
           </p>
         </div>
@@ -311,15 +311,7 @@ export function ModelsView() {
               <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">
                 .bin
               </code>{" "}
-              or{" "}
-              <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">
-                .gguf
-              </code>{" "}
-              extension) or NVIDIA Parakeet{" "}
-              <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">
-                .onnx
-              </code>{" "}
-              files inside the application models folder.
+              extension) inside the application models folder.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 items-center w-full justify-center">
               <button onClick={handleOpenFolder} className="btn btn-outline">
