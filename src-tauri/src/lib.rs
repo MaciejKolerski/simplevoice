@@ -1968,7 +1968,8 @@ pub fn run() {
             open_accessibility_settings,
             check_permissions_status,
             set_recording_window_mode,
-            stt::converter::convert_model
+            stt::converter::convert_model,
+            stt::downloader::download_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

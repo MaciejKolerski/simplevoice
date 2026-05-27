@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, RefreshCw, Check, ChevronDown } from "lucide-react";
+import { FolderOpen, RefreshCw, Check, ChevronDown, Download } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -66,6 +66,39 @@ const getFormatBadge = (format: string) => {
   }
 };
 
+interface RecommendedModel {
+  name: string;
+  repo_id: string;
+  files: string[];
+  description: string;
+  format: string;
+  size_formatted: string;
+}
+
+const RECOMMENDED_MODELS: RecommendedModel[] = [
+  {
+    name: "Parakeet TDT v3 (ONNX)",
+    repo_id: "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+    files: [
+      "encoder.int8.onnx",
+      "decoder.int8.onnx",
+      "joiner.int8.onnx",
+      "tokens.txt"
+    ],
+    description: "State-of-the-art multilingual ASR model by NVIDIA. Optimized with INT8 quantization for fast, native execution on CPU.",
+    format: "onnx",
+    size_formatted: "600 MB"
+  },
+  {
+    name: "Whisper Tiny (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-tiny.bin"],
+    description: "Ultra-fast, tiny speech-to-text model by OpenAI. Best for quick transcribing with very low memory footprint.",
+    format: "gguf",
+    size_formatted: "75 MB"
+  }
+];
+
 export function ModelsView() {
   const [models, setModels] = useState<LocalModel[]>([]);
   const [modelsDir, setModelsDir] = useState<string>("");
@@ -82,6 +115,12 @@ export function ModelsView() {
   const [convertingPath, setConvertingPath] = useState<string | null>(null);
   const [conversionStatus, setConversionStatus] = useState<string>("");
   const [conversionError, setConversionError] = useState<{ path: string; message: string } | null>(null);
+
+  // Downloader states
+  const [downloadingRepo, setDownloadingRepo] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const [downloadStatus, setDownloadStatus] = useState<string>("");
+  const [downloadError, setDownloadError] = useState<{ repoId: string; message: string } | null>(null);
 
   // Custom BYOK states
   const [asrProvider, setAsrProvider] = useState<
@@ -176,11 +215,29 @@ export function ModelsView() {
       unlistenConversion = fn;
     });
 
+    let unlistenDownload: (() => void) | null = null;
+    listen<{
+      repo_id: string;
+      file: string;
+      progress: number;
+      current_file_index: number;
+      total_files: number;
+    }>("download-progress", (event) => {
+      const { progress, file, current_file_index, total_files } = event.payload;
+      setDownloadProgress(progress);
+      setDownloadStatus(
+        `Downloading file ${current_file_index} of ${total_files} (${file}): ${Math.round(progress)}%`
+      );
+    }).then((fn) => {
+      unlistenDownload = fn;
+    });
+
     return () => {
       window.removeEventListener("asr-engine-changed", syncEngine);
       window.removeEventListener("api-keys-changed", handleKeyChange);
       if (unlistenStatus) unlistenStatus();
       if (unlistenConversion) unlistenConversion();
+      if (unlistenDownload) unlistenDownload();
     };
   }, []);
 
@@ -274,6 +331,38 @@ export function ModelsView() {
       setConvertingPath(null);
       setConversionStatus("");
     }
+  };
+
+  const handleDownloadModel = async (model: RecommendedModel) => {
+    setDownloadingRepo(model.repo_id);
+    setDownloadProgress(0);
+    setDownloadStatus("Starting download...");
+    setDownloadError(null);
+    try {
+      await invoke("download_model", {
+        repoId: model.repo_id,
+        files: model.files,
+      });
+      await loadModelsList();
+    } catch (err: any) {
+      console.error("Failed to download model:", err);
+      setDownloadError({
+        repoId: model.repo_id,
+        message: err?.toString() || "Unknown error occurred",
+      });
+    } finally {
+      setDownloadingRepo(null);
+      setDownloadStatus("");
+    }
+  };
+
+  const isModelDownloaded = (model: RecommendedModel) => {
+    if (model.files.length === 1) {
+      const filename = model.files[0];
+      return models.some((m) => m.filename === filename || m.path.endsWith(filename));
+    }
+    const folderName = model.repo_id.replace("/", "--");
+    return models.some((m) => m.path.includes(folderName));
   };
 
   const handleOpenFolder = async () => {
@@ -377,8 +466,9 @@ export function ModelsView() {
       )}
 
       {asrEngine === "local" ? (
-        models.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
+        <div className="flex flex-col gap-8">
+          {models.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
             <FolderOpen size={48} className="text-muted mb-4 opacity-50" />
             <h3 className="text-white font-medium mb-2">
               No local models found
@@ -603,7 +693,82 @@ export function ModelsView() {
               )}
             </div>
           </div>
-        )
+        )}
+
+        {/* Recommended Models Section */}
+        <div className="flex flex-col gap-4 mt-2">
+          <div>
+            <h2 className="m-0 text-base font-medium text-white tracking-tight flex items-center gap-2">
+              <Download size={16} className="text-muted" />
+              <span>Recommended Models</span>
+            </h2>
+            <p className="text-[11px] text-muted mt-1 leading-normal">
+              Download pre-configured, optimized models directly from Hugging Face. Runs 100% locally with no system dependencies.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {RECOMMENDED_MODELS.map((rec, idx) => {
+              const isDownloaded = isModelDownloaded(rec);
+              const isDownloading = downloadingRepo === rec.repo_id;
+              
+              return (
+                <div key={idx} className="border border-border rounded-xl p-5 bg-secondary flex flex-col justify-between gap-4 transition-colors hover:bg-surface-hover">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <h4 className="m-0 font-medium text-white text-sm">
+                        {rec.name}
+                      </h4>
+                      <div className="flex items-center gap-1.5">
+                        {getFormatBadge(rec.format)}
+                        <span className="text-[10px] font-mono text-muted">{rec.size_formatted}</span>
+                      </div>
+                    </div>
+                    <p className="text-muted text-[11px] leading-relaxed m-0">
+                      {rec.description}
+                    </p>
+                    <div className="text-[10px] text-muted-dark font-mono mt-1">
+                      Repo: {rec.repo_id}
+                    </div>
+                    {downloadError?.repoId === rec.repo_id && (
+                      <div className="text-[10px] text-rose-400 font-semibold mt-1">
+                        ❌ Download failed: {downloadError.message}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-end border-t border-border/50 pt-4 mt-auto">
+                    {isDownloaded ? (
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                        <Check size={14} />
+                        <span>Downloaded</span>
+                      </div>
+                    ) : isDownloading ? (
+                      <div className="flex flex-col items-end gap-1.5 w-full">
+                        <span className="text-[10px] font-mono text-sky-400 animate-pulse text-right">
+                          {downloadStatus || "Downloading..."}
+                        </span>
+                        <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
+                          <div className="h-full bg-sky-400 rounded-full transition-all duration-300" style={{ width: `${downloadProgress}%` }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleDownloadModel(rec)}
+                        disabled={downloadingRepo !== null || loadingModelPath !== null || loadingPath !== null}
+                        className="btn btn-primary btn-small w-28 flex items-center justify-center gap-1.5 cursor-pointer font-medium"
+                      >
+                        <Download size={12} />
+                        <span>Download</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
       ) : (
         <div className="border border-border rounded-xl p-6 md:p-8 bg-secondary flex flex-col gap-6 max-w-2xl mx-auto">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border-b border-border/50 pb-6">

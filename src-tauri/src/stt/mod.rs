@@ -7,6 +7,7 @@ pub mod ggml_whisper;
 pub mod onnx_engine;
 pub mod nemo_engine;
 pub mod converter;
+pub mod downloader;
 
 #[cfg(feature = "candle")]
 pub mod candle;
