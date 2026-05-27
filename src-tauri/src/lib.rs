@@ -265,6 +265,57 @@ extern "C" {
 }
 
 #[cfg(target_os = "macos")]
+fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32) {
+    let app_local_data = match app_handle.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return,
+    };
+    let config_path = app_local_data.join("config.json");
+    let _ = std::fs::create_dir_all(&app_local_data);
+
+    let mut json = if config_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        }
+    } else {
+        serde_json::json!({})
+    };
+
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("recording_window_x".to_string(), serde_json::json!(x));
+        obj.insert("recording_window_y".to_string(), serde_json::json!(y));
+        obj.insert("recording_window_has_custom_pos".to_string(), serde_json::json!(true));
+    }
+
+    if let Ok(serialized) = serde_json::to_string_pretty(&json) {
+        let _ = std::fs::write(&config_path, serialized);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_recording_window_position(app_handle: &tauri::AppHandle) -> Option<(i32, i32)> {
+    let app_local_data = app_handle.path().app_local_data_dir().ok()?;
+    let config_path = app_local_data.join("config.json");
+    if !config_path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(&config_path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    
+    let has_custom = json.get("recording_window_has_custom_pos")?.as_bool()?;
+    if !has_custom {
+        return None;
+    }
+    
+    let x = json.get("recording_window_x")?.as_i64()? as i32;
+    let y = json.get("recording_window_y")?.as_i64()? as i32;
+    
+    Some((x, y))
+}
+
+#[cfg(target_os = "macos")]
 static WINDOW_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(target_os = "macos")]
@@ -283,20 +334,28 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
         if should_show {
             // Position the window bottom-center dynamically only on the very first show
             if !WINDOW_INITIALIZED.load(std::sync::atomic::Ordering::Relaxed) {
-                if let Some(monitor) = window.current_monitor().ok().flatten() {
-                    let size = monitor.size();
-                    let pos = monitor.position();
-                    let scale_factor = monitor.scale_factor();
-
-                    let win_w = 360.0;
-                    let win_h = 90.0;
-
-                    let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
-                    let y = pos.y + (size.height as f64 - win_h * scale_factor - 80.0 * scale_factor) as i32;
-
+                let mut positioned = false;
+                if let Some((x, y)) = get_recording_window_position(app) {
                     let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
-                    WINDOW_INITIALIZED.store(true, std::sync::atomic::Ordering::Relaxed);
+                    positioned = true;
                 }
+
+                if !positioned {
+                    if let Some(monitor) = window.current_monitor().ok().flatten() {
+                        let size = monitor.size();
+                        let pos = monitor.position();
+                        let scale_factor = monitor.scale_factor();
+
+                        let win_w = 360.0;
+                        let win_h = 90.0;
+
+                        let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
+                        let y = pos.y + (size.height as f64 - win_h * scale_factor - 80.0 * scale_factor) as i32;
+
+                        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+                    }
+                }
+                WINDOW_INITIALIZED.store(true, std::sync::atomic::Ordering::Relaxed);
             }
 
             let _ = window.show();
@@ -1845,8 +1904,15 @@ pub fn run() {
                                     if command_pressed != last_command_state {
                                         last_command_state = command_pressed;
                                         let window_clone = window.clone();
+                                        let app_handle_clone = app_handle.clone();
                                         let _ = app_handle.run_on_main_thread(move || {
                                             let _ = window_clone.set_ignore_cursor_events(!command_pressed);
+                                            // When Cmd key is released, save the window's current coordinates
+                                            if !command_pressed {
+                                                if let Ok(pos) = window_clone.outer_position() {
+                                                    save_recording_window_position(&app_handle_clone, pos.x, pos.y);
+                                                }
+                                            }
                                         });
                                     }
                                 } else {
