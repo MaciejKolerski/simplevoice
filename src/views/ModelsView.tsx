@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, RefreshCw, Check, ChevronDown, Download } from "lucide-react";
+import { FolderOpen, RefreshCw, ChevronDown, Download, Loader2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -23,49 +23,6 @@ interface LocalModel {
   needs_conversion: boolean;
 }
 
-const getFormatBadge = (format: string) => {
-  switch (format) {
-    case "ggml_bin":
-      return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-purple-400 bg-purple-400/5 border border-purple-400/20 shrink-0">
-          GGML
-        </span>
-      );
-    case "gguf":
-      return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-blue-400 bg-blue-400/5 border border-blue-400/20 shrink-0">
-          GGUF
-        </span>
-      );
-    case "hf_safetensors":
-      return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 shrink-0">
-          HF Safetensors
-        </span>
-      );
-    case "hf_pytorch":
-      return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-pink-400 bg-pink-400/5 border border-pink-400/20 shrink-0">
-          HF PyTorch
-        </span>
-      );
-    case "onnx":
-      return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-cyan-400 bg-cyan-400/5 border border-cyan-400/20 shrink-0">
-          ONNX
-        </span>
-      );
-    case "nemo":
-      return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-orange-400 bg-orange-400/5 border border-orange-400/20 shrink-0">
-          NeMo ⚠️
-        </span>
-      );
-    default:
-      return null;
-  }
-};
-
 interface RecommendedModel {
   name: string;
   repo_id: string;
@@ -85,7 +42,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
       "joiner.int8.onnx",
       "tokens.txt"
     ],
-    description: "State-of-the-art multilingual ASR model by NVIDIA. Optimized with INT8 quantization for fast, native execution on CPU.",
+    description: "State-of-the-art multilingual ASR by NVIDIA. INT8 quantized, runs natively on CPU.",
     format: "onnx",
     size_formatted: "600 MB"
   },
@@ -93,11 +50,20 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Tiny (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-tiny.bin"],
-    description: "Ultra-fast, tiny speech-to-text model by OpenAI. Best for quick transcribing with very low memory footprint.",
+    description: "Ultra-fast, tiny model by OpenAI. Low memory footprint, great for quick transcription.",
     format: "gguf",
     size_formatted: "75 MB"
   }
 ];
+
+const FORMAT_LABELS: Record<string, string> = {
+  ggml_bin: "GGML",
+  gguf: "GGUF",
+  hf_safetensors: "Safetensors",
+  hf_pytorch: "PyTorch",
+  onnx: "ONNX",
+  nemo: "NeMo",
+};
 
 export function ModelsView() {
   const [models, setModels] = useState<LocalModel[]>([]);
@@ -109,7 +75,6 @@ export function ModelsView() {
 
   const [activeModelPath, setActiveModelPath] = useState<string | null>(null);
   const [loadingModelPath, setLoadingModelPath] = useState<string | null>(null);
-  const [filterFormat, setFilterFormat] = useState<string>("all");
 
   // Conversion states
   const [convertingPath, setConvertingPath] = useState<string | null>(null);
@@ -122,7 +87,7 @@ export function ModelsView() {
   const [downloadStatus, setDownloadStatus] = useState<string>("");
   const [downloadError, setDownloadError] = useState<{ repoId: string; message: string } | null>(null);
 
-  // Custom BYOK states
+  // BYOK states
   const [asrProvider, setAsrProvider] = useState<
     "openai" | "openrouter" | "anthropic" | "gemini" | "custom"
   >("openai");
@@ -154,11 +119,7 @@ export function ModelsView() {
   const loadSecureKeysForProvider = async (provider: string) => {
     try {
       const hasKey = await invoke<boolean>("has_secure_api_key", { provider });
-      if (hasKey) {
-        setProviderKey("••••••••••••••••");
-      } else {
-        setProviderKey("");
-      }
+      setProviderKey(hasKey ? "••••••••••••••••" : "");
     } catch (err) {
       console.error(`Failed to check secure API key for ${provider}:`, err);
     }
@@ -226,7 +187,7 @@ export function ModelsView() {
       const { progress, file, current_file_index, total_files } = event.payload;
       setDownloadProgress(progress);
       setDownloadStatus(
-        `Downloading file ${current_file_index} of ${total_files} (${file}): ${Math.round(progress)}%`
+        `Downloading ${current_file_index}/${total_files}: ${file} (${Math.round(progress)}%)`
       );
     }).then((fn) => {
       unlistenDownload = fn;
@@ -375,569 +336,414 @@ export function ModelsView() {
     }
   };
 
+  const KNOWN_MODELS = new Set([
+    "whisper-1", "gpt-4o-mini", "gpt-4o",
+    "openai/whisper-large-v3", "meta-llama/llama-3.2-11b-vision-instruct:free",
+    "deepseek/deepseek-chat", "google/gemini-2.0-flash-exp:free",
+    "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229",
+    "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp",
+  ]);
+  const isCustomModel = asrModel === "custom" || !KNOWN_MODELS.has(asrModel);
+
+  // Render a single model row (shared between local and recommended)
+  const renderModelRow = (
+    key: string,
+    name: string,
+    formatLabel: string,
+    size: string,
+    action: React.ReactNode,
+    subtitle?: React.ReactNode,
+    isLast?: boolean,
+  ) => (
+    <div
+      key={key}
+      className={`flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-surface-hover ${
+        !isLast ? "border-b border-border/50" : ""
+      }`}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2.5">
+          <span className="text-sm font-medium text-white truncate">{name}</span>
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-muted bg-surface-active border border-border shrink-0">
+            {formatLabel}
+          </span>
+        </div>
+        {subtitle && (
+          <div className="mt-0.5">{subtitle}</div>
+        )}
+      </div>
+      <span className="text-xs font-mono text-muted shrink-0">{size}</span>
+      <div className="shrink-0 w-24 flex justify-end">{action}</div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col w-full">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6">
-        <div>
-          <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
-            Models & Engines
-          </h1>
-          <p className="text-xs text-muted mt-1 leading-normal">
-            Choose whether to use local Whisper model files or
-            high-speed cloud speech recognition.
-          </p>
-        </div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
+          Models
+        </h1>
         {asrEngine === "local" && (
-          <div className="flex gap-2 shrink-0 w-full sm:w-auto">
+          <div className="flex items-center gap-2">
             <button
               onClick={handleOpenFolder}
-              className="btn btn-outline btn-small flex items-center gap-1.5 justify-center flex-1 sm:flex-initial"
+              className="btn btn-outline btn-small flex items-center gap-1.5 cursor-pointer"
+              title="Open models folder"
             >
-              <FolderOpen size={14} />
-              <span>Open Directory</span>
+              <FolderOpen size={13} />
+              <span className="hidden sm:inline">Folder</span>
             </button>
             <button
               onClick={loadModelsList}
               disabled={scanning}
-              className="btn btn-outline btn-small flex items-center gap-1.5 justify-center flex-1 sm:flex-initial"
+              className="btn btn-outline btn-small flex items-center gap-1.5 cursor-pointer"
+              title="Rescan models directory"
             >
-              <RefreshCw size={14} className={scanning ? "animate-spin" : ""} />
-              <span>Scan Directory</span>
+              <RefreshCw size={13} className={scanning ? "animate-spin" : ""} />
             </button>
           </div>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-border mb-8 gap-2">
+      <div className="flex border-b border-border mb-6 gap-1">
         <button
           onClick={() => handleSelectEngine("local")}
-          className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 relative -mb-[2px] cursor-pointer ${
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 relative -mb-[2px] cursor-pointer ${
             asrEngine === "local"
               ? "text-white border-white"
               : "text-muted border-transparent hover:text-white"
           }`}
         >
-          Local Models
+          Local
         </button>
         <button
           onClick={() => handleSelectEngine("openai-cloud")}
-          className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 relative -mb-[2px] cursor-pointer ${
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 relative -mb-[2px] cursor-pointer ${
             asrEngine === "openai-cloud"
               ? "text-white border-white"
               : "text-muted border-transparent hover:text-white"
           }`}
         >
-          BYOK
+          Cloud (BYOK)
         </button>
       </div>
 
-      {asrEngine === "openai-cloud" && (
-        <div
-          className={`mb-6 p-4 rounded-xl border flex items-center gap-3 transition-all duration-300 ${
-            providerKey && providerKey !== ""
-              ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400"
-              : "bg-amber-500/5 border-amber-500/20 text-amber-400"
-          }`}
-        >
-          <div
-            className={`w-2 h-2 rounded-full ${providerKey && providerKey !== "" ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-bounce"}`}
-          />
-          <div className="flex-1 text-xs">
-            {providerKey && providerKey !== "" ? (
-              <span>
-                <strong>Active Cloud Engine (BYOK):</strong> Configured for{" "}
-                <strong>{asrProvider.toUpperCase()}</strong> (Model:{" "}
-                <code>
-                  {asrModel === "custom" ? asrCustomModel || "None" : asrModel}
-                </code>
-                ). Ready for cloud transcription.
-              </span>
-            ) : (
-              <span>
-                <strong>
-                  Missing API Key for {asrProvider.toUpperCase()}:
-                </strong>{" "}
-                Please enter your API Key below to activate cloud transcription.
-              </span>
-            )}
+      {/* Global error alerts */}
+      {conversionError && (
+        <div className="mb-4 px-4 py-3 rounded-lg border border-rose-500/20 bg-rose-500/5 text-rose-400 text-xs flex items-start gap-2">
+          <span className="shrink-0 mt-px">✕</span>
+          <div>
+            <span className="font-medium">Conversion failed:</span>{" "}
+            {conversionError.message}
           </div>
+          <button
+            onClick={() => setConversionError(null)}
+            className="ml-auto text-rose-400/60 hover:text-rose-400 cursor-pointer shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {downloadError && (
+        <div className="mb-4 px-4 py-3 rounded-lg border border-rose-500/20 bg-rose-500/5 text-rose-400 text-xs flex items-start gap-2">
+          <span className="shrink-0 mt-px">✕</span>
+          <div>
+            <span className="font-medium">Download failed:</span>{" "}
+            {downloadError.message}
+          </div>
+          <button
+            onClick={() => setDownloadError(null)}
+            className="ml-auto text-rose-400/60 hover:text-rose-400 cursor-pointer shrink-0"
+          >
+            ✕
+          </button>
         </div>
       )}
 
       {asrEngine === "local" ? (
-        <div className="flex flex-col gap-8">
-          {models.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
-            <FolderOpen size={48} className="text-muted mb-4 opacity-50" />
-            <h3 className="text-white font-medium mb-2">
-              No local models found
-            </h3>
-            <p className="text-muted text-sm max-w-md mb-6 leading-relaxed">
-              Place your Whisper model files (with{" "}
-              <code className="text-white font-mono bg-black/30 px-1.5 py-0.5 rounded">
-                .bin
-              </code>{" "}
-              extension) inside the application models folder.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 items-center w-full justify-center">
-              <button onClick={handleOpenFolder} className="btn btn-outline">
-                Open Models Folder
-              </button>
-              <button
-                onClick={loadModelsList}
-                className="btn btn-primary"
-                disabled={scanning}
-              >
-                {scanning ? "Scanning..." : "Scan Directory"}
-              </button>
-            </div>
-            {modelsDir && (
-              <div className="mt-4 text-[10px] text-muted-dark font-mono break-all max-w-xl bg-black/20 p-2 rounded border border-border/50 select-text">
-                {modelsDir}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {/* Format Filter */}
-            <div className="flex flex-wrap gap-1.5 pb-1">
-              <button
-                onClick={() => setFilterFormat("all")}
-                className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all duration-200 cursor-pointer border ${
-                  filterFormat === "all"
-                    ? "bg-white text-black border-white shadow-sm"
-                    : "bg-surface-active text-muted border-border hover:text-white hover:border-muted"
-                }`}
-              >
-                All formats
-              </button>
-              {Array.from(new Set(models.map(m => m.format))).map(fmt => {
-                const label = fmt === "ggml_bin" ? "GGML" : fmt.toUpperCase().replace("HF_", "").replace("_", " ");
-                return (
+        <div className="flex flex-col gap-6">
+          {/* Installed models */}
+          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+            {models.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+                <p className="text-muted text-sm mb-4">
+                  No local models installed yet.
+                </p>
+                <p className="text-muted-foreground text-xs mb-1">
+                  Download a recommended model below, or place model files in:
+                </p>
+                {modelsDir && (
                   <button
-                    key={fmt}
-                    onClick={() => setFilterFormat(fmt)}
-                    className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all duration-200 cursor-pointer border ${
-                      filterFormat === fmt
-                        ? "bg-white text-black border-white shadow-sm"
-                        : "bg-surface-active text-muted border-border hover:text-white hover:border-muted"
-                    }`}
+                    onClick={handleOpenFolder}
+                    className="text-[11px] font-mono text-muted hover:text-white transition-colors cursor-pointer mt-1"
                   >
-                    {label}
+                    {modelsDir} →
                   </button>
-                );
-              })}
-            </div>
+                )}
+              </div>
+            ) : (
+              models.map((model, idx) => {
+                const isActive = model.path === activeModelPath;
+                const isLoading =
+                  model.path === loadingModelPath || loadingPath === model.path;
+                const formatLabel = FORMAT_LABELS[model.format] || model.format.toUpperCase();
 
-            <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-              {models.filter(model => filterFormat === "all" || model.format === filterFormat).length === 0 ? (
-                <div className="p-8 text-center text-xs text-muted leading-normal">
-                  No models match the selected format filter.
-                </div>
-              ) : (
-                models
-                  .filter(model => filterFormat === "all" || model.format === filterFormat)
-                  .map((model, idx, filteredArr) => {
-                    const isActive = model.path === activeModelPath;
-                    const isLoading =
-                      model.path === loadingModelPath || loadingPath === model.path;
-                    return (
-                      <div
-                        key={idx}
-                        className={`flex flex-col lg:flex-row items-start lg:items-center p-5 transition-colors hover:bg-surface-hover gap-6 ${
-                          idx < filteredArr.length - 1 ? "border-b border-border" : ""
-                        }`}
+                let action: React.ReactNode;
+                if (model.needs_conversion) {
+                  if (convertingPath === model.path) {
+                    action = (
+                      <span className="text-[10px] font-mono text-amber-400 animate-pulse truncate">
+                        {conversionStatus || "Converting..."}
+                      </span>
+                    );
+                  } else {
+                    action = (
+                      <button
+                        onClick={() => handleConvertModel(model.path)}
+                        disabled={convertingPath !== null || loadingModelPath !== null || loadingPath !== null}
+                        className="btn btn-small text-[11px] bg-amber-500 hover:bg-amber-600 border-amber-500 text-black font-medium cursor-pointer w-full h-[30px]"
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-1 flex-wrap">
-                            <h3 className="m-0 font-medium text-white truncate text-sm">
-                              {model.name}
-                            </h3>
-                            {getFormatBadge(model.format)}
-                            {isActive && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium text-emerald-400 bg-emerald-400/5 border border-emerald-400/20 shrink-0">
-                                <Check size={10} />
-                                Active
-                              </span>
-                            )}
-                            {isLoading && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium text-sky-400 bg-sky-400/5 border border-sky-400/20 shrink-0 animate-pulse">
-                                Loading...
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-muted text-xs truncate max-w-md">
-                            File:{" "}
-                            <span className="font-mono text-[11px] text-fg/80">
-                              {model.filename}
-                            </span>
-                          </div>
-                          {model.format === "nemo" && (
-                            <div className="text-[10px] text-orange-400/90 mt-1 leading-normal font-medium max-w-md">
-                              ⚠️ Requires Python 3 & nemo_toolkit installed in your local system environment.
-                            </div>
-                          )}
-                          {model.format === "onnx" && (
-                            <div className="text-[10px] text-cyan-400/90 mt-1 leading-normal font-medium max-w-md">
-                              ℹ️ Powered by ONNX Runtime. Runs efficiently on CPU.
-                            </div>
-                          )}
-                          {model.needs_conversion && (
-                            <div className="text-[10px] text-amber-400/90 mt-1 leading-normal font-medium max-w-md">
-                              ⚠️ Requires conversion to ONNX format to run on this device.
-                            </div>
-                          )}
-                          {conversionError?.path === model.path && (
-                            <div className="text-[10px] text-rose-400/95 mt-1 leading-normal font-semibold max-w-md whitespace-pre-wrap">
-                              ❌ Conversion failed: {conversionError.message}
-                            </div>
-                          )}
-                        </div>
+                        Convert
+                      </button>
+                    );
+                  }
+                } else if (isActive) {
+                  action = (
+                    <button
+                      disabled
+                      className="btn btn-outline btn-small w-full h-[30px] opacity-50 cursor-not-allowed"
+                    >
+                      Selected
+                    </button>
+                  );
+                } else {
+                  action = (
+                    <button
+                      onClick={() => handleLoadModel(model.path)}
+                      disabled={isLoading || loadingModelPath !== null || loadingPath !== null || convertingPath !== null}
+                      className="btn btn-primary btn-small w-full h-[30px] flex items-center justify-center cursor-pointer"
+                    >
+                      {isLoading ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        "Load"
+                      )}
+                    </button>
+                  );
+                }
 
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 w-full lg:w-auto">
-                          <div className="flex flex-col gap-2 w-full sm:w-[150px]">
-                            <div className="text-[10px] text-muted-dark font-semibold uppercase tracking-wider flex justify-between items-center">
-                              <span>Quality</span>
-                              <span className="text-white font-mono">
-                                {model.quality}%
-                              </span>
-                            </div>
-                            <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-white rounded-full transition-all duration-500"
-                                style={{ width: `${model.quality}%` }}
-                              />
-                            </div>
-                          </div>
+                return renderModelRow(
+                  model.path,
+                  model.name,
+                  formatLabel,
+                  model.size_formatted,
+                  action,
+                  undefined,
+                  idx === models.length - 1 && RECOMMENDED_MODELS.every(r => isModelDownloaded(r)),
+                );
+              })
+            )}
 
-                          <div className="flex flex-col gap-2 w-full sm:w-[150px]">
-                            <div className="text-[10px] text-muted-dark font-semibold uppercase tracking-wider flex justify-between items-center">
-                              <span>Speed</span>
-                              <span className="text-white font-mono">
-                                {model.speed}x
-                              </span>
-                            </div>
-                            <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-white rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${Math.min(model.speed * 20, 100)}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
+            {/* Recommended models — integrated as continuation */}
+            {RECOMMENDED_MODELS.some(r => !isModelDownloaded(r)) && (
+              <>
+                {models.length > 0 && (
+                  <div className="px-5 py-2.5 bg-black/30 border-y border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Available for Download
+                    </span>
+                  </div>
+                )}
+                {RECOMMENDED_MODELS.filter(r => !isModelDownloaded(r)).map((rec, idx, arr) => {
+                  const isDownloading = downloadingRepo === rec.repo_id;
 
-                          <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 border-border/50 pt-4 sm:pt-0">
-                            <div className="text-xs font-mono text-muted">
-                              {model.size_formatted}
-                            </div>
-                            {model.needs_conversion ? (
-                              convertingPath === model.path ? (
-                                <div className="flex flex-col items-end gap-1.5 min-w-[120px]">
-                                  <span className="text-[10px] font-mono text-amber-400 animate-pulse text-right">
-                                    {conversionStatus || "Converting..."}
-                                  </span>
-                                  <div className="w-24 h-1 bg-surface-active rounded-full overflow-hidden">
-                                    <div className="h-full bg-amber-400 rounded-full animate-pulse" style={{ width: '100%' }} />
-                                  </div>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => handleConvertModel(model.path)}
-                                  disabled={
-                                    convertingPath !== null ||
-                                    loadingModelPath !== null ||
-                                    loadingPath !== null
-                                  }
-                                  className="btn btn-primary btn-small bg-amber-500 hover:bg-amber-600 border-amber-500 hover:border-amber-600 text-black w-24 flex items-center justify-center cursor-pointer font-medium"
-                                >
-                                  Convert
-                                </button>
-                              )
-                            ) : (
-                              isActive ? (
-                                <button
-                                  className="btn btn-outline btn-small disabled opacity-50 cursor-not-allowed w-20"
-                                  disabled
-                                >
-                                  Loaded
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleLoadModel(model.path)}
-                                  disabled={
-                                    isLoading ||
-                                    loadingModelPath !== null ||
-                                    loadingPath !== null ||
-                                    convertingPath !== null
-                                  }
-                                  className="btn btn-primary btn-small w-20 flex items-center justify-center cursor-pointer"
-                                >
-                                  {isLoading ? (
-                                    <span className="flex items-center gap-1.5 justify-center">
-                                      <span className="w-1 h-1 rounded-full bg-white animate-ping"></span>
-                                      <span>...</span>
-                                    </span>
-                                  ) : (
-                                    "Load"
-                                  )}
-                                </button>
-                              )
-                            )}
-                          </div>
+                  let action: React.ReactNode;
+                  if (isDownloading) {
+                    action = (
+                      <div className="flex flex-col items-end gap-1 min-w-[96px]">
+                        <span className="text-[10px] font-mono text-sky-400 animate-pulse">
+                          {Math.round(downloadProgress)}%
+                        </span>
+                        <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-sky-400 rounded-full transition-all duration-300"
+                            style={{ width: `${downloadProgress}%` }}
+                          />
                         </div>
                       </div>
                     );
-                  })
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Recommended Models Section */}
-        <div className="flex flex-col gap-4 mt-2">
-          <div>
-            <h2 className="m-0 text-base font-medium text-white tracking-tight flex items-center gap-2">
-              <Download size={16} className="text-muted" />
-              <span>Recommended Models</span>
-            </h2>
-            <p className="text-[11px] text-muted mt-1 leading-normal">
-              Download pre-configured, optimized models directly from Hugging Face. Runs 100% locally with no system dependencies.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {RECOMMENDED_MODELS.map((rec, idx) => {
-              const isDownloaded = isModelDownloaded(rec);
-              const isDownloading = downloadingRepo === rec.repo_id;
-              
-              return (
-                <div key={idx} className="border border-border rounded-xl p-5 bg-secondary flex flex-col justify-between gap-4 transition-colors hover:bg-surface-hover">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <h4 className="m-0 font-medium text-white text-sm">
-                        {rec.name}
-                      </h4>
-                      <div className="flex items-center gap-1.5">
-                        {getFormatBadge(rec.format)}
-                        <span className="text-[10px] font-mono text-muted">{rec.size_formatted}</span>
-                      </div>
-                    </div>
-                    <p className="text-muted text-[11px] leading-relaxed m-0">
-                      {rec.description}
-                    </p>
-                    <div className="text-[10px] text-muted-dark font-mono mt-1">
-                      Repo: {rec.repo_id}
-                    </div>
-                    {downloadError?.repoId === rec.repo_id && (
-                      <div className="text-[10px] text-rose-400 font-semibold mt-1">
-                        ❌ Download failed: {downloadError.message}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-end border-t border-border/50 pt-4 mt-auto">
-                    {isDownloaded ? (
-                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                        <Check size={14} />
-                        <span>Downloaded</span>
-                      </div>
-                    ) : isDownloading ? (
-                      <div className="flex flex-col items-end gap-1.5 w-full">
-                        <span className="text-[10px] font-mono text-sky-400 animate-pulse text-right">
-                          {downloadStatus || "Downloading..."}
-                        </span>
-                        <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
-                          <div className="h-full bg-sky-400 rounded-full transition-all duration-300" style={{ width: `${downloadProgress}%` }} />
-                        </div>
-                      </div>
-                    ) : (
+                  } else {
+                    action = (
                       <button
                         onClick={() => handleDownloadModel(rec)}
                         disabled={downloadingRepo !== null || loadingModelPath !== null || loadingPath !== null}
-                        className="btn btn-primary btn-small w-28 flex items-center justify-center gap-1.5 cursor-pointer font-medium"
+                        className="btn btn-outline btn-small w-full flex items-center justify-center gap-1.5 cursor-pointer"
                       >
-                        <Download size={12} />
-                        <span>Download</span>
+                        <Download size={11} />
+                        <span>Get</span>
                       </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-      ) : (
-        <div className="border border-border rounded-xl p-6 md:p-8 bg-secondary flex flex-col gap-6 max-w-2xl mx-auto">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border-b border-border/50 pb-6">
-            <div className="flex-1">
-              <h3 className="m-0 font-medium text-white text-base mb-2">
-                BYOK Config
-              </h3>
-              <p className="text-muted text-[13px] max-w-md sm:max-w-xl leading-relaxed">
-                Configure your cloud-based Speech-to-Text provider. All API
-                requests are sent directly from your client machine to the
-                designated endpoint.
-              </p>
-            </div>
-          </div>
-
-          <div className="max-w-2xl mx-auto space-y-6">
-            <div className="flex flex-col">
-              <label className="text-fg font-medium text-xs mb-2">
-                Provider Preset
-              </label>
-              <div className="relative w-full">
-                <select
-                  value={asrProvider}
-                  onChange={(e) => handleProviderChange(e.target.value as any)}
-                  className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
-                >
-                  <option value="openai">OpenAI</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="gemini">Google Gemini</option>
-                  <option value="custom">Custom...</option>
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                  <ChevronDown size={14} />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col">
-              <label className="text-fg font-medium text-xs mb-2">
-                API Key ({asrProvider.toUpperCase()})
-              </label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type={showApiKey ? "text" : "password"}
-                  value={providerKey}
-                  onChange={(e) => {
-                    setProviderKey(e.target.value);
-                    saveProviderKey(asrProvider, e.target.value);
-                  }}
-                  placeholder={
-                    providerKey === "••••••••••••••••"
-                      ? ""
-                      : `Enter API Key for ${asrProvider.toUpperCase()}...`
+                    );
                   }
-                  className="input flex-1 bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="btn btn-outline sm:min-w-[70px] flex items-center justify-center text-xs font-medium cursor-pointer whitespace-nowrap"
-                >
-                  {showApiKey ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
 
-            <div className="flex flex-col">
-              <label className="text-fg font-medium text-xs mb-2">Model</label>
-              <div className="relative w-full">
-                <select
-                  value={asrModel}
-                  onChange={(e) => handleModelChange(e.target.value)}
-                  className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
-                >
-                  {asrProvider === "openai" && (
-                    <>
-                      <option value="whisper-1">whisper-1</option>
-                      <option value="gpt-4o-mini">gpt-4o-mini</option>
-                      <option value="gpt-4o">gpt-4o</option>
-                    </>
-                  )}
-                  {asrProvider === "openrouter" && (
-                    <>
-                      <option value="openai/whisper-large-v3">
-                        openai/whisper-large-v3
-                      </option>
-                      <option value="meta-llama/llama-3.2-11b-vision-instruct:free">
-                        meta-llama/llama-3.2-11b-vision-instruct:free
-                      </option>
-                      <option value="deepseek/deepseek-chat">
-                        deepseek/deepseek-chat
-                      </option>
-                      <option value="google/gemini-2.0-flash-exp:free">
-                        google/gemini-2.0-flash-exp:free
-                      </option>
-                    </>
-                  )}
-
-                  {asrProvider === "gemini" && (
-                    <>
-                      <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                      <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                      <option value="gemini-2.0-flash-exp">
-                        gemini-2.0-flash-exp
-                      </option>
-                    </>
-                  )}
-                  <option value="custom">Custom (type below)...</option>
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                  <ChevronDown size={14} />
-                </div>
-              </div>
-              <p className="text-[11px] text-muted-dark mt-1.5">
-                These are suggested models for this provider. Your API endpoint
-                might support other models.
-              </p>
-            </div>
-
-            {(asrModel === "custom" ||
-              (asrModel !== "whisper-1" &&
-                asrModel !== "gpt-4o-mini" &&
-                asrModel !== "gpt-4o" &&
-                asrModel !== "openai/whisper-large-v3" &&
-                asrModel !== "meta-llama/llama-3.2-11b-vision-instruct:free" &&
-                asrModel !== "deepseek/deepseek-chat" &&
-                asrModel !== "google/gemini-2.0-flash-exp:free" &&
-                asrModel !== "claude-3-5-haiku-20241022" &&
-                asrModel !== "claude-3-5-sonnet-20241022" &&
-                asrModel !== "claude-3-opus-20240229" &&
-                asrModel !== "gemini-1.5-flash" &&
-                asrModel !== "gemini-1.5-pro" &&
-                asrModel !== "gemini-2.0-flash-exp")) && (
-              <div className="flex flex-col">
-                <label className="text-fg font-medium text-xs mb-2">
-                  Custom Model ID
-                </label>
-                <input
-                  type="text"
-                  value={asrModel === "custom" ? asrCustomModel : asrModel}
-                  onChange={(e) => {
-                    if (asrModel === "custom") {
-                      handleCustomModelChange(e.target.value);
-                    } else {
-                      handleModelChange(e.target.value);
-                    }
-                  }}
-                  placeholder="e.g. openrouter/owl-alpha"
-                  className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors font-mono"
-                />
-              </div>
+                  return renderModelRow(
+                    rec.repo_id,
+                    rec.name,
+                    FORMAT_LABELS[rec.format] || rec.format.toUpperCase(),
+                    rec.size_formatted,
+                    action,
+                    <p className="text-[11px] text-muted leading-snug m-0 max-w-md">{rec.description}</p>,
+                    idx === arr.length - 1,
+                  );
+                })}
+              </>
             )}
+          </div>
 
+          {/* Download status bar */}
+          {downloadingRepo && downloadStatus && (
+            <div className="px-4 py-2 rounded-lg border border-sky-500/15 bg-sky-500/5 text-sky-400 text-[11px] font-mono">
+              {downloadStatus}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* BYOK Cloud Configuration */
+        <div className="flex flex-col gap-5 max-w-xl">
+          <div className="flex flex-col">
+            <label className="text-fg font-medium text-xs mb-2">
+              Provider
+            </label>
+            <div className="relative w-full">
+              <select
+                value={asrProvider}
+                onChange={(e) => handleProviderChange(e.target.value as any)}
+                className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
+              >
+                <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="custom">Custom...</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
+                <ChevronDown size={14} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-fg font-medium text-xs mb-2">
+              API Key
+            </label>
+            <div className="flex gap-2">
+              <input
+                type={showApiKey ? "text" : "password"}
+                value={providerKey}
+                onChange={(e) => {
+                  setProviderKey(e.target.value);
+                  saveProviderKey(asrProvider, e.target.value);
+                }}
+                placeholder={
+                  providerKey === "••••••••••••••••"
+                    ? ""
+                    : `Enter API Key for ${asrProvider.toUpperCase()}...`
+                }
+                className="input flex-1 bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="btn btn-outline btn-small text-xs font-medium cursor-pointer whitespace-nowrap"
+              >
+                {showApiKey ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-fg font-medium text-xs mb-2">Model</label>
+            <div className="relative w-full">
+              <select
+                value={asrModel}
+                onChange={(e) => handleModelChange(e.target.value)}
+                className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
+              >
+                {asrProvider === "openai" && (
+                  <>
+                    <option value="whisper-1">whisper-1</option>
+                    <option value="gpt-4o-mini">gpt-4o-mini</option>
+                    <option value="gpt-4o">gpt-4o</option>
+                  </>
+                )}
+                {asrProvider === "openrouter" && (
+                  <>
+                    <option value="openai/whisper-large-v3">
+                      openai/whisper-large-v3
+                    </option>
+                    <option value="meta-llama/llama-3.2-11b-vision-instruct:free">
+                      meta-llama/llama-3.2-11b-vision-instruct:free
+                    </option>
+                    <option value="deepseek/deepseek-chat">
+                      deepseek/deepseek-chat
+                    </option>
+                    <option value="google/gemini-2.0-flash-exp:free">
+                      google/gemini-2.0-flash-exp:free
+                    </option>
+                  </>
+                )}
+                {asrProvider === "gemini" && (
+                  <>
+                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                    <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                    <option value="gemini-2.0-flash-exp">
+                      gemini-2.0-flash-exp
+                    </option>
+                  </>
+                )}
+                <option value="custom">Custom (type below)...</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
+                <ChevronDown size={14} />
+              </div>
+            </div>
+          </div>
+
+          {isCustomModel && (
             <div className="flex flex-col">
               <label className="text-fg font-medium text-xs mb-2">
-                Base URL
+                Custom Model ID
               </label>
               <input
                 type="text"
-                value={asrBaseUrl}
-                onChange={(e) => handleBaseUrlChange(e.target.value)}
-                placeholder="e.g. https://api.openai.com/v1"
+                value={asrModel === "custom" ? asrCustomModel : asrModel}
+                onChange={(e) => {
+                  if (asrModel === "custom") {
+                    handleCustomModelChange(e.target.value);
+                  } else {
+                    handleModelChange(e.target.value);
+                  }
+                }}
+                placeholder="e.g. openrouter/owl-alpha"
                 className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors font-mono"
               />
-              <p className="text-[11px] text-muted-dark mt-1.5">
-                The base URL of the API server (e.g.
-                https://openrouter.ai/api/v1). Leave empty for standard OpenAI.
-              </p>
             </div>
+          )}
+
+          <div className="flex flex-col">
+            <label className="text-fg font-medium text-xs mb-2">
+              Base URL
+            </label>
+            <input
+              type="text"
+              value={asrBaseUrl}
+              onChange={(e) => handleBaseUrlChange(e.target.value)}
+              placeholder="e.g. https://api.openai.com/v1"
+              className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors font-mono"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              Leave empty for standard OpenAI endpoint.
+            </p>
           </div>
         </div>
       )}
