@@ -8,13 +8,17 @@ interface ModelStatus {
   loading: string | null;
 }
 
-interface TranscriptionItem {
-  id: string;
-  timestamp: string;
+interface DailyUsage {
   date: string;
-  text: string;
-  model: string;
-  duration_sec?: number;
+  words_generated: number;
+  time_transcribed_sec: number;
+}
+
+interface UsageStats {
+  total_transcriptions: number;
+  total_words: number;
+  total_duration_sec: number;
+  daily: DailyUsage[];
 }
 
 interface ChartBar {
@@ -29,7 +33,9 @@ export function UsageView() {
   const [activeModel, setActiveModel] = useState<string>("None");
   const [loadingModel, setLoadingModel] = useState<string | null>(null);
   const [isRunningLocally, setIsRunningLocally] = useState<boolean>(true);
-  const [history, setHistory] = useState<TranscriptionItem[]>([]);
+  const [totalWordsAllTime, setTotalWordsAllTime] = useState<number>(0);
+  const [totalDurationAllTime, setTotalDurationAllTime] = useState<number>(0);
+  const [dailyStats, setDailyStats] = useState<DailyUsage[]>([]);
   const [timeRange, setTimeRange] = useState<"7days" | "30days" | "all">(
     "7days",
   );
@@ -70,30 +76,26 @@ export function UsageView() {
     }
   };
 
-  const loadHistory = async () => {
+  const loadStats = async () => {
     try {
-      const result = await invoke<TranscriptionItem[]>("get_transcriptions", {
-        limit: 100,
-        offset: 0,
-      });
-      setHistory(result);
+      const result = await invoke<UsageStats>("get_usage_stats");
+      setTotalWordsAllTime(result.total_words);
+      setTotalDurationAllTime(result.total_duration_sec);
+      setDailyStats(result.daily);
     } catch (err) {
-      console.error(
-        "Failed to load transcription history for stats from DB:",
-        err,
-      );
+      console.error("Failed to load usage statistics from DB:", err);
     }
   };
 
   useEffect(() => {
     updateActiveModel();
-    loadHistory();
+    loadStats();
 
     const handleAsrChanged = () => {
       updateActiveModel();
     };
     const handleTranscriptionAdded = () => {
-      loadHistory();
+      loadStats();
     };
 
     window.addEventListener("asr-engine-changed", handleAsrChanged);
@@ -114,35 +116,6 @@ export function UsageView() {
     };
   }, []);
 
-  // Helper to parse history timestamp (YYYY-MM-DD_HH-mm-ss) into Date
-  const parseIdToDate = (id: string): Date => {
-    const match = id.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/);
-    if (match) {
-      const [_, year, month, day, hour, min, sec] = match;
-      return new Date(
-        parseInt(year),
-        parseInt(month) - 1,
-        parseInt(day),
-        parseInt(hour),
-        parseInt(min),
-        parseInt(sec),
-      );
-    }
-    const num = Number(id);
-    if (!isNaN(num) && num > 0) {
-      return new Date(num);
-    }
-    return new Date(0);
-  };
-
-  const getWordCount = (text: string): number => {
-    if (!text) return 0;
-    return text
-      .trim()
-      .split(/\s+/)
-      .filter((w) => w.length > 0).length;
-  };
-
   const formatDuration = (seconds: number): string => {
     if (seconds <= 0) return "0s";
     const h = Math.floor(seconds / 3600);
@@ -157,26 +130,12 @@ export function UsageView() {
     return `${s}s`;
   };
 
-  // Process history data based on selected time range
-  const now = new Date();
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  );
-
-  const itemsWithMeta = history.map((item) => {
-    const parsedDate = parseIdToDate(item.id);
-    const duration = item.duration_sec || 0;
-    const words = getWordCount(item.text);
-    return { ...item, parsedDate, duration, words };
-  });
-
-  let totalDuration = 0;
-  let totalWords = 0;
-  let durationTrend = 0;
-  let wordsTrend = 0;
-  let bars: ChartBar[] = [];
+  const formatDateString = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const r = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${r}`;
+  };
 
   const calculateTrend = (current: number, previous: number) => {
     if (previous === 0) {
@@ -185,6 +144,19 @@ export function UsageView() {
     return Math.round(((current - previous) / previous) * 100);
   };
 
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+
+  let totalDuration = 0;
+  let totalWords = 0;
+  let durationTrend = 0;
+  let wordsTrend = 0;
+  let bars: ChartBar[] = [];
+
   if (timeRange === "7days") {
     const currentStart = new Date(startOfToday);
     currentStart.setDate(startOfToday.getDate() - 6);
@@ -192,76 +164,76 @@ export function UsageView() {
     const prevStart = new Date(currentStart);
     prevStart.setDate(currentStart.getDate() - 7);
 
-    const currentItems = itemsWithMeta.filter(
-      (item) => item.parsedDate >= currentStart,
+    const currentStartStr = formatDateString(currentStart);
+    const prevStartStr = formatDateString(prevStart);
+    const todayStr = formatDateString(startOfToday);
+
+    const currentItems = dailyStats.filter(
+      (item) => item.date >= currentStartStr && item.date <= todayStr,
     );
-    const prevItems = itemsWithMeta.filter(
-      (item) => item.parsedDate >= prevStart && item.parsedDate < currentStart,
+    const prevItems = dailyStats.filter(
+      (item) => item.date >= prevStartStr && item.date < currentStartStr,
     );
 
-    totalDuration = currentItems.reduce((sum, item) => sum + item.duration, 0);
-    totalWords = currentItems.reduce((sum, item) => sum + item.words, 0);
-
-    const prevDuration = prevItems.reduce(
-      (sum, item) => sum + item.duration,
+    totalDuration = currentItems.reduce(
+      (sum, item) => sum + item.time_transcribed_sec,
       0,
     );
-    const prevWords = prevItems.reduce((sum, item) => sum + item.words, 0);
+    totalWords = currentItems.reduce(
+      (sum, item) => sum + item.words_generated,
+      0,
+    );
+
+    const prevDuration = prevItems.reduce(
+      (sum, item) => sum + item.time_transcribed_sec,
+      0,
+    );
+    const prevWords = prevItems.reduce(
+      (sum, item) => sum + item.words_generated,
+      0,
+    );
 
     durationTrend = calculateTrend(totalDuration, prevDuration);
     wordsTrend = calculateTrend(totalWords, prevWords);
 
     // Generate 7 daily bars
     const rawVals: number[] = [];
+    const dayLabelsAndVals: {
+      dateStr: string;
+      label: string;
+      tooltipLabel: string;
+      today: boolean;
+    }[] = [];
+
     for (let i = 6; i >= 0; i--) {
       const d = new Date(startOfToday);
       d.setDate(startOfToday.getDate() - i);
-      const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-        23,
-        59,
-        59,
-        999,
-      );
+      const dateStr = formatDateString(d);
+      const label = d.toLocaleDateString(undefined, { weekday: "short" });
+      const tooltipLabel = d.toLocaleDateString(undefined, {
+        weekday: "long",
+        day: "numeric",
+        month: "short",
+      });
+      dayLabelsAndVals.push({ dateStr, label, tooltipLabel, today: i === 0 });
 
-      const dayItems = itemsWithMeta.filter(
-        (item) => item.parsedDate >= dStart && item.parsedDate <= dEnd,
-      );
-      const dayDur = dayItems.reduce((sum, item) => sum + item.duration, 0);
+      const dayItem = dailyStats.find((item) => item.date === dateStr);
+      const dayDur = dayItem ? dayItem.time_transcribed_sec : 0;
       rawVals.push(dayDur);
     }
     const maxDur = Math.max(...rawVals, 1);
 
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(startOfToday);
-      d.setDate(startOfToday.getDate() - i);
-      const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-        23,
-        59,
-        59,
-        999,
-      );
-
-      const dayItems = itemsWithMeta.filter(
-        (item) => item.parsedDate >= dStart && item.parsedDate <= dEnd,
-      );
-      const dayDur = dayItems.reduce((sum, item) => sum + item.duration, 0);
-      const label = d.toLocaleDateString(undefined, { weekday: "short" });
+    for (let i = 0; i < 7; i++) {
+      const info = dayLabelsAndVals[i];
+      const dayDur = rawVals[i];
       const val = dayDur > 0 ? Math.round((dayDur / maxDur) * 90) + 10 : 0;
 
       bars.push({
-        label,
+        label: info.label,
         val,
         rawVal: dayDur,
-        tooltip: `${d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}: ${formatDuration(dayDur)}`,
-        today: i === 0,
+        tooltip: `${info.tooltipLabel}: ${formatDuration(dayDur)}`,
+        today: info.today,
       });
     }
   } else if (timeRange === "30days") {
@@ -271,67 +243,51 @@ export function UsageView() {
     const prevStart = new Date(currentStart);
     prevStart.setDate(currentStart.getDate() - 30);
 
-    const currentItems = itemsWithMeta.filter(
-      (item) => item.parsedDate >= currentStart,
+    const currentStartStr = formatDateString(currentStart);
+    const prevStartStr = formatDateString(prevStart);
+    const todayStr = formatDateString(startOfToday);
+
+    const currentItems = dailyStats.filter(
+      (item) => item.date >= currentStartStr && item.date <= todayStr,
     );
-    const prevItems = itemsWithMeta.filter(
-      (item) => item.parsedDate >= prevStart && item.parsedDate < currentStart,
+    const prevItems = dailyStats.filter(
+      (item) => item.date >= prevStartStr && item.date < currentStartStr,
     );
 
-    totalDuration = currentItems.reduce((sum, item) => sum + item.duration, 0);
-    totalWords = currentItems.reduce((sum, item) => sum + item.words, 0);
-
-    const prevDuration = prevItems.reduce(
-      (sum, item) => sum + item.duration,
+    totalDuration = currentItems.reduce(
+      (sum, item) => sum + item.time_transcribed_sec,
       0,
     );
-    const prevWords = prevItems.reduce((sum, item) => sum + item.words, 0);
+    totalWords = currentItems.reduce(
+      (sum, item) => sum + item.words_generated,
+      0,
+    );
+
+    const prevDuration = prevItems.reduce(
+      (sum, item) => sum + item.time_transcribed_sec,
+      0,
+    );
+    const prevWords = prevItems.reduce(
+      (sum, item) => sum + item.words_generated,
+      0,
+    );
 
     durationTrend = calculateTrend(totalDuration, prevDuration);
     wordsTrend = calculateTrend(totalWords, prevWords);
 
     // Generate 30 daily bars
     const rawVals: number[] = [];
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(startOfToday);
-      d.setDate(startOfToday.getDate() - i);
-      const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-        23,
-        59,
-        59,
-        999,
-      );
-
-      const dayItems = itemsWithMeta.filter(
-        (item) => item.parsedDate >= dStart && item.parsedDate <= dEnd,
-      );
-      const dayDur = dayItems.reduce((sum, item) => sum + item.duration, 0);
-      rawVals.push(dayDur);
-    }
-    const maxDur = Math.max(...rawVals, 1);
+    const dayLabelsAndVals: {
+      dateStr: string;
+      label: string;
+      tooltipLabel: string;
+      today: boolean;
+    }[] = [];
 
     for (let i = 29; i >= 0; i--) {
       const d = new Date(startOfToday);
       d.setDate(startOfToday.getDate() - i);
-      const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-        23,
-        59,
-        59,
-        999,
-      );
-
-      const dayItems = itemsWithMeta.filter(
-        (item) => item.parsedDate >= dStart && item.parsedDate <= dEnd,
-      );
-      const dayDur = dayItems.reduce((sum, item) => sum + item.duration, 0);
+      const dateStr = formatDateString(d);
 
       // Sparse labels to prevent overlap
       let label = "";
@@ -341,73 +297,87 @@ export function UsageView() {
           month: "short",
         });
       }
+      const tooltipLabel = d.toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+      dayLabelsAndVals.push({ dateStr, label, tooltipLabel, today: i === 0 });
 
+      const dayItem = dailyStats.find((item) => item.date === dateStr);
+      const dayDur = dayItem ? dayItem.time_transcribed_sec : 0;
+      rawVals.push(dayDur);
+    }
+    const maxDur = Math.max(...rawVals, 1);
+
+    for (let i = 0; i < 30; i++) {
+      const info = dayLabelsAndVals[i];
+      const dayDur = rawVals[i];
       const val = dayDur > 0 ? Math.round((dayDur / maxDur) * 90) + 10 : 0;
 
       bars.push({
-        label,
+        label: info.label,
         val,
         rawVal: dayDur,
-        tooltip: `${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}: ${formatDuration(dayDur)}`,
-        today: i === 0,
+        tooltip: `${info.tooltipLabel}: ${formatDuration(dayDur)}`,
+        today: info.today,
       });
     }
   } else {
     // All time
-    totalDuration = itemsWithMeta.reduce((sum, item) => sum + item.duration, 0);
-    totalWords = itemsWithMeta.reduce((sum, item) => sum + item.words, 0);
+    totalDuration = totalDurationAllTime;
+    totalWords = totalWordsAllTime;
 
     // Generate last 6 monthly bars
     const rawVals: number[] = [];
+    const monthLabelsAndVals: {
+      year: number;
+      month: number;
+      label: string;
+      tooltipLabel: string;
+      today: boolean;
+    }[] = [];
+
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
-      const mEnd = new Date(
-        d.getFullYear(),
-        d.getMonth() + 1,
-        0,
-        23,
-        59,
-        59,
-        999,
-      );
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      const label = d.toLocaleDateString(undefined, { month: "short" });
+      const tooltipLabel = d.toLocaleDateString(undefined, {
+        month: "long",
+        year: "numeric",
+      });
+      monthLabelsAndVals.push({
+        year,
+        month,
+        label,
+        tooltipLabel,
+        today: i === 0,
+      });
 
-      const mItems = itemsWithMeta.filter(
-        (item) => item.parsedDate >= mStart && item.parsedDate <= mEnd,
+      // Sum daily stats for this year & month
+      const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+      const mItems = dailyStats.filter((item) => item.date.startsWith(prefix));
+      const mDur = mItems.reduce(
+        (sum, item) => sum + item.time_transcribed_sec,
+        0,
       );
-      const mDur = mItems.reduce((sum, item) => sum + item.duration, 0);
       rawVals.push(mDur);
     }
     const maxDur = Math.max(...rawVals, 1);
 
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
-      const mEnd = new Date(
-        d.getFullYear(),
-        d.getMonth() + 1,
-        0,
-        23,
-        59,
-        59,
-        999,
-      );
-
-      const mItems = itemsWithMeta.filter(
-        (item) => item.parsedDate >= mStart && item.parsedDate <= mEnd,
-      );
-      const mDur = mItems.reduce((sum, item) => sum + item.duration, 0);
-      const label = d.toLocaleDateString(undefined, { month: "short" });
+    for (let i = 0; i < 6; i++) {
+      const info = monthLabelsAndVals[i];
+      const mDur = rawVals[i];
       const val = mDur > 0 ? Math.round((mDur / maxDur) * 90) + 10 : 0;
 
       bars.push({
-        label,
+        label: info.label,
         val,
         rawVal: mDur,
-        tooltip: `${d.toLocaleDateString(undefined, { month: "long", year: "numeric" })}: ${formatDuration(mDur)}`,
-        today: i === 0,
+        tooltip: `${info.tooltipLabel}: ${formatDuration(mDur)}`,
+        today: info.today,
       });
     }
   }

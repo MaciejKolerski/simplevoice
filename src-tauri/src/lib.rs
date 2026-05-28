@@ -1406,7 +1406,45 @@ async fn delete_transcription_cmd(
         }
     }
 
-    // 2. Delete from database using shared pool
+    // 2. Fetch transcription info to update daily_usage before deleting
+    let trans_opt: Option<(String, Option<f64>, String)> = sqlx::query_as(
+        "SELECT date, duration_sec, text FROM transcriptions WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some((date_str, duration_opt, text_str)) = trans_opt {
+        let word_count = text_str.split_whitespace().count() as i32;
+        let duration = duration_opt.unwrap_or(0.0);
+
+        sqlx::query(
+            "UPDATE daily_usage 
+             SET words_generated = CASE WHEN words_generated > ? THEN words_generated - ? ELSE 0 END,
+                 time_transcribed_sec = CASE WHEN time_transcribed_sec > ? THEN time_transcribed_sec - ? ELSE 0.0 END
+             WHERE date = ?"
+        )
+        .bind(word_count)
+        .bind(word_count)
+        .bind(duration)
+        .bind(duration)
+        .bind(&date_str)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        // Clean up empty usage rows
+        sqlx::query(
+            "DELETE FROM daily_usage WHERE date = ? AND words_generated = 0 AND time_transcribed_sec <= 0.0"
+        )
+        .bind(&date_str)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    // 3. Delete from database using shared pool
     sqlx::query("DELETE FROM transcriptions WHERE id = ?")
         .bind(id)
         .execute(&*pool)
@@ -1458,15 +1496,19 @@ fn play_wav(path: String) {
 
 #[tauri::command]
 async fn get_usage_stats(pool: State<'_, SqlitePool>) -> Result<UsageStats, String> {
-    let totals: (i32, i32, f64) = sqlx::query_as(
-        "SELECT COUNT(*) as total_transcriptions, 
-                COALESCE(SUM(words_generated), 0) as total_words, 
+    let totals: (i32, f64) = sqlx::query_as(
+        "SELECT COALESCE(SUM(words_generated), 0) as total_words, 
                 COALESCE(SUM(time_transcribed_sec), 0.0) as total_duration_sec 
          FROM daily_usage"
     )
     .fetch_one(&*pool)
     .await
     .map_err(|e| e.to_string())?;
+
+    let total_transcriptions: (i32,) = sqlx::query_as("SELECT COUNT(*) FROM transcriptions")
+        .fetch_one(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let daily: Vec<DailyUsage> = sqlx::query_as(
         "SELECT date, words_generated, time_transcribed_sec FROM daily_usage ORDER BY date DESC"
@@ -1476,9 +1518,9 @@ async fn get_usage_stats(pool: State<'_, SqlitePool>) -> Result<UsageStats, Stri
     .map_err(|e| e.to_string())?;
 
     Ok(UsageStats {
-        total_transcriptions: totals.0,
-        total_words: totals.1,
-        total_duration_sec: totals.2,
+        total_transcriptions: total_transcriptions.0,
+        total_words: totals.0,
+        total_duration_sec: totals.1,
         daily,
     })
 }

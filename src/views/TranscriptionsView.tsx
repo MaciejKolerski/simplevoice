@@ -265,7 +265,7 @@ export function TranscriptionsView() {
                       </div>
                     ) : (
                       <div className="text-muted text-sm py-12 text-center border border-dashed border-border rounded-2xl">
-                        Ładowanie nagrania...
+                        Loading recording...
                       </div>
                     )}
                   </div>
