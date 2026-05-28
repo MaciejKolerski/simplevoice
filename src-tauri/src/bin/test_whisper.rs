@@ -5,9 +5,15 @@ use std::path::Path;
 fn main() {
     println!("Testing CandleWhisperEngine with language auto-detect...");
 
-    let model_dir = Path::new(
-        "/Users/woro/Library/Application Support/com.woro.simplevoice/models/whisper-tiny-hf",
-    );
+    let home = std::env::var("HOME").unwrap_or_default();
+    let model_dir_str = std::env::var("WHISPER_MODEL_DIR").unwrap_or_else(|_| {
+        if !home.is_empty() {
+            format!("{}/Library/Application Support/com.woro.simplevoice/models/whisper-tiny-hf", home)
+        } else {
+            "./whisper-tiny-hf".to_string()
+        }
+    });
+    let model_dir = Path::new(&model_dir_str);
     if !model_dir.exists() {
         println!("Error: Model directory does not exist at {:?}", model_dir);
         return;

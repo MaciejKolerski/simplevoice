@@ -10,7 +10,6 @@ import { UsageView } from "./views/UsageView";
 import { ModelsView } from "./views/ModelsView";
 import { TranscriptionsView } from "./views/TranscriptionsView";
 import { SettingsView } from "./views/SettingsView";
-import { ConfigProvider } from "./context/ConfigContext";
 
 type ViewId = "usage" | "models" | "transcriptions" | "settings";
 
@@ -237,8 +236,7 @@ function App() {
   };
 
   return (
-    <ConfigProvider>
-      <div className="flex flex-col h-screen w-screen overflow-hidden bg-black relative">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-black relative">
         <TitleBar
           activeViewName={getTitleName(activeView)}
           toggleSidebar={toggleSidebar}
@@ -343,7 +341,6 @@ function App() {
         )}
         <Updater />
       </div>
-    </ConfigProvider>
   );
 }
 

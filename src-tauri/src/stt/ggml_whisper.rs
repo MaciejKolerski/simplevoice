@@ -6,6 +6,7 @@ use crate::stt::traits::{AsrEngine, ModelFormat};
 pub struct GgmlWhisperEngine {
     _context: WhisperContext,
     state: Mutex<WhisperState>,
+    gpu_active: bool,
 }
 
 impl GgmlWhisperEngine {
@@ -25,6 +26,7 @@ impl GgmlWhisperEngine {
                     return Ok(Self {
                         _context: ctx,
                         state: Mutex::new(state),
+                        gpu_active: true,
                     });
                 }
             }
@@ -42,6 +44,7 @@ impl GgmlWhisperEngine {
         Ok(Self {
             _context: ctx,
             state: Mutex::new(state),
+            gpu_active: false,
         })
     }
 }
@@ -109,6 +112,6 @@ impl AsrEngine for GgmlWhisperEngine {
     }
 
     fn gpu_accelerated(&self) -> bool {
-        cfg!(target_os = "macos")
+        self.gpu_active
     }
 }

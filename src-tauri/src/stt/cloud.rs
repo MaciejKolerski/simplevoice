@@ -1,6 +1,5 @@
 use reqwest::multipart;
 use std::io::Cursor;
-use base64::Engine;
 
 fn pcm_to_wav_bytes(samples: &[f32]) -> Result<Vec<u8>, String> {
     let mut buffer = Cursor::new(Vec::new());

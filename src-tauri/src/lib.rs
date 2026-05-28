@@ -5,7 +5,6 @@ mod linux_shortcuts;
 mod media_control;
 pub mod stt;
 use audio::AudioController;
-use base64::Engine;
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use std::sync::Mutex;
