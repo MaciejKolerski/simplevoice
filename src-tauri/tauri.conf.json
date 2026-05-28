@@ -47,5 +47,14 @@
       "entitlements": "Entitlements.plist",
       "infoPlist": "Info.plist"
     }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://update.simplevoice.app/api/update/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "pubkey": "YOUR_TAURI_UPDATER_PUBLIC_KEY_HERE"
+    }
   }
 }

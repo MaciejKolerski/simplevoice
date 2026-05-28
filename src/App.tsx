@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import { TitleBar } from "./components/layout/TitleBar";
+import { Updater } from "./components/Updater";
 import { Sidebar } from "./components/layout/Sidebar";
 import { UsageView } from "./views/UsageView";
 import { ModelsView } from "./views/ModelsView";
@@ -340,6 +341,7 @@ function App() {
             </div>
           </div>
         )}
+        <Updater />
       </div>
     </ConfigProvider>
   );
