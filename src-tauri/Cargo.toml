@@ -1,10 +1,10 @@
 [package]
-name = "simplevoice-app"
+name = "simplevoice"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
-default-run = "simplevoice-app"
+default-run = "simplevoice"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -79,7 +79,3 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
-
-
-
-

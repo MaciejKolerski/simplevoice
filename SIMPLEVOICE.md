@@ -6,7 +6,7 @@ SimpleVoice loads `SIMPLEVOICE.md` from the workspace root as agent memory (simi
 
 **SimpleVoice** — privacy-first, fully local/offline Speech-to-Text desktop assistant. Tauri 2 + Rust backend, React 19 + TypeScript + Tailwind frontend. Records system audio (CPAL + VAD), runs multiple local ASR engines, auto-pastes or copies transcription.
 
-- Bundle id: `com.woro.simplevoice-app`
+- Bundle id: `com.woro.simplevoice`
 - Package manager: **pnpm**
 - Platforms: macOS, Linux, Windows
 - Frontend check: `pnpm lint`
@@ -52,7 +52,7 @@ Key modules:
 - Local recording is blocked until a model is loaded (`is_recording_allowed`).
 - `load_model()` uses `spawn_blocking` + panic catching for GPU fallback.
 - Sounds (`start.wav`, `stop.wav`, `done.wav`) are bundled via `tauri.conf.json` resources and fall back to system sounds (`afplay` / `pw-play` / rodio).
-- Config (`config.json`) and recordings live in `app_local_data_dir()`. API keys exclusively in keyring under `simplevoice-app`.
+- Config (`config.json`) and recordings live in `app_local_data_dir()`. API keys exclusively in keyring under `simplevoice`.
 
 ### Frontend (`src/`)
 

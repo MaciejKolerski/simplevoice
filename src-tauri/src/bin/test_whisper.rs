@@ -1,11 +1,13 @@
-use std::path::Path;
 use simplevoice_app_lib::stt::candle::whisper::CandleWhisperEngine;
 use simplevoice_app_lib::stt::traits::AsrEngine;
+use std::path::Path;
 
 fn main() {
     println!("Testing CandleWhisperEngine with language auto-detect...");
-    
-    let model_dir = Path::new("/Users/woro/Library/Application Support/com.woro.simplevoice-app/models/whisper-tiny-hf");
+
+    let model_dir = Path::new(
+        "/Users/woro/Library/Application Support/com.woro.simplevoice/models/whisper-tiny-hf",
+    );
     if !model_dir.exists() {
         println!("Error: Model directory does not exist at {:?}", model_dir);
         return;

@@ -4,7 +4,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "simplevoice-app",
+        "title": "simplevoice",
         "width": 800,
         "height": 600,
         "minWidth": 800,

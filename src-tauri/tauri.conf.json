@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "simplevoice-app",
+  "productName": "simplevoice",
   "version": "0.1.0",
-  "identifier": "com.woro.simplevoice-app",
+  "identifier": "com.woro.simplevoice",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "simplevoice-app",
+        "title": "simplevoice",
         "width": 800,
         "height": 600,
         "minWidth": 800,

@@ -5,19 +5,19 @@ mod linux_shortcuts;
 mod media_control;
 pub mod stt;
 use audio::AudioController;
+use base64::Engine;
+use serde::Serialize;
+use sqlx::{FromRow, SqlitePool};
 use std::sync::Mutex;
 use stt::SttController;
 use tauri::menu::{
     CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
 use tauri::tray::TrayIconBuilder;
+use tauri::State;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::Shortcut;
 use tauri_plugin_sql::{Migration, MigrationKind};
-use serde::Serialize;
-use sqlx::{FromRow, SqlitePool};
-use tauri::State;
-use base64::Engine;
 
 #[cfg(target_os = "macos")]
 #[link(name = "AVFoundation", kind = "framework")]
@@ -275,7 +275,8 @@ fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32)
 
     let mut json = if config_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&config_path) {
-            serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+            serde_json::from_str::<serde_json::Value>(&content)
+                .unwrap_or_else(|_| serde_json::json!({}))
         } else {
             serde_json::json!({})
         }
@@ -286,7 +287,10 @@ fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32)
     if let Some(obj) = json.as_object_mut() {
         obj.insert("recording_window_x".to_string(), serde_json::json!(x));
         obj.insert("recording_window_y".to_string(), serde_json::json!(y));
-        obj.insert("recording_window_has_custom_pos".to_string(), serde_json::json!(true));
+        obj.insert(
+            "recording_window_has_custom_pos".to_string(),
+            serde_json::json!(true),
+        );
     }
 
     if let Ok(serialized) = serde_json::to_string_pretty(&json) {
@@ -303,20 +307,21 @@ fn get_recording_window_position(app_handle: &tauri::AppHandle) -> Option<(i32, 
     }
     let content = std::fs::read_to_string(&config_path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    
+
     let has_custom = json.get("recording_window_has_custom_pos")?.as_bool()?;
     if !has_custom {
         return None;
     }
-    
+
     let x = json.get("recording_window_x")?.as_i64()? as i32;
     let y = json.get("recording_window_y")?.as_i64()? as i32;
-    
+
     Some((x, y))
 }
 
 #[cfg(target_os = "macos")]
-static WINDOW_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static WINDOW_INITIALIZED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(target_os = "macos")]
 pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
@@ -336,7 +341,9 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
             if !WINDOW_INITIALIZED.load(std::sync::atomic::Ordering::Relaxed) {
                 let mut positioned = false;
                 if let Some((x, y)) = get_recording_window_position(app) {
-                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+                    let _ = window.set_position(tauri::Position::Physical(
+                        tauri::PhysicalPosition::new(x, y),
+                    ));
                     positioned = true;
                 }
 
@@ -352,7 +359,9 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
                         // Align near the top of the screen (centered in X, right below macOS system menu bar in Y)
                         let y = pos.y + (36.0 * scale_factor) as i32;
 
-                        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)));
+                        let _ = window.set_position(tauri::Position::Physical(
+                            tauri::PhysicalPosition::new(x, y),
+                        ));
                     }
                 }
                 WINDOW_INITIALIZED.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -364,14 +373,19 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
             if let Ok(ns_win) = window.ns_window() {
                 unsafe {
                     use objc2::msg_send;
-                    if let Some(panel_class) = objc2::runtime::AnyClass::get(std::ffi::CStr::from_bytes_with_nul(b"NSPanel\0").unwrap()) {
+                    if let Some(panel_class) = objc2::runtime::AnyClass::get(
+                        std::ffi::CStr::from_bytes_with_nul(b"NSPanel\0").unwrap(),
+                    ) {
                         let obj_ptr = ns_win as *mut objc2::runtime::AnyObject;
                         let _ = object_setClass(obj_ptr, panel_class);
                     }
                     let _: () = msg_send![ns_win as *mut objc2::runtime::AnyObject, setStyleMask: 128 as usize];
                     let _: () = msg_send![ns_win as *mut objc2::runtime::AnyObject, setCollectionBehavior: 273 as usize];
                     let _: () = msg_send![ns_win as *mut objc2::runtime::AnyObject, setLevel: 1000 as isize];
-                    let _: () = msg_send![ns_win as *mut objc2::runtime::AnyObject, orderFrontRegardless];
+                    let _: () = msg_send![
+                        ns_win as *mut objc2::runtime::AnyObject,
+                        orderFrontRegardless
+                    ];
                 }
             }
         } else {
@@ -382,7 +396,6 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
 
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn update_recording_window_visibility(_app: &tauri::AppHandle) {}
-
 
 /// Resolves the sound file for the given event type.
 /// Looks for start.wav / stop.wav / done.wav inside the bundled resources:
@@ -1004,7 +1017,10 @@ async fn load_model(
         let mut s = stt_controller.state.lock().unwrap();
         // Guard: block duplicate concurrent loads of the same model (React StrictMode double mount)
         if s.loading_model_path.as_deref() == Some(&model_path) {
-            eprintln!("[load_model] Already loading {}, skipping duplicate", model_path);
+            eprintln!(
+                "[load_model] Already loading {}, skipping duplicate",
+                model_path
+            );
             return Ok(());
         }
         s.loading_model_path = Some(model_path.clone());
@@ -1077,7 +1093,7 @@ fn set_secure_api_key(provider: String, key: String) -> Result<(), String> {
     if key.trim().is_empty() {
         return delete_secure_api_key(provider);
     }
-    let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
+    let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
         .map_err(|e| format!("Failed to access keyring: {}", e))?;
     entry
         .set_password(&key)
@@ -1087,7 +1103,7 @@ fn set_secure_api_key(provider: String, key: String) -> Result<(), String> {
 
 #[tauri::command]
 fn get_secure_api_key(provider: String) -> Result<String, String> {
-    let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
+    let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
         .map_err(|e| format!("Failed to access keyring: {}", e))?;
     match entry.get_password() {
         Ok(pass) => Ok(pass),
@@ -1098,7 +1114,7 @@ fn get_secure_api_key(provider: String) -> Result<String, String> {
 
 #[tauri::command]
 fn delete_secure_api_key(provider: String) -> Result<(), String> {
-    let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
+    let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
         .map_err(|e| format!("Failed to access keyring: {}", e))?;
     match entry.delete_password() {
         Ok(_) => Ok(()),
@@ -1109,7 +1125,7 @@ fn delete_secure_api_key(provider: String) -> Result<(), String> {
 
 #[tauri::command]
 fn has_secure_api_key(provider: String) -> Result<bool, String> {
-    let entry = keyring::Entry::new("simplevoice-app", &format!("api_key_{}", provider))
+    let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
         .map_err(|e| format!("Failed to access keyring: {}", e))?;
     match entry.get_password() {
         Ok(pass) => Ok(!pass.trim().is_empty()),
@@ -1130,7 +1146,7 @@ async fn transcribe_audio(
     audio_controller: tauri::State<'_, AudioController>,
 ) -> Result<String, String> {
     let controller = stt_controller.inner().clone();
-    
+
     let final_samples = samples.unwrap_or_else(|| {
         let s = audio_controller.state.lock().unwrap();
         s.last_samples.clone()
@@ -1168,7 +1184,9 @@ async fn transcribe_audio(
         if let Ok(mut clipboard) = arboard::Clipboard::new() {
             let _ = clipboard.set_text(text.clone());
         }
-        let _ = std::process::Command::new("wl-copy").arg(text.clone()).status();
+        let _ = std::process::Command::new("wl-copy")
+            .arg(text.clone())
+            .status();
     }
 
     Ok(text)
@@ -1216,7 +1234,11 @@ fn get_gpu_enabled(config: tauri::State<'_, AppConfig>) -> bool {
 }
 
 #[tauri::command]
-fn set_gpu_enabled(enabled: bool, config: tauri::State<'_, AppConfig>, app_handle: tauri::AppHandle) {
+fn set_gpu_enabled(
+    enabled: bool,
+    config: tauri::State<'_, AppConfig>,
+    app_handle: tauri::AppHandle,
+) {
     {
         let mut c = config.active.lock().unwrap();
         c.gpu_enabled = enabled;
@@ -1229,12 +1251,18 @@ fn set_gpu_enabled(enabled: bool, config: tauri::State<'_, AppConfig>, app_handl
             if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&existing) {
                 if let Some(obj) = json.as_object_mut() {
                     obj.insert("gpu_enabled".to_string(), serde_json::json!(enabled));
-                    let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&json).unwrap_or_default());
+                    let _ = std::fs::write(
+                        &config_path,
+                        serde_json::to_string_pretty(&json).unwrap_or_default(),
+                    );
                 }
             }
         } else {
             let json = serde_json::json!({ "gpu_enabled": enabled });
-            let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&json).unwrap_or_default());
+            let _ = std::fs::write(
+                &config_path,
+                serde_json::to_string_pretty(&json).unwrap_or_default(),
+            );
         }
     }
 
@@ -1243,13 +1271,17 @@ fn set_gpu_enabled(enabled: bool, config: tauri::State<'_, AppConfig>, app_handl
 
 #[tauri::command]
 fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Result<(), String> {
-    let app_local_data = app_handle.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
     let config_path = app_local_data.join("config.json");
 
     let mut json = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
-        serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
@@ -1257,7 +1289,10 @@ fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Resu
     if let Some(obj) = json.as_object_mut() {
         obj.insert("recording_window_mode".to_string(), serde_json::json!(mode));
         if mode == "never" {
-            obj.insert("recording_window_has_custom_pos".to_string(), serde_json::json!(false));
+            obj.insert(
+                "recording_window_has_custom_pos".to_string(),
+                serde_json::json!(false),
+            );
             obj.remove("recording_window_x");
             obj.remove("recording_window_y");
             #[cfg(target_os = "macos")]
@@ -1272,7 +1307,6 @@ fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Resu
     update_recording_window_visibility(&app_handle);
     Ok(())
 }
-
 
 #[tauri::command]
 fn minimize_window(window: tauri::Window) {
@@ -1300,7 +1334,6 @@ async fn save_transcription_data(
     model: String,
     pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
-
     let wav_path_buf = std::path::PathBuf::from(&wav_path);
     let parent_dir = wav_path_buf
         .parent()
@@ -1352,11 +1385,10 @@ async fn save_transcription_data(
     .bind(dur_val)
     .execute(&*pool)
     .await
-        .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
-
 
 #[tauri::command]
 async fn clear_history_cmd(
@@ -1407,20 +1439,19 @@ async fn delete_transcription_cmd(
     }
 
     // 2. Fetch transcription info to update daily_usage before deleting
-    let trans_opt: Option<(String, Option<f64>, String)> = sqlx::query_as(
-        "SELECT date, duration_sec, text FROM transcriptions WHERE id = ?"
-    )
-    .bind(&id)
-    .fetch_optional(&*pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let trans_opt: Option<(String, Option<f64>, String)> =
+        sqlx::query_as("SELECT date, duration_sec, text FROM transcriptions WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&*pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     if let Some((date_str, duration_opt, text_str)) = trans_opt {
         let word_count = text_str.split_whitespace().count() as i32;
         let duration = duration_opt.unwrap_or(0.0);
 
         sqlx::query(
-            "UPDATE daily_usage 
+            "UPDATE daily_usage
              SET words_generated = CASE WHEN words_generated > ? THEN words_generated - ? ELSE 0 END,
                  time_transcribed_sec = CASE WHEN time_transcribed_sec > ? THEN time_transcribed_sec - ? ELSE 0.0 END
              WHERE date = ?"
@@ -1455,7 +1486,11 @@ async fn delete_transcription_cmd(
 }
 
 #[tauri::command]
-async fn get_transcriptions(limit: Option<i32>, offset: Option<i32>, pool: State<'_, SqlitePool>) -> Result<Vec<Transcription>, String> {
+async fn get_transcriptions(
+    limit: Option<i32>,
+    offset: Option<i32>,
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<Transcription>, String> {
     let limit = limit.unwrap_or(30);
     let offset = offset.unwrap_or(0);
     let transcriptions = sqlx::query_as::<_, Transcription>(
@@ -1497,9 +1532,9 @@ fn play_wav(path: String) {
 #[tauri::command]
 async fn get_usage_stats(pool: State<'_, SqlitePool>) -> Result<UsageStats, String> {
     let totals: (i32, f64) = sqlx::query_as(
-        "SELECT COALESCE(SUM(words_generated), 0) as total_words, 
-                COALESCE(SUM(time_transcribed_sec), 0.0) as total_duration_sec 
-         FROM daily_usage"
+        "SELECT COALESCE(SUM(words_generated), 0) as total_words,
+                COALESCE(SUM(time_transcribed_sec), 0.0) as total_duration_sec
+         FROM daily_usage",
     )
     .fetch_one(&*pool)
     .await
@@ -1511,7 +1546,7 @@ async fn get_usage_stats(pool: State<'_, SqlitePool>) -> Result<UsageStats, Stri
         .map_err(|e| e.to_string())?;
 
     let daily: Vec<DailyUsage> = sqlx::query_as(
-        "SELECT date, words_generated, time_transcribed_sec FROM daily_usage ORDER BY date DESC"
+        "SELECT date, words_generated, time_transcribed_sec FROM daily_usage ORDER BY date DESC",
     )
     .fetch_all(&*pool)
     .await
@@ -1617,7 +1652,8 @@ fn check_permissions_status() -> PermissionsStatus {
                 let cls = objc2::runtime::AnyClass::get(name);
                 if let Some(cls) = cls {
                     let media_type = objc2_foundation::ns_string!("soun");
-                    let status: objc2::ffi::NSInteger = objc2::msg_send![cls, authorizationStatusForMediaType: media_type];
+                    let status: objc2::ffi::NSInteger =
+                        objc2::msg_send![cls, authorizationStatusForMediaType: media_type];
                     // AVAuthorizationStatusAuthorized is 3
                     status == 3
                 } else {
@@ -1807,7 +1843,9 @@ pub fn run() {
             // Check if the application was invoked with the toggle argument
             if argv.iter().any(|arg| arg == "--toggle" || arg == "toggle") {
                 toggle_recording(app);
-            } else if argv.iter().any(|arg| arg == "--copy-last" || arg == "copy-last" || arg == "--copy" || arg == "copy") {
+            } else if argv.iter().any(|arg| {
+                arg == "--copy-last" || arg == "copy-last" || arg == "--copy" || arg == "copy"
+            }) {
                 let last_transcription = app.state::<LastTranscription>();
                 let _ = copy_last_transcription(last_transcription, app.clone());
             } else if let Some(window) = app.get_webview_window("main") {
@@ -1875,8 +1913,12 @@ pub fn run() {
                                     let command_pressed = unsafe {
                                         use objc2::msg_send;
                                         use objc2::runtime::AnyClass;
-                                        if let Some(nsevent_class) = AnyClass::get(std::ffi::CStr::from_bytes_with_nul(b"NSEvent\0").unwrap()) {
-                                            let flags: usize = msg_send![nsevent_class, modifierFlags];
+                                        if let Some(nsevent_class) = AnyClass::get(
+                                            std::ffi::CStr::from_bytes_with_nul(b"NSEvent\0")
+                                                .unwrap(),
+                                        ) {
+                                            let flags: usize =
+                                                msg_send![nsevent_class, modifierFlags];
                                             (flags & 0x0010_0000) != 0
                                         } else {
                                             false
@@ -1888,11 +1930,16 @@ pub fn run() {
                                         let window_clone = window.clone();
                                         let app_handle_clone = app_handle.clone();
                                         let _ = app_handle.run_on_main_thread(move || {
-                                            let _ = window_clone.set_ignore_cursor_events(!command_pressed);
+                                            let _ = window_clone
+                                                .set_ignore_cursor_events(!command_pressed);
                                             // When Cmd key is released, save the window's current coordinates
                                             if !command_pressed {
                                                 if let Ok(pos) = window_clone.outer_position() {
-                                                    save_recording_window_position(&app_handle_clone, pos.x, pos.y);
+                                                    save_recording_window_position(
+                                                        &app_handle_clone,
+                                                        pos.x,
+                                                        pos.y,
+                                                    );
                                                 }
                                             }
                                         });
@@ -1951,12 +1998,10 @@ pub fn run() {
                 let pool = SqlitePool::connect_with(options)
                     .await
                     .expect("Failed to create SQLite pool");
-                
+
                 // Run database migrations to ensure all tables exist
-                let _ = sqlx::migrate!("./migrations")
-                    .run(&pool)
-                    .await;
-                
+                let _ = sqlx::migrate!("./migrations").run(&pool).await;
+
                 pool
             });
             app.manage(pool);
