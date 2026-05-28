@@ -54,7 +54,7 @@
       "endpoints": [
         "https://update.simplevoice.app/api/update/{{target}}/{{arch}}/{{current_version}}"
       ],
-      "pubkey": "YOUR_TAURI_UPDATER_PUBLIC_KEY_HERE"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMxNTgzRUNFRDYwQzM3NUQKUldSZE53eld6ajVZd1hpWXNxZkduOGVMeFRxTzRTV0JFU1I4ZGJLcDc5ay83WnlzOEE1dnN0djkK"
     }
   }
 }
