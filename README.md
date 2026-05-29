@@ -52,7 +52,7 @@ SimpleVoice is a local-first, highly efficient Speech-to-Text (STT) and voice ty
 - Press a customizable global hotkey (default `CommandOrControl+Space`) to instantly toggle recording from anywhere in your operating system.
 - **Auto-Paste**: Automatically simulates keypresses to type your dictation directly into the active text field.
   - **macOS**: Built-in native accessibility API simulation.
-  - **Linux (Wayland)**: Utilizes `wtype` (recommended) with fallback typing simulators.
+  - **Linux (Wayland)**: Native, in-process text injection via the `zwp_virtual_keyboard_v1` protocol — **no external tools required** (no `wtype`).
   - **Linux (X11) / Windows**: Employs robust keyboard simulators.
 - Copy your last dictation instantly with a global hotkey (default `CommandOrControl+Shift+C`).
 
@@ -86,11 +86,13 @@ binds {
 ```
 
 ### Linux Auto-Paste
-For seamless auto-pasting on Wayland, it is highly recommended to install `wtype`:
-- **Arch Linux**: `sudo pacman -S wtype`
-- **Fedora**: `sudo dnf install wtype`
-- **Ubuntu/Debian**: `sudo apt install wtype`
-If `wtype` is not installed, the text will be copied to your clipboard, and you can paste it using `Ctrl+V`.
+Auto-pasting on Wayland is fully native and requires **no external tools** — text is
+injected in-process through the `zwp_virtual_keyboard_v1` protocol. This works on
+wlroots-based compositors (Sway, Hyprland, niri, etc.) and KWin.
+
+GNOME/Mutter does not implement the virtual-keyboard protocol, so auto-paste is
+unavailable there; the transcription is still copied to your clipboard, so you can
+paste it manually with `Ctrl+V`.
 
 ---
 

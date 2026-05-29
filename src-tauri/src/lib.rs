@@ -2,6 +2,8 @@ mod audio;
 mod error;
 #[cfg(target_os = "linux")]
 mod linux_shortcuts;
+#[cfg(target_os = "linux")]
+mod wayland_type;
 mod media_control;
 pub mod stt;
 use audio::AudioController;
@@ -1295,14 +1297,12 @@ async fn transcribe_audio(
         }
     };
 
-    // Copy to system clipboard using arboard + wl-copy (reliable on Wayland/X11 even when minimized)
+    // Copy to system clipboard natively via arboard (cross-platform; on Wayland
+    // the selection is served for as long as this tray app stays running).
     if !text.trim().is_empty() {
         if let Ok(mut clipboard) = arboard::Clipboard::new() {
             let _ = clipboard.set_text(text.clone());
         }
-        let _ = std::process::Command::new("wl-copy")
-            .arg(text.clone())
-            .status();
     }
 
     Ok(text)
@@ -1878,11 +1878,23 @@ fn paste_text(text: String) -> Result<(), String> {
     };
 
     if is_wayland {
-        // On Wayland we type the text directly with wtype (more reliable than Ctrl+V simulation).
-        // No window popup, works even if app is minimized.
+        // On Wayland we type the text directly via the virtual-keyboard protocol
+        // (more reliable than Ctrl+V simulation, and works even if our window is
+        // hidden). Give the previously focused app a moment to settle first.
         std::thread::sleep(std::time::Duration::from_millis(200));
-        let _ = std::process::Command::new("wtype").arg(text).status();
-        return Ok(());
+        #[cfg(target_os = "linux")]
+        {
+            // Native injection only fails on compositors that lack the
+            // virtual-keyboard protocol (e.g. GNOME). The text is already on the
+            // clipboard, so the user can paste manually; surface the reason.
+            return wayland_type::type_text(&text)
+                .map_err(|e| format!("Native Wayland typing failed: {e}"));
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = &text;
+            return Ok(());
+        }
     }
 
     // X11/macOS/Windows: simulate Ctrl+V / Cmd+V with enigo

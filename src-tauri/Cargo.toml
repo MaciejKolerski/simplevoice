@@ -67,6 +67,10 @@ candle-core = { version = "0.8", optional = true, features = ["metal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 whisper-rs = { version = "0.16.0", default-features = false, features = ["vulkan"] }
+# Native Wayland text injection (replaces the external `wtype` binary).
+wayland-client = "0.31"
+wayland-protocols-misc = { version = "0.3", features = ["client"] }
+libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 whisper-rs = { version = "0.16.0", default-features = false }

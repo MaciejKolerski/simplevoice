@@ -170,7 +170,7 @@ function App() {
             }
 
             try {
-              // Pass text so wtype can type it directly on Wayland (more reliable than Ctrl+V)
+              // Pass text so the backend can type it directly on Wayland (more reliable than Ctrl+V)
               invoke("paste_text", { text }).catch((err) =>
                 console.error("Paste failed:", err),
               );
