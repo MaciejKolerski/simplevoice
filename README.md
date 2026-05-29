@@ -85,15 +85,6 @@ binds {
 }
 ```
 
-### Linux Auto-Paste
-Auto-pasting on Wayland is fully native and requires **no external tools** — text is
-injected in-process through the `zwp_virtual_keyboard_v1` protocol. This works on
-wlroots-based compositors (Sway, Hyprland, niri, etc.) and KWin.
-
-GNOME/Mutter does not implement the virtual-keyboard protocol, so auto-paste is
-unavailable there; the transcription is still copied to your clipboard, so you can
-paste it manually with `Ctrl+V`.
-
 ---
 
 ## Build from source

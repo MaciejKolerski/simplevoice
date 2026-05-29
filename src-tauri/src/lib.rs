@@ -1297,8 +1297,9 @@ async fn transcribe_audio(
         }
     };
 
-    // Copy to system clipboard natively via arboard (cross-platform; on Wayland
-    // the selection is served for as long as this tray app stays running).
+    // Copy to system clipboard natively via arboard (cross-platform). On Wayland
+    // arboard uses the wlr-data-control backend, which spawns a background server
+    // to keep the selection alive after the Clipboard handle is dropped.
     if !text.trim().is_empty() {
         if let Ok(mut clipboard) = arboard::Clipboard::new() {
             let _ = clipboard.set_text(text.clone());
