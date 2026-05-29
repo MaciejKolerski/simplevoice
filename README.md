@@ -129,18 +129,6 @@ Configure global hotkeys under **Settings → Keyboard Shortcuts**:
 | Toggle recording | `Ctrl/Cmd + Shift + Space` |
 | Copy last transcription | `Ctrl/Cmd + Shift + C` |
 
-### Linux / Wayland
-
-On Wayland (Niri, Hyprland, GNOME, …) the compositor restricts global shortcut capture. For the most reliable experience, bind the shortcut directly in your compositor and let it call the Simplevoice CLI. Example for Niri (`~/.config/niri/config.kdl`):
-
-```kdl
-binds {
-    "Mod+Space" { spawn "simplevoice" "--toggle"; }
-}
-```
-
-The built binary accepts `--toggle` and `--copy-last`.
-
 ---
 
 ## Build from source
