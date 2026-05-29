@@ -1,0 +1,34 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Simplevoice",
+        "width": 950,
+        "height": 700,
+        "minWidth": 950,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "maximizable": true,
+        "decorations": false,
+        "transparent": false,
+        "visible": false
+      },
+      {
+        "label": "recording_window",
+        "title": "Recording Window",
+        "width": 200,
+        "height": 60,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "shadow": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
+      }
+    ]
+  }
+}

@@ -619,7 +619,7 @@ export function SettingsView() {
             </label>
           </div>
 
-          {isMac && (
+          {(isMac || platform === "linux") && (
             <div className="flex justify-between items-center p-6">
               <div>
                 <div className="text-fg font-medium mb-1">Recording Overlay Window</div>

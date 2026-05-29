@@ -1,21 +1,34 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { RecordingWindowView } from "./views/RecordingWindowView";
 import { ConfigProvider } from "./context/ConfigContext";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-function Root() {
-  const [label, setLabel] = useState<string>("");
+let initialLabel = "";
+try {
+  initialLabel = getCurrentWindow().label;
+} catch (e) {
+  console.error("Failed to get window label synchronously:", e);
+}
 
-  useEffect(() => {
-    try {
-      const win = getCurrentWindow();
-      setLabel(win.label);
-    } catch (e) {
-      console.error("Failed to get window label:", e);
+if (initialLabel === "recording_window") {
+  document.documentElement.style.background = "transparent";
+  document.documentElement.style.backgroundColor = "transparent";
+  document.body.style.background = "transparent";
+  document.body.style.backgroundColor = "transparent";
+  const style = document.createElement("style");
+  style.innerHTML = `
+    html, body, #root {
+      background: transparent !important;
+      background-color: transparent !important;
     }
+  `;
+  document.head.appendChild(style);
+}
 
+function Root() {
+  useEffect(() => {
     if (import.meta.env.PROD) {
       const handleContextMenu = (e: MouseEvent) => {
         e.preventDefault();
@@ -65,11 +78,7 @@ function Root() {
     }
   }, []);
 
-  if (label === "") {
-    return null; // Wait until window is resolved
-  }
-
-  if (label === "recording_window") {
+  if (initialLabel === "recording_window") {
     return (
       <ConfigProvider>
         <RecordingWindowView />

@@ -234,6 +234,31 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
     false
 }
 
+pub(crate) fn is_recording_window_locked(app_handle: &tauri::AppHandle) -> bool {
+    let app_local_data = match app_handle.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return true,
+    };
+    let config_path = app_local_data.join("config.json");
+    if !config_path.exists() {
+        return true;
+    }
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(s) => s,
+        Err(_) => return true,
+    };
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return true,
+    };
+    if let Some(val) = json.get("recording_window_locked") {
+        if let Some(b) = val.as_bool() {
+            return b;
+        }
+    }
+    true
+}
+
 pub(crate) fn get_recording_window_mode(app_handle: &tauri::AppHandle) -> String {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -267,7 +292,7 @@ extern "C" {
     ) -> *const objc2::runtime::AnyClass;
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32) {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -298,10 +323,10 @@ fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32)
 
     if let Ok(serialized) = serde_json::to_string_pretty(&json) {
         let _ = std::fs::write(&config_path, serialized);
-    }
+     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn get_recording_window_position(app_handle: &tauri::AppHandle) -> Option<(i32, i32)> {
     let app_local_data = app_handle.path().app_local_data_dir().ok()?;
     let config_path = app_local_data.join("config.json");
@@ -322,7 +347,7 @@ fn get_recording_window_position(app_handle: &tauri::AppHandle) -> Option<(i32, 
     Some((x, y))
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 static WINDOW_INITIALIZED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -359,7 +384,6 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
                         let win_w = 200.0;
 
                         let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
-                        // Align near the top of the screen (centered in X, right below macOS system menu bar in Y)
                         let y = pos.y + (36.0 * scale_factor) as i32;
 
                         let _ = window.set_position(tauri::Position::Physical(
@@ -397,7 +421,61 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
+    let mode = get_recording_window_mode(app);
+    let controller = app.state::<AudioController>();
+    let is_recording = controller.is_recording();
+
+    if let Some(window) = app.get_webview_window("recording_window") {
+        let should_show = match mode.as_str() {
+            "always" => true,
+            "recording" => is_recording,
+            "never" | _ => false,
+        };
+
+        if should_show {
+            if !WINDOW_INITIALIZED.load(std::sync::atomic::Ordering::Relaxed) {
+                let mut positioned = false;
+                if let Some((x, y)) = get_recording_window_position(app) {
+                    let _ = window.set_position(tauri::Position::Physical(
+                        tauri::PhysicalPosition::new(x, y),
+                    ));
+                    positioned = true;
+                }
+
+                if !positioned {
+                    if let Some(monitor) = window.current_monitor().ok().flatten() {
+                        let size = monitor.size();
+                        let pos = monitor.position();
+                        let scale_factor = monitor.scale_factor();
+
+                        let win_w = 200.0;
+
+                        let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
+                        let y = pos.y + (size.height as f64 * 0.05) as i32;
+
+                        let _ = window.set_position(tauri::Position::Physical(
+                            tauri::PhysicalPosition::new(x, y),
+                        ));
+                    }
+                }
+                WINDOW_INITIALIZED.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+
+            let _ = window.show();
+            let _ = window.set_always_on_top(true);
+            let _ = window.set_skip_taskbar(true);
+
+            let locked = is_recording_window_locked(app);
+            let _ = window.set_ignore_cursor_events(locked);
+        } else {
+            let _ = window.hide();
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub(crate) fn update_recording_window_visibility(_app: &tauri::AppHandle) {}
 
 /// Resolves the sound file for the given event type.
@@ -623,6 +701,20 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
+    #[cfg(target_os = "linux")]
+    let lock_item = {
+        let locked = is_recording_window_locked(app_handle);
+        let lock_label = if locked {
+            "Unlock Recording Window Position"
+        } else {
+            "Lock Recording Window Position"
+        };
+        MenuItemBuilder::new(lock_label)
+            .id("toggle_recording_window_lock")
+            .build(app_handle)
+            .map_err(|e| e.to_string())?
+    };
+
     let devices = controller.list_devices().unwrap_or_default();
     let mic_menu = {
         let mut builder = SubmenuBuilder::new(app_handle, "Select Microphone");
@@ -657,6 +749,24 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let separator2 = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
     let separator3 = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
 
+    #[cfg(target_os = "linux")]
+    let menu = MenuBuilder::new(app_handle)
+        .item(&toggle_recording_item)
+        .item(&copy_last_item)
+        .item(&lock_item)
+        .item(&separator)
+        .item(&nav_usage_item)
+        .item(&nav_models_item)
+        .item(&nav_history_item)
+        .item(&nav_settings_item)
+        .item(&separator2)
+        .item(&mic_menu)
+        .item(&separator3)
+        .item(&quit_item)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(not(target_os = "linux"))]
     let menu = MenuBuilder::new(app_handle)
         .item(&toggle_recording_item)
         .item(&copy_last_item)
@@ -735,6 +845,9 @@ fn toggle_recording(app: &tauri::AppHandle) {
 fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
     if id == "toggle_recording" {
         toggle_recording(app);
+    } else if id == "toggle_recording_window_lock" {
+        let next_locked = !is_recording_window_locked(app);
+        let _ = set_recording_window_locked(next_locked, app.clone());
     } else if id.starts_with("nav_") {
         let view_name = id.trim_start_matches("nav_");
         if let Some(window) = app.get_webview_window("main") {
@@ -1298,7 +1411,7 @@ fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Resu
             );
             obj.remove("recording_window_x");
             obj.remove("recording_window_y");
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
                 WINDOW_INITIALIZED.store(false, std::sync::atomic::Ordering::Relaxed);
             }
@@ -1308,6 +1421,45 @@ fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Resu
     }
 
     update_recording_window_visibility(&app_handle);
+    Ok(())
+}
+
+#[tauri::command]
+fn is_recording_window_locked_cmd(app_handle: tauri::AppHandle) -> bool {
+    is_recording_window_locked(&app_handle)
+}
+
+#[tauri::command]
+fn set_recording_window_locked(locked: bool, app_handle: tauri::AppHandle) -> Result<(), String> {
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
+    let config_path = app_local_data.join("config.json");
+
+    let mut json = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("recording_window_locked".to_string(), serde_json::json!(locked));
+    }
+
+    let serialized = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+    std::fs::write(&config_path, serialized).map_err(|e| e.to_string())?;
+
+    if let Some(window) = app_handle.get_webview_window("recording_window") {
+        let _ = window.set_ignore_cursor_events(locked);
+    }
+
+    let _ = app_handle.emit("recording-window-lock-status", locked);
+    let _ = rebuild_tray_menu(&app_handle);
+
     Ok(())
 }
 
@@ -1887,9 +2039,17 @@ pub fn run() {
             entries: Mutex::new(Vec::new()),
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                tauri::WindowEvent::Moved(pos) => {
+                    if window.label() == "recording_window" {
+                        save_recording_window_position(window.app_handle(), pos.x, pos.y);
+                    }
+                }
+                _ => {}
             }
         })
         .setup(|app| {
@@ -1963,13 +2123,7 @@ pub fn run() {
                 // Repair any malformed shell comments (#) to correct C-style comments (//) in KDL config on startup
                 linux_shortcuts::repair_wm_configs();
 
-                if let Some(window) = app.get_webview_window("main") {
-                    // Set window size on Linux to be different from macOS (e.g. 950x700)
-                    let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
-                        width: 950.0,
-                        height: 700.0,
-                    }));
-                }
+                update_recording_window_visibility(app.handle());
             }
 
             let app_handle = app.handle().clone();
@@ -2060,6 +2214,8 @@ pub fn run() {
             open_accessibility_settings,
             check_permissions_status,
             set_recording_window_mode,
+            is_recording_window_locked_cmd,
+            set_recording_window_locked,
             stt::converter::convert_model,
             stt::downloader::download_model
         ])

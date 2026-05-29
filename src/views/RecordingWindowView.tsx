@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
 export function RecordingWindowView() {
   const [status, setStatus] = useState<"idle" | "recording" | "transcribing">("idle");
   const [amplitude, setAmplitude] = useState<number>(0);
+  const [locked, setLocked] = useState<boolean>(true);
 
   useEffect(() => {
     // Override body backgrounds for transparency
@@ -16,6 +18,11 @@ export function RecordingWindowView() {
       root.style.background = "transparent";
       root.style.backgroundColor = "transparent";
     }
+
+    // Query initial lock state
+    invoke<boolean>("is_recording_window_locked_cmd")
+      .then(setLocked)
+      .catch(() => {});
 
     // Listen to recording-started
     const unlistenStarted = listen("recording-started", () => {
@@ -43,11 +50,17 @@ export function RecordingWindowView() {
       setAmplitude(event.payload);
     });
 
+    // Listen to lock status events
+    const unlistenLock = listen<boolean>("recording-window-lock-status", (event) => {
+      setLocked(event.payload);
+    });
+
     return () => {
       unlistenStarted.then((f) => f());
       unlistenStopped.then((f) => f());
       unlistenTranscribing.then((f) => f());
       unlistenAmplitude.then((f) => f());
+      unlistenLock.then((f) => f());
     };
   }, []);
 
@@ -75,10 +88,12 @@ export function RecordingWindowView() {
       {/* Sleek Glassmorphic Pill */}
       <div
         data-tauri-drag-region
-        className="flex items-center justify-center px-5 h-[36px] rounded-full border border-white/10 bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing"
+        className={`flex items-center justify-center px-5 h-[36px] rounded-full border bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing ${
+          !locked ? "border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : "border-white/10"
+        }`}
       >
-        {/* Visualizer centered */}
-        <div className="flex items-center justify-center">
+        {/* Visualizer centered - key forces complete DOM remount on status change, preventing rendering glitches */}
+        <div key={status} className="flex items-center justify-center">
           {status === "transcribing" ? (
             // A gorgeous smooth wave effect during transcription
             <div className="flex items-center justify-center gap-1 h-6">
