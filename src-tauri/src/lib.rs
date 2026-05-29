@@ -1340,6 +1340,11 @@ fn has_last_recording_samples(
     Ok(!s.last_samples.is_empty())
 }
 
+/// Serializes read-modify-write access to config.json so the frontend's
+/// whole-file `save_config` and the backend's `set_gpu_enabled` cannot interleave
+/// and clobber each other.
+static CONFIG_FILE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[tauri::command]
 fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), String> {
     let app_local_data = app_handle
@@ -1348,7 +1353,38 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
         .map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
     let config_path = app_local_data.join("config.json");
-    std::fs::write(&config_path, config).map_err(|e| e.to_string())?;
+
+    let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    // `gpu_enabled` is owned by the backend (set_gpu_enabled), not by the frontend
+    // config blob. The frontend caches the whole config at mount, so its copy goes
+    // stale the moment the GPU toggle changes it directly; writing that stale blob
+    // back would silently revert the setting on the next launch. Force the on-disk
+    // value to win for this key (and drop any frontend-seeded value if the backend
+    // hasn't set one yet).
+    let to_write = match serde_json::from_str::<serde_json::Value>(&config) {
+        Ok(mut incoming) => {
+            if let Some(obj) = incoming.as_object_mut() {
+                let disk_gpu = std::fs::read_to_string(&config_path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                    .and_then(|v| v.get("gpu_enabled").cloned());
+                match disk_gpu {
+                    Some(gpu) => {
+                        obj.insert("gpu_enabled".to_string(), gpu);
+                    }
+                    None => {
+                        obj.remove("gpu_enabled");
+                    }
+                }
+            }
+            serde_json::to_string_pretty(&incoming).map_err(|e| e.to_string())?
+        }
+        // Not a JSON object we can reason about: persist verbatim.
+        Err(_) => config,
+    };
+
+    std::fs::write(&config_path, to_write).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1384,9 +1420,12 @@ fn set_gpu_enabled(
         c.gpu_enabled = enabled;
     }
 
-    // Persist gpu_enabled to config.json
+    // Persist gpu_enabled to config.json. Held under the same lock as save_config
+    // so the two read-modify-write paths can't interleave.
     if let Ok(app_local_data) = app_handle.path().app_local_data_dir() {
+        let _ = std::fs::create_dir_all(&app_local_data);
         let config_path = app_local_data.join("config.json");
+        let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         if let Ok(existing) = std::fs::read_to_string(&config_path) {
             if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&existing) {
                 if let Some(obj) = json.as_object_mut() {
