@@ -1,128 +1,189 @@
 <div align="center">
-  <img src="public/logo.png" width="144" height="144" alt="SimpleVoice" />
-  <h1>SimpleVoice</h1>
 
-  <p><strong>Privacy-first, local-offline Speech-to-Text & Voice Typing desktop assistant.</strong></p>
+<img src="assets/logo.png" width="116" height="116" alt="Simplevoice" />
 
-  <p>
-    <img src="https://img.shields.io/badge/version-v0.1.0-blue" alt="version" />
-    <img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="license" />
-    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="platform" />
-  </p>
+# Simplevoice
 
-  <p>
-    <a href="#features">Features</a>
-    ·
-    <a href="#install">Install</a>
-    ·
-    <a href="#configuration">Configuration</a>
-    ·
-    <a href="#build-from-source">Build from source</a>
-  </p>
+**Privacy-first, local & offline Speech-to-Text and voice typing for the desktop.**
+
+<p>
+  <img src="https://img.shields.io/badge/version-0.1.0-1f1f1f?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/license-Apache--2.0-1f1f1f?style=flat-square" alt="license" />
+  <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-1f1f1f?style=flat-square" alt="platform" />
+  <img src="https://img.shields.io/badge/100%25-offline--first-10b981?style=flat-square" alt="offline first" />
+  <img src="https://img.shields.io/badge/telemetry-zero-1f1f1f?style=flat-square" alt="zero telemetry" />
+</p>
+
+<p>
+  <a href="#features">Features</a> ·
+  <a href="#speech-to-text-engines">Engines</a> ·
+  <a href="#platform-support">Platforms</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#build-from-source">Build</a>
+</p>
+
 </div>
 
 ---
 
-SimpleVoice is a local-first, highly efficient Speech-to-Text (STT) and voice typing desktop assistant built on Tauri 2, Rust, and React 19. It runs speech models completely offline on your device, records system audio, and types the transcribed text directly into any active application or copies it to your clipboard. It also supports secure cloud APIs if you prefer cloud-based inference. Zero telemetry. Zero accounts. Fully open-source.
-
----
-
-## Screenshots
+Simplevoice turns what you say into finished text — fast, accurate, and with nothing in the way. It records system audio, runs speech models **completely offline on your device**, and types the result straight into the active app or copies it to your clipboard. Prefer the cloud? Bring your own key. Either way: no accounts, no telemetry, fully open-source.
 
 <div align="center">
-  <p><em>Premium dashboard tracking transcription metrics, usage statistics, and local engine status.</em></p>
+  <br/>
+  <img src="assets/screenshot-usage.svg" width="840" alt="Usage dashboard — words transcribed, time dictated, and a 7-day chart, all stored on-device" />
+  <br/><br/>
+  <img src="assets/screenshot-recording.svg" width="660" alt="The floating recording overlay with a live waveform" />
 </div>
 
 ---
 
 ## Features
 
-### 🎙️ Native Audio Recording & VAD
-- High-fidelity native audio recording utilizing the Rust-native **CPAL** library.
-- Sleek, modern recording overlay window showcasing a real-time audio waveform.
-- **Voice Activity Detection (VAD)**: Automatically stops recording and begins transcribing when you stop speaking.
+### Native audio recording & VAD
+- High-fidelity capture via the Rust-native **CPAL** library.
+- A sleek floating overlay window with a real-time audio waveform.
+- **Voice Activity Detection** — recording stops and transcription begins automatically when you stop speaking.
 
-### 🧠 Advanced ASR (Speech Recognition) Engines
-- **Fully Local & Offline**:
-  - **Whisper-rs**: Bindings to `whisper.cpp` featuring **Metal** hardware acceleration on macOS and **Vulkan** GPU acceleration on Linux/Windows for blazingly fast local transcriptions.
-  - **Sherpa-ONNX & Parakeet**: Native support for Nvidia Parakeet TDT v3 (int8 quantized) for state-of-the-art multilingual recognition on the CPU with a tiny memory footprint.
-- **Cloud (BYOK)**: Connect securely to OpenAI Whisper Cloud, OpenRouter, Anthropic, Gemini, or any custom OpenAI-compatible endpoints.
+### Local & offline speech recognition
+- Multiple ASR backends, all running on your machine (see [engines](#speech-to-text-engines) below).
+- Hardware acceleration: **Metal** on macOS, **Vulkan** on Linux/Windows, with a safe CPU fallback.
 
-### ⌨️ Global Shortcuts & Auto-Paste
-- Press a customizable global hotkey (default `CommandOrControl+Space`) to instantly toggle recording from anywhere in your operating system.
-- **Auto-Paste**: Automatically simulates keypresses to type your dictation directly into the active text field.
-  - **macOS**: Built-in native accessibility API simulation.
-  - **Linux (Wayland)**: Native, in-process text injection via the `zwp_virtual_keyboard_v1` protocol — **no external tools required** (no `wtype`).
-  - **Linux (X11) / Windows**: Employs robust keyboard simulators.
-- Copy your last dictation instantly with a global hotkey (default `CommandOrControl+Shift+C`).
+### Cloud, on your terms (BYOK)
+- Optional bring-your-own-key transcription via OpenAI, OpenRouter, Google Gemini, or any OpenAI-compatible endpoint.
+- API keys are stored **only in the OS keyring** (`keyring` crate) — never on disk or in `localStorage`.
 
-### 🔒 Secure Storage & Local Database
-- All API keys are written directly to the native OS keychain using the Rust `keyring` crate. Keys never touch the disk or `localStorage`.
-- Full history of transcriptions, durations, word counts, and WAV file paths stored locally in an **SQLite** database via Tauri's SQL plugin and `sqlx`.
+### Global shortcuts & auto-paste
+- A customizable global hotkey toggles recording from anywhere in the OS (default `Ctrl/Cmd + Shift + Space`).
+- **Auto-paste** types your dictation directly into the active text field:
+  - **macOS** — native accessibility API simulation.
+  - **Linux (Wayland)** — in-process injection via `zwp_virtual_keyboard_v1`, no external tools (no `wtype`).
+  - **Linux (X11) / Windows** — robust keyboard simulators.
+- Copy your last dictation instantly with a second hotkey (default `Ctrl/Cmd + Shift + C`).
 
-### 📊 Beautiful Usage Analytics
-- High-fidelity statistics dashboard showing total words generated, total time transcribed, and active engine status.
-- Premium interactive charts (supporting 7-day, 30-day, and monthly all-time views) rendered with custom smooth gradients.
+### History & usage analytics
+- Full local history of transcriptions, durations, word counts, and WAV paths in **SQLite** (`tauri-plugin-sql` + `sqlx`).
+- A statistics dashboard with totals and 7-day / 30-day / all-time charts.
 
-### 📥 Built-in Model Downloader & Manager
-- Browse and download recommended local models (Whisper-cpp GGML, Parakeet ONNX) directly within the application with real-time download speed and progress reporting.
-- Import custom models or place them in the dedicated models directory.
+### Built-in model manager
+- Browse and download recommended local models (Whisper GGML, Parakeet ONNX) in-app, with live progress.
+- Import your own models or drop them into the models directory.
+
+---
+
+## Speech-to-text engines
+
+### Local (offline)
+
+| Engine | Models | Acceleration |
+| --- | --- | --- |
+| **Whisper.cpp** (`whisper-rs`) | Whisper GGML / GGUF (tiny → large) | Metal (macOS), Vulkan (Linux/Windows) |
+| **Candle** | Whisper, Wav2Vec2 / CTC (Hubert, WavLM, …) | CPU, Metal on macOS |
+| **sherpa-ONNX** | Parakeet TDT v3 (INT8), Moonshine | CPU |
+| **NeMo** *(experimental)* | FastConformer-CTC, Conformer-RNN-T | Python sidecar |
+
+### Cloud (bring your own key)
+
+| Provider | Default model | Endpoint |
+| --- | --- | --- |
+| **OpenAI** | `whisper-1` | `api.openai.com` |
+| **OpenRouter** | `openai/whisper-large-v3` | `openrouter.ai` |
+| **Google Gemini** | `gemini-1.5-flash` | `generativelanguage.googleapis.com` |
+| **Custom** | your choice | any OpenAI-compatible URL |
+
+> Anthropic Claude is intentionally not offered for transcription — Claude does not support audio input.
+
+---
+
+## Platform support
+
+| Platform | GPU | Auto-paste | Notes |
+| --- | --- | --- | --- |
+| **macOS** (10.15+) | Metal | Accessibility API | `NSPanel` floating overlay, native media control |
+| **Windows** | Vulkan | `enigo` simulator | WinRT media control |
+| **Linux (X11)** | Vulkan | keyboard simulator | `evdev` shortcuts, MPRIS2 media |
+| **Linux (Wayland)** | Vulkan | `zwp_virtual_keyboard` | pure-Rust, no external tools |
+
+---
+
+## Install
+
+Download the latest installer for your platform from the [Releases](https://github.com/MaciejKolerski/simplevoice/releases) page, or [build from source](#build-from-source).
+
+After first launch:
+
+1. Open **Models**, then download a local model (e.g. Parakeet TDT v3) or add your cloud API key.
+2. On macOS, grant **Microphone** and **Accessibility** permissions when prompted (Accessibility is required for auto-paste).
+3. Press `Ctrl/Cmd + Shift + Space` anywhere and start talking.
 
 ---
 
 ## Configuration
 
-### Keyboard Shortcuts
-You can configure global hotkeys under **Settings -> Keyboard Shortcuts**:
-- **Toggle Recording Shortcut**: Starts and stops voice dictation globally.
-- **Copy Last Transcription Shortcut**: Quickly copies the last generated text without opening the app window.
+### Keyboard shortcuts
 
-#### Linux Wayland Notes
-On Wayland (e.g., Niri, Hyprland, Gnome), global shortcut capture is restricted by the compositor. For the best experience, you can bind the shortcut directly in your compositor's configuration. For example, in Niri (`~/.config/niri/config.kdl`):
+Configure global hotkeys under **Settings → Keyboard Shortcuts**:
+
+| Action | Default |
+| --- | --- |
+| Toggle recording | `Ctrl/Cmd + Shift + Space` |
+| Copy last transcription | `Ctrl/Cmd + Shift + C` |
+
+### Linux / Wayland
+
+On Wayland (Niri, Hyprland, GNOME, …) the compositor restricts global shortcut capture. For the most reliable experience, bind the shortcut directly in your compositor and let it call the Simplevoice CLI. Example for Niri (`~/.config/niri/config.kdl`):
+
 ```kdl
 binds {
     "Mod+Space" { spawn "simplevoice" "--toggle"; }
 }
 ```
 
+The built binary accepts `--toggle` and `--copy-last`.
+
 ---
 
 ## Build from source
 
 ### Prerequisites
-- **Rust (Stable)**: [rustup.rs](https://rustup.rs)
-- **Node.js (v20+) & pnpm**: [pnpm.io](https://pnpm.io)
-- **System Prerequisites**: Consult the [Tauri 2 Prerequisites Guide](https://tauri.app/v2/start/prerequisites) for your platform (e.g. Build tools, WebKit2GTK on Linux).
+- **Rust** (stable) — [rustup.rs](https://rustup.rs)
+- **Node.js** 20+ and **pnpm** — [pnpm.io](https://pnpm.io)
+- **System dependencies** — see the [Tauri 2 prerequisites](https://tauri.app/start/prerequisites/) for your platform (build tools, WebKit2GTK on Linux, etc.)
 
-### Run in Development
+### Develop
 ```bash
 pnpm install
 pnpm tauri dev
 ```
 
-### Build Production Bundle
+### Build a production bundle
 ```bash
-pnpm build          # TypeScript frontend check & build
-pnpm tauri build    # Compile Rust backend and package app installer
+pnpm build        # type-check + build the frontend
+pnpm tauri build  # compile the Rust backend and package an installer
 ```
 
-### Validation & Lints
+### Lint
 ```bash
-pnpm lint           # Run frontend TypeScript type checks
+pnpm lint         # TypeScript type checks (tsc --noEmit --strict)
 ```
+
+> Always use `pnpm tauri …` — the wrapper in `scripts/tauri.js` applies the Windows Cargo path and CRT fixes.
 
 ---
 
-## Tech Stack
-- **Frontend**: React 19, TypeScript, Vite, Lucide React, Vanilla CSS.
-- **Backend**: Tauri 2, Rust, SQLite (via `tauri-plugin-sql` + `sqlx`).
-- **Audio Processing**: CPAL (native audio recording), Hound (WAV file operations), Rodio (sound effects).
-- **Inference Integration**: `whisper-rs` (native Whisper bindings), `ort` (ONNX Runtime bindings), native OS keyring integration.
+## Tech stack
+
+- **Frontend** — React 19, TypeScript, Vite, Tailwind v4, Lucide icons.
+- **Backend** — Tauri 2, Rust, SQLite (`tauri-plugin-sql` + `sqlx`).
+- **Audio** — CPAL (capture), Hound (WAV), Rodio (sound effects).
+- **Inference** — `whisper-rs`, `candle`, `sherpa-onnx` / `ort`, with OS keyring for secrets.
 
 ---
 
 ## Contributing
-Issues and Pull Requests are welcome! Feel free to open issues to report bugs, suggest features, or submit pull requests.
+
+Issues and pull requests are welcome — bug reports, feature ideas, and patches all help. Please run `pnpm lint` before opening a PR, and verify core changes (audio, STT, shortcuts, recording window) with `pnpm tauri dev`.
 
 ## License
-SimpleVoice is open-source software licensed under the **Apache-2.0** License.
+
+Simplevoice is open-source software licensed under the **Apache-2.0** License. See [LICENSE](LICENSE).

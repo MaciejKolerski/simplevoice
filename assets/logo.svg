@@ -1,0 +1,43 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Simplevoice">
+  <title>Simplevoice</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#202023"/>
+      <stop offset=".45" stop-color="#0c0c0d"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".6"/>
+      <stop offset=".35" stop-color="#ffffff" stop-opacity=".1"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".04"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".7"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx=".5" cy=".18" r=".62">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clip"><rect x="4" y="4" width="504" height="504" rx="112"/></clipPath>
+  </defs>
+  <rect x="4" y="4" width="504" height="504" rx="112" fill="url(#bg)"/>
+  <g clip-path="url(#clip)">
+    <rect x="4" y="4" width="504" height="300" fill="url(#sheen)"/>
+    <g fill="url(#bar)">
+      <rect x="82" y="184" width="36" height="144" rx="18"/>
+      <rect x="160" y="136" width="36" height="240" rx="18"/>
+      <rect x="238" y="94" width="36" height="324" rx="18"/>
+      <rect x="316" y="136" width="36" height="240" rx="18"/>
+      <rect x="394" y="184" width="36" height="144" rx="18"/>
+    </g>
+    <g fill="#ffffff" opacity=".85">
+      <rect x="90" y="190" width="20" height="10" rx="5"/>
+      <rect x="168" y="142" width="20" height="10" rx="5"/>
+      <rect x="246" y="100" width="20" height="10" rx="5"/>
+      <rect x="324" y="142" width="20" height="10" rx="5"/>
+      <rect x="402" y="190" width="20" height="10" rx="5"/>
+    </g>
+  </g>
+  <rect x="4" y="4" width="504" height="504" rx="112" fill="none" stroke="url(#rim)" stroke-width="3"/>
+</svg>
