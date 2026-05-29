@@ -5,6 +5,7 @@ mod linux_shortcuts;
 mod media_control;
 pub mod stt;
 use audio::AudioController;
+use base64::Engine;
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use std::sync::Mutex;
@@ -195,6 +196,9 @@ fn is_sound_feedback_enabled(app_handle: &tauri::AppHandle) -> bool {
         Err(_) => return true,
     };
     if let Some(val) = json.get("sound_feedback_enabled") {
+        if let Some(b) = val.as_bool() {
+            return b;
+        }
         if let Some(s) = val.as_str() {
             return s != "false";
         }

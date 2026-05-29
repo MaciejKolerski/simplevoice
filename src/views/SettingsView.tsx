@@ -3,6 +3,7 @@ import { ChevronDown, Cpu, Shield, Keyboard, Check } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
+import { useConfig } from "../context/ConfigContext";
 
 function formatShortcutDisplay(str: string): string {
   if (!str) return "None";
@@ -32,6 +33,7 @@ function formatKeycapLabel(key: string): string {
 }
 
 export function SettingsView() {
+  const { getConfig, updateConfig } = useConfig();
   const [vadEnabled, setVadEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
@@ -116,10 +118,12 @@ export function SettingsView() {
     const savedSound =
       localStorage.getItem("sound_feedback_enabled") !== "false";
     setSoundEnabled(savedSound);
+    updateConfig("sound_feedback_enabled", savedSound);
 
     const savedPauseAudio =
       localStorage.getItem("pause_audio_on_record") === "true";
     setPauseAudioEnabled(savedPauseAudio);
+    updateConfig("pause_audio_on_record", savedPauseAudio);
 
     const savedLang = localStorage.getItem("asr_language") || "auto";
     setAsrLanguage(savedLang);
@@ -365,11 +369,13 @@ export function SettingsView() {
   const handleSoundToggle = (checked: boolean) => {
     setSoundEnabled(checked);
     localStorage.setItem("sound_feedback_enabled", String(checked));
+    updateConfig("sound_feedback_enabled", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
     setPauseAudioEnabled(checked);
     localStorage.setItem("pause_audio_on_record", String(checked));
+    updateConfig("pause_audio_on_record", checked);
   };
 
   const handleAsrLanguageChange = (val: string) => {
