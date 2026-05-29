@@ -107,6 +107,13 @@ fn draw_status_dot(
     tauri::image::Image::new_owned(rgba, width, height)
 }
 
+/// Monochrome menu bar icon (waveform bars on a transparent background).
+/// Used as a macOS template image so the system tints it for light/dark menu bars.
+#[cfg(target_os = "macos")]
+fn tray_template_image() -> Option<tauri::image::Image<'static>> {
+    tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")).ok()
+}
+
 #[tauri::command]
 fn list_audio_devices(
     controller: tauri::State<'_, AudioController>,
@@ -648,6 +655,30 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let is_transcribing = controller.is_transcribing();
 
     let base_icon = app_handle.default_window_icon().cloned();
+
+    // macOS menu bar: use a transparent monochrome template image (just the waveform
+    // bars) so the system tints it for light/dark — no baked background. The colored
+    // recording/processing dot needs a non-template icon, so template mode is toggled
+    // per state. On Windows/Linux a transparent white icon would be invisible on light
+    // trays, so those keep the full app icon (existing behaviour).
+    #[cfg(target_os = "macos")]
+    let (tray_icon_img, tray_is_template) = {
+        let bars = tray_template_image().or_else(|| base_icon.clone());
+        match bars {
+            Some(bars) => {
+                if is_recording {
+                    (Some(draw_status_dot(&bars, [255, 59, 48, 255])), false) // iOS system red
+                } else if is_saving || is_transcribing {
+                    (Some(draw_status_dot(&bars, [0, 122, 255, 255])), false) // iOS system blue
+                } else {
+                    (Some(bars), true)
+                }
+            }
+            None => (None, false),
+        }
+    };
+
+    #[cfg(not(target_os = "macos"))]
     let tray_icon_img = if let Some(ref img) = base_icon {
         if is_recording {
             Some(draw_status_dot(img, [255, 59, 48, 255])) // Use iOS system red for recording state
@@ -791,6 +822,8 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         if let Some(img) = tray_icon_img {
             let _ = tray.set_icon(Some(img));
         }
+        #[cfg(target_os = "macos")]
+        let _ = tray.set_icon_as_template(tray_is_template);
         tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
     } else {
         let mut builder = TrayIconBuilder::with_id("main-tray")
@@ -802,6 +835,10 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
             });
         if let Some(img) = tray_icon_img {
             builder = builder.icon(img);
+        }
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder.icon_as_template(tray_is_template);
         }
         let _tray = builder.build(app_handle).map_err(|e| e.to_string())?;
     }

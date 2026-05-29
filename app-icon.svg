@@ -1,0 +1,19 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Simple Voice">
+  <title>Simple Voice</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2c2c2e"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded-square background (squircle approximation) matching the .icon dark fill -->
+  <rect x="0" y="0" width="1024" height="1024" rx="230" ry="230" fill="url(#bg)"/>
+  <!-- Waveform bars (from simple-logomark.svg), scaled 2x and centered as in Icon Composer -->
+  <g fill="#ffffff" transform="translate(148,172) scale(2)">
+    <rect x="8" y="98" width="36" height="144" rx="18"/>
+    <rect x="86" y="50" width="36" height="240" rx="18"/>
+    <rect x="164" y="8" width="36" height="324" rx="18"/>
+    <rect x="242" y="50" width="36" height="240" rx="18"/>
+    <rect x="320" y="98" width="36" height="144" rx="18"/>
+  </g>
+</svg>

@@ -1,0 +1,10 @@
+<svg width="364" height="340" viewBox="0 0 364 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Simple Voice">
+  <title>Simple Voice</title>
+  <g fill="#ffffff">
+    <rect x="8" y="98" width="36" height="144" rx="18"/>
+    <rect x="86" y="50" width="36" height="240" rx="18"/>
+    <rect x="164" y="8" width="36" height="324" rx="18"/>
+    <rect x="242" y="50" width="36" height="240" rx="18"/>
+    <rect x="320" y="98" width="36" height="144" rx="18"/>
+  </g>
+</svg>
