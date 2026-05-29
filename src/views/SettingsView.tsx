@@ -33,7 +33,7 @@ function formatKeycapLabel(key: string): string {
 }
 
 export function SettingsView() {
-  const { getConfig, updateConfig } = useConfig();
+  const { updateConfig } = useConfig();
   const [vadEnabled, setVadEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
