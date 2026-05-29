@@ -74,6 +74,9 @@ libc = "0.2"
 # Enable arboard's native Wayland clipboard backend (wlr-data-control via the
 # pure-Rust wl-clipboard-rs), replacing the external `wl-copy` binary.
 arboard = { version = "3", features = ["wayland-data-control"] }
+# Native global hotkeys on Wayland by reading /dev/input directly (no compositor
+# config edits, no external tools); works on niri and any compositor.
+evdev = "0.13"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 whisper-rs = { version = "0.16.0", default-features = false }

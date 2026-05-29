@@ -76,6 +76,20 @@ function App() {
     initModel();
     syncActiveConfig();
 
+    // Register the record/toggle shortcut on startup so the global hotkey works
+    // before the Settings view is ever opened (required on Linux, where evdev
+    // grabs are not persisted across launches like a compositor config bind).
+    const savedRecordShortcut =
+      localStorage.getItem("global_record_shortcut") ||
+      "CommandOrControl+Shift+Space";
+    if (savedRecordShortcut) {
+      invoke("register_shortcut", {
+        shortcutStr: savedRecordShortcut,
+      }).catch((err) => {
+        console.error("Failed to register record shortcut on mount:", err);
+      });
+    }
+
     // Register the copy-last shortcut if one was saved
     const savedCopyShortcut =
       localStorage.getItem("global_copy_shortcut") ||

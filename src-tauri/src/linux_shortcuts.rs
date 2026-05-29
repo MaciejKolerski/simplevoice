@@ -301,6 +301,12 @@ fn update_wm_config_file(de: &str, command_to_run: &str, shortcut_str: &str, act
     let start_search = format!("SIMPLEVOICE SHORTCUTS START [{}]", action_id);
     let end_search = format!("SIMPLEVOICE SHORTCUTS END [{}]", action_id);
 
+    // Unregister with nothing of ours in the file: leave it completely untouched
+    // (avoids gratuitously rewriting the user's compositor config on startup).
+    if shortcut_str.trim().is_empty() && !content.contains(&start_search) {
+        return Ok(());
+    }
+
     let mut new_content = String::new();
     let mut inside_section = false;
     let mut section_replaced = false;

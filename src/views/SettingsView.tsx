@@ -687,59 +687,33 @@ export function SettingsView() {
           {/* Linux Native / Wayland warning block */}
           {platform === "linux" && (
             <div className="p-6 pt-0 border-t border-border">
-              {["niri", "hyprland", "sway", "i3"].includes(desktopEnv) ? (
+              {["niri", "hyprland", "sway", "i3", "unknown"].includes(desktopEnv) ? (
                 <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-xs leading-relaxed flex flex-col gap-1.5">
                   <div className="font-semibold flex items-center gap-1.5 text-sm">
-                    <Check size={14} /> Automatic Window Manager Shortcuts Active
+                    <Check size={14} /> Native Global Hotkeys Active
                   </div>
                   <p>
-                    Your shortcuts were automatically written to your <strong>{desktopEnv.toUpperCase()}</strong> configuration file.
-                    They work globally (across all native Wayland & X11 windows) and apply immediately!
+                    Your shortcuts are captured directly from your keyboard (evdev) and work globally on any
+                    compositor — no configuration files are edited and no external tools are required.
                   </p>
                   <button
                     onClick={() => setShowManualWMInstructions(!showManualWMInstructions)}
                     className="text-left text-[11px] text-amber-400 hover:text-amber-300 underline font-medium mt-1 cursor-pointer select-none transition-colors bg-transparent border-0 p-0"
                   >
-                    {showManualWMInstructions ? "Hide details / config path" : "Show config path & configuration details"}
+                    {showManualWMInstructions ? "Hide troubleshooting" : "Hotkey not working? Show troubleshooting"}
                   </button>
-                  
+
                   {showManualWMInstructions && (
-                    <div className="mt-3 font-medium border-t border-emerald-500/10 pt-3 flex flex-col gap-3">
-                      <p className="text-muted text-[11px]">
-                        The app automatically appended custom bind entries to your configuration file. Here is the format:
+                    <div className="mt-3 font-medium border-t border-emerald-500/10 pt-3 flex flex-col gap-2 text-muted text-[11px]">
+                      <p>
+                        If the hotkey does nothing, your user probably cannot read input devices. Add yourself to
+                        the <strong>input</strong> group and log back in:
                       </p>
-                      
-                      {desktopEnv === "niri" && (
-                        <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-amber-300">Niri (~/.config/niri/config.kdl):</span>
-                          <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
-{`binds {
-    "Mod+Space" { spawn "simplevoice" "--toggle"; }
-    "Mod+Shift+C" { spawn "simplevoice" "--copy-last"; }
-}`}
-                          </pre>
-                        </div>
-                      )}
-
-                      {desktopEnv === "hyprland" && (
-                        <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-amber-300">Hyprland (~/.config/hypr/hyprland.conf):</span>
-                          <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
-{`bind = SUPER, Space, exec, simplevoice --toggle
-bind = SUPER_SHIFT, C, exec, simplevoice --copy-last`}
-                          </pre>
-                        </div>
-                      )}
-
-                      {(desktopEnv === "sway" || desktopEnv === "i3") && (
-                        <div className="flex flex-col gap-1">
-                          <span className="font-semibold text-amber-300">Sway / i3 (~/.config/sway/config or ~/.config/i3/config):</span>
-                          <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
-{`bindsym Mod4+Space exec simplevoice --toggle
-bindsym Mod4+Shift+c exec simplevoice --copy-last`}
-                          </pre>
-                        </div>
-                      )}
+                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">sudo usermod -aG input $USER</pre>
+                      <p>
+                        The hotkey is observed, not intercepted, so it also reaches the focused app — pick a
+                        dedicated combination (for example one using Super) that nothing else uses.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -757,45 +731,7 @@ bindsym Mod4+Shift+c exec simplevoice --copy-last`}
                     }</strong> keyboard configuration using built-in settings. They apply immediately!
                   </p>
                 </div>
-              ) : (
-                <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-400 text-xs leading-relaxed flex flex-col gap-2">
-                  <div className="font-semibold flex items-center gap-1.5 text-sm">
-                    <Shield size={14} /> Linux {desktopEnv === "unknown" ? "Window Manager" : desktopEnv.toUpperCase()} / Shortcut Notice
-                  </div>
-                  <p>
-                    Global hotkeys cannot be registered automatically under your desktop environment's security model.
-                    For the best experience, add these custom binds to your config file:
-                  </p>
-                  
-                  <div className="mt-1 font-medium border-t border-amber-500/10 pt-2 flex flex-col gap-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-amber-300">Niri (~/.config/niri/config.kdl):</span>
-                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
-{`binds {
-    "Mod+Space" { spawn "simplevoice" "--toggle"; }
-    "Mod+Shift+C" { spawn "simplevoice" "--copy-last"; }
-}`}
-                      </pre>
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-amber-300">Hyprland (~/.config/hypr/hyprland.conf):</span>
-                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
-{`bind = SUPER, Space, exec, simplevoice --toggle
-bind = SUPER_SHIFT, C, exec, simplevoice --copy-last`}
-                      </pre>
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-amber-300">Sway / i3 (~/.config/sway/config or ~/.config/i3/config):</span>
-                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">
-{`bindsym Mod4+Space exec simplevoice --toggle
-bindsym Mod4+Shift+c exec simplevoice --copy-last`}
-                      </pre>
-                    </div>
-                  </div>
-                </div>
-              )}
+              ) : null}
             </div>
           )}
 

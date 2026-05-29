@@ -4,6 +4,8 @@ mod error;
 mod linux_shortcuts;
 #[cfg(target_os = "linux")]
 mod wayland_type;
+#[cfg(target_os = "linux")]
+mod evdev_shortcuts;
 mod media_control;
 pub mod stt;
 use audio::AudioController;
@@ -914,6 +916,19 @@ fn sync_all_shortcuts(app_handle: &tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+/// On Wayland window-manager sessions (and unknown environments) we grab global
+/// hotkeys natively via evdev rather than editing the compositor config. Full
+/// desktop environments keep their dedicated native integration (gsettings,
+/// kglobalshortcutsrc, xfconf), which suppresses the keypress and integrates
+/// with their settings UI.
+#[cfg(target_os = "linux")]
+fn linux_uses_evdev(desktop_env: &str) -> bool {
+    matches!(
+        desktop_env,
+        "niri" | "sway" | "hyprland" | "i3" | "unknown"
+    )
+}
+
 #[tauri::command]
 fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Result<(), String> {
     let registry = app_handle.state::<ShortcutRegistry>();
@@ -937,7 +952,12 @@ fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Resu
 
     #[cfg(target_os = "linux")]
     {
-        if shortcut_str.trim().is_empty() {
+        let de = linux_shortcuts::detect_desktop_environment();
+        if linux_uses_evdev(&de) {
+            // niri/sway/hyprland/i3/unknown: grab the key natively via evdev
+            // instead of editing the compositor config.
+            evdev_shortcuts::set_shortcut("toggle", &shortcut_str)?;
+        } else if shortcut_str.trim().is_empty() {
             let _ = linux_shortcuts::unregister_native_shortcut("toggle");
         } else {
             let exe_path = std::env::current_exe()
@@ -989,7 +1009,10 @@ fn register_copy_shortcut(
 
     #[cfg(target_os = "linux")]
     {
-        if shortcut_str.trim().is_empty() {
+        let de = linux_shortcuts::detect_desktop_environment();
+        if linux_uses_evdev(&de) {
+            evdev_shortcuts::set_shortcut("copy", &shortcut_str)?;
+        } else if shortcut_str.trim().is_empty() {
             let _ = linux_shortcuts::unregister_native_shortcut("copy");
         } else {
             let exe_path = std::env::current_exe()
@@ -2135,6 +2158,16 @@ pub fn run() {
             {
                 // Repair any malformed shell comments (#) to correct C-style comments (//) in KDL config on startup
                 linux_shortcuts::repair_wm_configs();
+
+                let de = linux_shortcuts::detect_desktop_environment();
+                if linux_uses_evdev(&de) {
+                    // We now grab hotkeys via evdev. Remove any binds previous
+                    // versions wrote into the compositor config so they don't
+                    // fire the action a second time.
+                    let _ = linux_shortcuts::unregister_native_shortcut("toggle");
+                    let _ = linux_shortcuts::unregister_native_shortcut("copy");
+                    evdev_shortcuts::init(app.handle().clone());
+                }
 
                 update_recording_window_visibility(app.handle());
             }
