@@ -296,7 +296,7 @@ extern "C" {
     ) -> *const objc2::runtime::AnyClass;
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32) {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -330,7 +330,7 @@ fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32)
      }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 fn get_recording_window_position(app_handle: &tauri::AppHandle) -> Option<(i32, i32)> {
     let app_local_data = app_handle.path().app_local_data_dir().ok()?;
     let config_path = app_local_data.join("config.json");
@@ -351,7 +351,7 @@ fn get_recording_window_position(app_handle: &tauri::AppHandle) -> Option<(i32, 
     Some((x, y))
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 static WINDOW_INITIALIZED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -425,7 +425,7 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     let mode = get_recording_window_mode(app);
     let controller = app.state::<AudioController>();
@@ -479,7 +479,7 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub(crate) fn update_recording_window_visibility(_app: &tauri::AppHandle) {}
 
 /// Resolves the sound file for the given event type.
@@ -705,7 +705,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     let lock_item = {
         let locked = is_recording_window_locked(app_handle);
         let lock_label = if locked {
@@ -753,7 +753,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let separator2 = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
     let separator3 = PredefinedMenuItem::separator(app_handle).map_err(|e| e.to_string())?;
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     let menu = MenuBuilder::new(app_handle)
         .item(&toggle_recording_item)
         .item(&copy_last_item)
@@ -770,7 +770,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .build()
         .map_err(|e| e.to_string())?;
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     let menu = MenuBuilder::new(app_handle)
         .item(&toggle_recording_item)
         .item(&copy_last_item)
@@ -1474,7 +1474,7 @@ fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Resu
             );
             obj.remove("recording_window_x");
             obj.remove("recording_window_y");
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
             {
                 WINDOW_INITIALIZED.store(false, std::sync::atomic::Ordering::Relaxed);
             }
@@ -2208,6 +2208,11 @@ pub fn run() {
                     evdev_shortcuts::init(app.handle().clone());
                 }
 
+                update_recording_window_visibility(app.handle());
+            }
+
+            #[cfg(target_os = "windows")]
+            {
                 update_recording_window_visibility(app.handle());
             }
 
