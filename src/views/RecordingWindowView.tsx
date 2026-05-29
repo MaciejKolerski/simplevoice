@@ -1,11 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
+type Status = "idle" | "recording" | "transcribing";
+
+// Bar geometry (logical CSS pixels)
+const BAR_COUNT = 9;
+const BAR_WIDTH = 4; // matches previous w-1 (4px)
+const BAR_GAP = 4; // matches previous gap-1 (4px)
+const CANVAS_W = BAR_COUNT * BAR_WIDTH + (BAR_COUNT - 1) * BAR_GAP; // 68px
+const CANVAS_H = 24; // matches previous h-6
+
+// Gaussian-ish multiplier per bar (left-to-right), louder in the center
+const MULTIPLIERS = [0.2, 0.45, 0.75, 0.95, 1.0, 0.95, 0.75, 0.45, 0.2];
+
 export function RecordingWindowView() {
-  const [status, setStatus] = useState<"idle" | "recording" | "transcribing">("idle");
-  const [amplitude, setAmplitude] = useState<number>(0);
   const [locked, setLocked] = useState<boolean>(true);
+
+  // Status and amplitude are read inside the rAF loop, so they live in refs to
+  // avoid re-renders (and to avoid relying on CSS transitions, which ghost on
+  // transparent WebKitGTK windows under Linux).
+  const statusRef = useRef<Status>("idle");
+  const amplitudeRef = useRef<number>(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     // Override body backgrounds for transparency
@@ -24,33 +41,24 @@ export function RecordingWindowView() {
       .then(setLocked)
       .catch(() => {});
 
-    // Listen to recording-started
     const unlistenStarted = listen("recording-started", () => {
-      setStatus("recording");
+      statusRef.current = "recording";
     });
 
-    // Listen to recording-stopped
     const unlistenStopped = listen("recording-stopped", () => {
-      setStatus("transcribing");
-      setAmplitude(0);
+      statusRef.current = "transcribing";
+      amplitudeRef.current = 0;
     });
 
-    // Listen to transcribing-status
     const unlistenTranscribing = listen<boolean>("transcribing-status", (event) => {
-      const active = event.payload;
-      if (!active) {
-        setStatus("idle");
-      } else {
-        setStatus("transcribing");
-      }
+      statusRef.current = event.payload ? "transcribing" : "idle";
+      if (!event.payload) amplitudeRef.current = 0;
     });
 
-    // Listen to audio amplitude from backend
     const unlistenAmplitude = listen<number>("audio-amplitude", (event) => {
-      setAmplitude(event.payload);
+      amplitudeRef.current = event.payload;
     });
 
-    // Listen to lock status events
     const unlistenLock = listen<boolean>("recording-window-lock-status", (event) => {
       setLocked(event.payload);
     });
@@ -64,73 +72,97 @@ export function RecordingWindowView() {
     };
   }, []);
 
-  // Determine wave heights for 9 bars
-  // Left-to-right multiplier factor (Gaussian distribution)
-  const multipliers = [0.2, 0.45, 0.75, 0.95, 1.0, 0.95, 0.75, 0.45, 0.2];
+  // Canvas render loop. Drawing on a fixed-size canvas and clearing every frame
+  // avoids the partial-repaint ghosting that animated DOM elements suffer from
+  // on transparent WebKitGTK (Linux) windows.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  // Calculate heights
-  const barHeights = multipliers.map((mult) => {
-    if (status === "recording") {
-      // amplitude from backend is typically in range [0.0, 0.2] depending on microphone gain.
-      // We multiply it to get a responsive scale.
-      const normalizedAmp = Math.min(amplitude * 6.0, 1.0);
-      return 3 + normalizedAmp * 21 * mult; // Min 3px, Max 24px
-    } else if (status === "transcribing") {
-      return 10;
-    } else {
-      // Idle state: tiny dots
-      return 3;
-    }
-  });
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.round(CANVAS_W * dpr);
+    canvas.height = Math.round(CANVAS_H * dpr);
+    canvas.style.width = `${CANVAS_W}px`;
+    canvas.style.height = `${CANVAS_H}px`;
+    ctx.scale(dpr, dpr);
+
+    let raf = 0;
+    let displayAmp = 0; // smoothed amplitude, lerped toward the target each frame
+
+    const drawBar = (x: number, h: number, fill: string | CanvasGradient, alpha: number) => {
+      const y = (CANVAS_H - h) / 2;
+      const r = Math.min(BAR_WIDTH, h) / 2;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === "function") {
+        ctx.roundRect(x, y, BAR_WIDTH, h, r);
+      } else {
+        ctx.rect(x, y, BAR_WIDTH, h);
+      }
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    };
+
+    const frame = (t: number) => {
+      ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      const status = statusRef.current;
+
+      // Smoothly approach the target amplitude (replaces the CSS height transition).
+      const target = status === "recording" ? Math.min(amplitudeRef.current * 6.0, 1.0) : 0;
+      displayAmp += (target - displayAmp) * 0.35;
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const x = i * (BAR_WIDTH + BAR_GAP);
+        let h: number;
+        let fill: string | CanvasGradient;
+        let alpha: number;
+
+        if (status === "recording") {
+          h = 3 + displayAmp * 21 * MULTIPLIERS[i]; // 3px..24px
+          const g = ctx.createLinearGradient(0, (CANVAS_H + h) / 2, 0, (CANVAS_H - h) / 2);
+          g.addColorStop(0, "#ec4899");
+          g.addColorStop(1, "#a855f7");
+          fill = g;
+          alpha = 0.3 + MULTIPLIERS[i] * 0.7;
+        } else if (status === "transcribing") {
+          // Gentle traveling pulse, 1s period with per-bar phase offset.
+          const phase = (t / 1000 + i * 0.1) * Math.PI * 2;
+          const pulse = (Math.sin(phase) + 1) / 2; // 0..1
+          h = 6 + pulse * 6; // 6px..12px
+          const g = ctx.createLinearGradient(0, (CANVAS_H + h) / 2, 0, (CANVAS_H - h) / 2);
+          g.addColorStop(0, "#6366f1");
+          g.addColorStop(1, "#a855f7");
+          fill = g;
+          alpha = 0.5 + pulse * 0.5;
+        } else {
+          // idle: tiny dots
+          h = 3;
+          fill = "rgba(255, 255, 255, 0.4)";
+          alpha = 1;
+        }
+
+        drawBar(x, h, fill, alpha);
+      }
+
+      raf = requestAnimationFrame(frame);
+    };
+
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   return (
     <div className="w-full h-full flex items-center justify-center select-none pointer-events-none">
-      {/* Sleek Glassmorphic Pill */}
       <div
         data-tauri-drag-region
         className={`flex items-center justify-center px-5 h-[36px] rounded-full border bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing ${
           !locked ? "border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : "border-white/10"
         }`}
       >
-        {/* Visualizer centered - key forces complete DOM remount on status change, preventing rendering glitches */}
-        <div key={status} className="flex items-center justify-center">
-          {status === "transcribing" ? (
-            // A gorgeous smooth wave effect during transcription
-            <div className="flex items-center justify-center gap-1 h-6">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-1 rounded-full bg-gradient-to-t from-[#6366f1] to-[#a855f7] animate-[pulse_1s_infinite_ease-in-out]"
-                  style={{
-                    height: "10px",
-                    animationDelay: `${i * 0.1}s`,
-                  }}
-                />
-              ))}
-            </div>
-          ) : (
-            // Interactive waveform for recording or idle
-            <div className="flex items-center justify-center gap-1 h-6">
-              {barHeights.map((height, i) => {
-                // Color gets more vibrant at the center
-                const opacity = 0.3 + multipliers[i] * 0.7;
-                return (
-                  <div
-                    key={i}
-                    className="w-1 rounded-full transition-[height] duration-75 ease-out"
-                    style={{
-                      height: `${height}px`,
-                      opacity,
-                      background: status === "recording"
-                        ? "linear-gradient(to top, #ec4899, #a855f7)"
-                        : "rgba(255, 255, 255, 0.4)",
-                    }}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <canvas ref={canvasRef} className="block" />
       </div>
     </div>
   );
