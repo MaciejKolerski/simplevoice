@@ -42,11 +42,17 @@ jobs:
           # Those targets are only needed on MacOS
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      # Tauri base deps + this app's extras: ALSA (cpal capture) and Vulkan
-      # (whisper-rs `vulkan` feature compiles shaders with glslc at build time).
+      # Tauri base deps + this app's extras: ALSA (cpal capture) and Vulkan.
+      # The whisper-rs `vulkan` feature compiles shaders with `glslc`, which is
+      # not in the Ubuntu 22.04 repos, so pull the Vulkan SDK (headers + loader
+      # + glslc) from LunarG instead.
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc > /dev/null
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+            https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
@@ -54,9 +60,7 @@ jobs:
             librsvg2-dev \
             patchelf \
             libasound2-dev \
-            libvulkan-dev \
-            glslc \
-            glslang-tools
+            vulkan-sdk
 
       # The `pnpm tauri` wrapper (scripts/tauri.js) redirects the Cargo target dir
       # to a short path on Windows (260-char limit + static CRT for sherpa-onnx).
