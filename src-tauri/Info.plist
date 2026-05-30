@@ -4,7 +4,5 @@
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SimpleVoice needs microphone access to transcribe your speech into text.</string>
-	<key>CFBundleIconName</key>
-	<string>Simplevoice</string>
 </dict>
 </plist>

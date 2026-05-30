@@ -1,12 +1,4 @@
 {
-  "build": {
-    "beforeBundleCommand": "node scripts/build-macos-icon.mjs"
-  },
-  "bundle": {
-    "resources": {
-      "icons/macos/Assets.car": "Assets.car"
-    }
-  },
   "app": {
     "macOSPrivateApi": true,
     "windows": [
