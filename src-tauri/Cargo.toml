@@ -53,7 +53,6 @@ candle-core = { version = "0.8", optional = true }
 candle-nn = { version = "0.8", optional = true }
 candle-transformers = { version = "0.8", optional = true }
 tokenizers = { version = "0.21", optional = true, default-features = false, features = ["onig"] }
-ort = { version = "=2.0.0-rc.11", optional = true }
 sherpa-onnx = { version = "1.13.2", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -84,7 +83,7 @@ whisper-rs = { version = "0.16.0", default-features = false }
 [features]
 default = ["candle", "onnx"]
 candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers"]
-onnx = ["dep:ort", "dep:sherpa-onnx"]
+onnx = ["dep:sherpa-onnx"]
 
 [profile.dev]
 opt-level = 1
