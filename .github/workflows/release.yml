@@ -14,12 +14,16 @@ jobs:
       matrix:
         include:
           - platform: "macos-latest" # Apple Silicon
+            target: "aarch64-apple-darwin"
             args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest" # Intel Mac
+          - platform: "macos-13" # Intel Mac (native x86_64 runner; ort can't cross-compile)
+            target: "x86_64-apple-darwin"
             args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-22.04" # Linux
+            target: ""
             args: ""
           - platform: "windows-latest" # Windows
+            target: ""
             args: ""
 
     runs-on: ${{ matrix.platform }}
@@ -39,8 +43,7 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Those targets are only needed on MacOS
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.target }}
 
       # Tauri base deps + this app's extras: ALSA (cpal capture) and Vulkan.
       # The whisper-rs `vulkan` feature compiles shaders with `glslc`, which is
