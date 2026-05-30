@@ -88,6 +88,68 @@ jobs:
           tagName: v__VERSION__ # This automatically extracts the version from tauri.conf.json
           releaseName: "v__VERSION__"
           releaseBody: "See the assets to download this version."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  # Update both AUR packages after the release is published. The first import of
+  # each package is manual (see aur/README.md); this job handles later versions.
+  publish-aur:
+    needs: publish-tauri
+    runs-on: ubuntu-22.04
+    env:
+      AUR_MAINTAINER_NAME: "Woro"
+      AUR_MAINTAINER_EMAIL: "woro@tanieddosy.pl"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: derive version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # simplevoice-bin: prebuilt .deb from the published release
+      - name: prepare simplevoice-bin PKGBUILD
+        run: |
+          cd aur/simplevoice-bin
+          DEB_URL="https://github.com/MaciejKolerski/simplevoice/releases/download/v${VERSION}/Simplevoice_${VERSION}_amd64.deb"
+          curl -fL -o pkg.deb "$DEB_URL"
+          SHA=$(sha256sum pkg.deb | cut -d' ' -f1)
+          rm pkg.deb
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${SHA}')/" PKGBUILD
+
+      - name: publish simplevoice-bin to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
+        with:
+          pkgname: simplevoice-bin
+          pkgbuild: ./aur/simplevoice-bin/PKGBUILD
+          assets: ./aur/simplevoice-bin/simplevoice-bin.install
+          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
+          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ env.VERSION }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+
+      # simplevoice: built from source from the tag
+      - name: prepare simplevoice PKGBUILD
+        run: |
+          cd aur/simplevoice
+          TAR_URL="https://github.com/MaciejKolerski/simplevoice/archive/refs/tags/v${VERSION}.tar.gz"
+          curl -fL -o src.tar.gz "$TAR_URL"
+          SHA=$(sha256sum src.tar.gz | cut -d' ' -f1)
+          rm src.tar.gz
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/^sha256sums=.*/sha256sums=('${SHA}')/" PKGBUILD
+
+      - name: publish simplevoice to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
+        with:
+          pkgname: simplevoice
+          pkgbuild: ./aur/simplevoice/PKGBUILD
+          assets: ./aur/simplevoice/simplevoice.install
+          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
+          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ env.VERSION }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
