@@ -31,7 +31,7 @@ Simplevoice turns what you say into finished text — fast, accurate, and with n
 
 <div align="center">
   <br/>
-  <img src="assets/screenshot-usage.svg" width="840" alt="Usage dashboard — words transcribed, time dictated, and a 7-day chart, all stored on-device" />
+  <img src="assets/screenshot-usage.svg" width="840" alt="Usage dashboard — an Overview of time transcribed, words generated, and the active local model, above a 7-day activity chart, all stored on-device" />
   <br/><br/>
   <img src="assets/screenshot-recording.svg" width="660" alt="The floating recording overlay with a live waveform" />
 </div>
