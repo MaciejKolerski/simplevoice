@@ -1,9 +1,22 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronDown, Cpu, Shield, Keyboard, Check } from "lucide-react";
+import { Cpu, Shield, Keyboard, Check, Mic } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 import { useConfig } from "../context/ConfigContext";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function formatShortcutDisplay(str: string): string {
   if (!str) return "None";
@@ -31,6 +44,77 @@ function formatKeycapLabel(key: string): string {
   if (key === "Super") return "Super";
   return key;
 }
+
+const LANGUAGE_GROUPS: { label: string; items: [string, string][] }[] = [
+  {
+    label: "Popular",
+    items: [
+      ["en", "English"],
+      ["fr", "French (Français)"],
+      ["de", "German (Deutsch)"],
+      ["it", "Italian (Italiano)"],
+      ["pl", "Polish (Polski)"],
+      ["es", "Spanish (Español)"],
+    ],
+  },
+  {
+    label: "Europe",
+    items: [
+      ["bg", "Bulgarian (Български)"],
+      ["hr", "Croatian (Hrvatski)"],
+      ["cs", "Czech (Čeština)"],
+      ["da", "Danish (Dansk)"],
+      ["nl", "Dutch (Nederlands)"],
+      ["fi", "Finnish (Suomi)"],
+      ["el", "Greek (Ελληνικά)"],
+      ["hu", "Hungarian (Magyar)"],
+      ["no", "Norwegian (Norsk)"],
+      ["pt", "Portuguese (Português)"],
+      ["ro", "Romanian (Română)"],
+      ["ru", "Russian (Русский)"],
+      ["sr", "Serbian (Српски)"],
+      ["sk", "Slovak (Slovenčina)"],
+      ["sv", "Swedish (Svenska)"],
+      ["tr", "Turkish (Türkçe)"],
+      ["uk", "Ukrainian (Українська)"],
+    ],
+  },
+  {
+    label: "Asia & Middle East",
+    items: [
+      ["ar", "Arabic (العربية)"],
+      ["zh", "Chinese (中文)"],
+      ["he", "Hebrew (עברית)"],
+      ["hi", "Hindi (हिन्दी)"],
+      ["id", "Indonesian (Bahasa Indonesia)"],
+      ["ja", "Japanese (日本語)"],
+      ["ko", "Korean (한국어)"],
+      ["ms", "Malay (Bahasa Melayu)"],
+      ["fa", "Persian (فارسی)"],
+      ["th", "Thai (ไทย)"],
+      ["vi", "Vietnamese (Tiếng Việt)"],
+    ],
+  },
+  {
+    label: "Other",
+    items: [
+      ["af", "Afrikaans"],
+      ["sw", "Swahili (Kiswahili)"],
+      ["tl", "Tagalog"],
+    ],
+  },
+];
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  auto: "Auto-detect",
+  ...Object.fromEntries(LANGUAGE_GROUPS.flatMap((g) => g.items)),
+};
+
+const RECORDING_MODE_LABELS: Record<string, string> = {
+  always: "Always Show",
+  recording: "Show During Recording",
+  never: "Do Not Show",
+};
 
 export function SettingsView() {
   const { updateConfig } = useConfig();
@@ -216,7 +300,7 @@ export function SettingsView() {
         // Normalize spacebar inputs across different layout/platform representations
         if (
           mainKey === " " ||
-          mainKey === "\u00a0" ||
+          mainKey === " " ||
           mainKey === "\xa0" ||
           mainKey === "Spacebar"
         ) {
@@ -420,6 +504,11 @@ export function SettingsView() {
     }
   };
 
+  const micItems: Record<string, string> = {
+    default: "Default System Microphone",
+    ...Object.fromEntries(devices.map((d) => [d, d])),
+  };
+
   return (
     <div className="flex flex-col">
       <div className="mb-6">
@@ -428,142 +517,100 @@ export function SettingsView() {
         </h1>
       </div>
 
-      <div className="w-full">
-        {/* SECTION: Audio & STT */}
-        <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-          <Cpu size={16} className="text-muted" /> Audio & Speech-to-Text
-        </h2>
-        <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
-          <div className="flex flex-col p-6 border-b border-border">
-            <label className="text-fg font-medium mb-3 block">
-              Input Microphone
-            </label>
-            <div className="relative w-full">
-              <select
-                value={selectedDevice}
-                onChange={(e) => handleDeviceChange(e.target.value)}
-                className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-3 appearance-none cursor-pointer hover:border-muted transition-colors text-sm font-medium"
-              >
-                <option value="default">Default System Microphone</option>
-                {devices.map((device, idx) => (
-                  <option key={idx} value={device}>
+      <div className="w-full columns-1 lg:columns-2 2xl:columns-3 gap-6 [&>section]:mb-6 [&>section]:break-inside-avoid">
+        {/* GROUP: Audio & Speech-to-Text */}
+        <section>
+          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
+            <Cpu size={16} className="text-muted" /> Audio &amp; Speech-to-Text
+          </h2>
+          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+          <div className="flex flex-col p-5 border-b border-border last:border-b-0">
+            <Label className="mb-3">Input Microphone</Label>
+            <Select
+              value={selectedDevice || "default"}
+              onValueChange={(v) => handleDeviceChange(v ?? "default")}
+              items={micItems}
+            >
+              <SelectTrigger className="w-full bg-black">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default System Microphone</SelectItem>
+                {devices.map((device) => (
+                  <SelectItem key={device} value={device}>
                     {device}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                <ChevronDown size={18} />
-              </div>
-            </div>
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="flex flex-col p-6 border-b border-border">
-            <label className="text-fg font-medium mb-3 block">
-              Transcription Language
-            </label>
-            <div className="relative w-full">
-              <select
-                value={asrLanguage}
-                onChange={(e) => handleAsrLanguageChange(e.target.value)}
-                className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-3 appearance-none cursor-pointer hover:border-muted transition-colors text-sm font-medium"
-              >
-                <option value="auto">Auto-detect</option>
-                <optgroup label="Popular">
-                  <option value="en">English</option>
-                  <option value="fr">French (Français)</option>
-                  <option value="de">German (Deutsch)</option>
-                  <option value="it">Italian (Italiano)</option>
-                  <option value="pl">Polish (Polski)</option>
-                  <option value="es">Spanish (Español)</option>
-                </optgroup>
-                <optgroup label="Europe">
-                  <option value="bg">Bulgarian (Български)</option>
-                  <option value="hr">Croatian (Hrvatski)</option>
-                  <option value="cs">Czech (Čeština)</option>
-                  <option value="da">Danish (Dansk)</option>
-                  <option value="nl">Dutch (Nederlands)</option>
-                  <option value="fi">Finnish (Suomi)</option>
-                  <option value="el">Greek (Ελληνικά)</option>
-                  <option value="hu">Hungarian (Magyar)</option>
-                  <option value="no">Norwegian (Norsk)</option>
-                  <option value="pt">Portuguese (Português)</option>
-                  <option value="ro">Romanian (Română)</option>
-                  <option value="ru">Russian (Русский)</option>
-                  <option value="sr">Serbian (Српски)</option>
-                  <option value="sk">Slovak (Slovenčina)</option>
-                  <option value="sv">Swedish (Svenska)</option>
-                  <option value="tr">Turkish (Türkçe)</option>
-                  <option value="uk">Ukrainian (Українська)</option>
-                </optgroup>
-                <optgroup label="Asia & Middle East">
-                  <option value="ar">Arabic (العربية)</option>
-                  <option value="zh">Chinese (中文)</option>
-                  <option value="he">Hebrew (עברית)</option>
-                  <option value="hi">Hindi (हिन्दी)</option>
-                  <option value="id">Indonesian (Bahasa Indonesia)</option>
-                  <option value="ja">Japanese (日本語)</option>
-                  <option value="ko">Korean (한국어)</option>
-                  <option value="ms">Malay (Bahasa Melayu)</option>
-                  <option value="fa">Persian (فارسی)</option>
-                  <option value="th">Thai (ไทย)</option>
-                  <option value="vi">Vietnamese (Tiếng Việt)</option>
-                </optgroup>
-                <optgroup label="Other">
-                  <option value="af">Afrikaans</option>
-                  <option value="sw">Swahili (Kiswahili)</option>
-                  <option value="tl">Tagalog</option>
-                </optgroup>
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                <ChevronDown size={18} />
-              </div>
-            </div>
+          <div className="flex flex-col p-5 border-b border-border last:border-b-0">
+            <Label className="mb-3">Transcription Language</Label>
+            <Select
+              value={asrLanguage}
+              onValueChange={(v) => handleAsrLanguageChange(v ?? "auto")}
+              items={LANGUAGE_LABELS}
+            >
+              <SelectTrigger className="w-full bg-black">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                <SelectItem value="auto">Auto-detect</SelectItem>
+                {LANGUAGE_GROUPS.map((group) => (
+                  <SelectGroup key={group.label}>
+                    <SelectLabel>{group.label}</SelectLabel>
+                    {group.items.map(([code, label]) => (
+                      <SelectItem key={code} value={code}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-[11px] text-muted mt-2">
               Forces the model to output text in the selected language. Use
               "Auto-detect" for multilingual support.
             </p>
           </div>
 
-          <div className="flex justify-between items-center p-6 border-b border-border">
-            <div>
-              <div className="text-fg font-medium mb-1">Auto-start</div>
-              <div className="text-xs text-muted">
-                Start SimpleVoice automatically when you log in.
-              </div>
-            </div>
-            <label className="toggle cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autostartEnabled}
-                onChange={(e) => handleAutostartToggle(e.target.checked)}
-              />
-              <span className="toggle-bg"></span>
-            </label>
-          </div>
-
-           {!isMac && (
-           <div className="flex justify-between items-center p-6 border-b border-border">
-             <div>
-               <div className="text-fg font-medium mb-1">GPU Acceleration</div>
-                <div className="text-xs text-muted">
+          {!isMac && (
+            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+              <div className="min-w-0">
+                <div className="text-fg font-medium mb-1">GPU Acceleration</div>
+                <div className="text-xs text-muted leading-snug">
                   Use GPU (Vulkan on Linux/Windows) for faster transcription.
                   Falls back to CPU if no compatible GPU is available.
                 </div>
-             </div>
+              </div>
+              <Switch checked={gpuEnabled} onCheckedChange={handleGpuToggle} />
+            </div>
+          )}
+          </div>
+        </section>
 
-             <label className="toggle cursor-pointer">
-               <input
-                 type="checkbox"
-                 checked={gpuEnabled}
-                 onChange={(e) => handleGpuToggle(e.target.checked)}
-               />
-               <span className="toggle-bg"></span>
-             </label>
-           </div>
-           )}
+        {/* GROUP: Recording & Feedback */}
+        <section>
+          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
+            <Mic size={16} className="text-muted" /> Recording &amp; Feedback
+          </h2>
+          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+              <div className="min-w-0">
+                <div className="text-fg font-medium mb-1">Auto-start</div>
+                <div className="text-xs text-muted">
+                  Start Simplevoice automatically when you log in.
+                </div>
+              </div>
+              <Switch
+                checked={autostartEnabled}
+                onCheckedChange={handleAutostartToggle}
+              />
+            </div>
 
-          <div className="flex justify-between items-center p-6 border-b border-border">
-            <div>
+          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+            <div className="min-w-0">
               <div className="text-fg font-medium mb-1">
                 Voice Activity Detection (VAD)
               </div>
@@ -571,145 +618,131 @@ export function SettingsView() {
                 Automatically stop recording when you stop speaking.
               </div>
             </div>
-
-            <label className="toggle cursor-pointer">
-              <input
-                type="checkbox"
-                checked={vadEnabled}
-                onChange={(e) => handleVadToggle(e.target.checked)}
-              />
-              <span className="toggle-bg"></span>
-            </label>
+            <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
           </div>
 
-          <div className="flex justify-between items-center p-6 border-b border-border">
-            <div>
+          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+            <div className="min-w-0">
               <div className="text-fg font-medium mb-1">Sound Effects</div>
               <div className="text-muted text-[13px]">
                 Play a premium audio cue when starting and stopping recording.
               </div>
             </div>
-
-            <label className="toggle cursor-pointer">
-              <input
-                type="checkbox"
-                checked={soundEnabled}
-                onChange={(e) => handleSoundToggle(e.target.checked)}
-              />
-              <span className="toggle-bg"></span>
-            </label>
+            <Switch checked={soundEnabled} onCheckedChange={handleSoundToggle} />
           </div>
 
-          <div className="flex justify-between items-center p-6 border-b border-border">
-            <div>
+          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+            <div className="min-w-0">
               <div className="text-fg font-medium mb-1">Pause System Audio</div>
               <div className="text-muted text-[13px]">
                 Automatically pause music or videos while recording and resume
                 afterwards.
               </div>
             </div>
-
-            <label className="toggle cursor-pointer">
-              <input
-                type="checkbox"
-                checked={pauseAudioEnabled}
-                onChange={(e) => handlePauseAudioToggle(e.target.checked)}
-              />
-              <span className="toggle-bg"></span>
-            </label>
+            <Switch
+              checked={pauseAudioEnabled}
+              onCheckedChange={handlePauseAudioToggle}
+            />
           </div>
 
           {(isMac || platform === "linux" || platform === "windows") && (
-            <div className="flex justify-between items-center p-6">
-              <div>
-                <div className="text-fg font-medium mb-1">Recording Overlay Window</div>
+            <div className="flex justify-between items-center gap-6 p-5">
+              <div className="min-w-0">
+                <div className="text-fg font-medium mb-1">
+                  Recording Overlay Window
+                </div>
                 <div className="text-muted text-[13px]">
                   Display a floating wavebar on your screen reacting to voice.
                 </div>
               </div>
-
-              <div className="relative w-48">
-                <select
-                  value={recordingWindowMode}
-                  onChange={(e) => handleRecordingWindowModeChange(e.target.value)}
-                  className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-sm font-medium"
-                >
-                  <option value="always">Always Show</option>
-                  <option value="recording">Show During Recording</option>
-                  <option value="never">Do Not Show</option>
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                  <ChevronDown size={16} />
-                </div>
-              </div>
+              <Select
+                value={recordingWindowMode}
+                onValueChange={(v) => handleRecordingWindowModeChange(v ?? "always")}
+                items={RECORDING_MODE_LABELS}
+              >
+                <SelectTrigger className="w-48 bg-black shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="always">Always Show</SelectItem>
+                  <SelectItem value="recording">Show During Recording</SelectItem>
+                  <SelectItem value="never">Do Not Show</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           )}
           </div>
+        </section>
 
-        {/* SECTION: Keyboard Shortcuts */}
-        <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
-          <h2 className="p-6 pb-4 text-base text-white font-medium flex items-center gap-2 border-b border-border">
+        {/* GROUP: Keyboard Shortcuts */}
+        <section>
+          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
             <Keyboard size={16} className="text-muted" /> Keyboard Shortcuts
           </h2>
+          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
 
-          <div className="flex justify-between items-center p-6 border-b border-border">
-            <div className="flex-1 pr-8">
-              <div className="text-fg font-medium mb-1">Start / Stop Recording</div>
+          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+            <div className="flex-1 min-w-0">
+              <div className="text-fg font-medium mb-1">
+                Start / Stop Recording
+              </div>
               <div className="text-muted text-[13px]">
-                Global hotkey to toggle voice recording from anywhere
+                Global hotkey to toggle voice recording from anywhere.
               </div>
             </div>
-            <div
+            <button
               onClick={() => startRecordingShortcut("record")}
-              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded border border-border text-foreground min-w-[140px] text-center cursor-pointer hover:border-blue-400 hover:bg-blue-500/10 active:scale-[0.985] transition-all select-none"
+              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none"
               title="Click to change shortcut"
             >
               {formatShortcutDisplay(shortcutText)}
-            </div>
+            </button>
           </div>
 
-          <div className="flex justify-between items-center p-6">
-            <div className="flex-1 pr-8">
-              <div className="text-fg font-medium mb-1">Copy Last Transcription</div>
+          <div className="flex justify-between items-center gap-6 p-5">
+            <div className="flex-1 min-w-0">
+              <div className="text-fg font-medium mb-1">
+                Copy Last Transcription
+              </div>
               <div className="text-muted text-[13px]">
-                Copy the most recent transcription result to clipboard
+                Copy the most recent transcription result to clipboard.
               </div>
             </div>
-            <div
+            <button
               onClick={() => startRecordingShortcut("copy")}
-              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded border border-border text-foreground min-w-[140px] text-center cursor-pointer hover:border-blue-400 hover:bg-blue-500/10 active:scale-[0.985] transition-all select-none"
+              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none"
               title="Click to change shortcut"
             >
               {formatShortcutDisplay(copyShortcutText)}
-            </div>
+            </button>
           </div>
 
           {/* Linux Native / Wayland warning block */}
           {platform === "linux" && (
-            <div className="p-6 pt-0 border-t border-border">
+            <div className="p-5 pt-0 border-t border-border">
               {["niri", "hyprland", "sway", "i3", "unknown"].includes(desktopEnv) ? (
-                <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-xs leading-relaxed flex flex-col gap-1.5">
+                <div className="mt-4 p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
                   <div className="font-semibold flex items-center gap-1.5 text-sm">
                     <Check size={14} /> Native Global Hotkeys Active
                   </div>
-                  <p>
+                  <p className="text-success/85">
                     Your shortcuts are captured directly from your keyboard (evdev) and work globally on any
                     compositor — no configuration files are edited and no external tools are required.
                   </p>
                   <button
                     onClick={() => setShowManualWMInstructions(!showManualWMInstructions)}
-                    className="text-left text-[11px] text-amber-400 hover:text-amber-300 underline font-medium mt-1 cursor-pointer select-none transition-colors bg-transparent border-0 p-0"
+                    className="text-left text-[11px] text-warning hover:text-warning/80 underline font-medium mt-1 cursor-pointer select-none transition-colors bg-transparent border-0 p-0"
                   >
                     {showManualWMInstructions ? "Hide troubleshooting" : "Hotkey not working? Show troubleshooting"}
                   </button>
 
                   {showManualWMInstructions && (
-                    <div className="mt-3 font-medium border-t border-emerald-500/10 pt-3 flex flex-col gap-2 text-muted text-[11px]">
+                    <div className="mt-3 font-medium border-t border-success/10 pt-3 flex flex-col gap-2 text-muted text-[11px]">
                       <p>
                         If the hotkey does nothing, your user probably cannot read input devices. Add yourself to
                         the <strong>input</strong> group and log back in:
                       </p>
-                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-amber-200 overflow-x-auto">sudo usermod -aG input $USER</pre>
+                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-warning/90 overflow-x-auto">sudo usermod -aG input $USER</pre>
                       <p>
                         The hotkey is observed, not intercepted, so it also reaches the focused app — pick a
                         dedicated combination (for example one using Super) that nothing else uses.
@@ -718,11 +751,11 @@ export function SettingsView() {
                   )}
                 </div>
               ) : ["gnome", "kde", "xfce", "cinnamon", "mate"].includes(desktopEnv) ? (
-                <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-xs leading-relaxed flex flex-col gap-1.5">
+                <div className="mt-4 p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
                   <div className="font-semibold flex items-center gap-1.5 text-sm">
                     <Check size={14} /> Native Linux Shortcut Integration Active
                   </div>
-                  <p>
+                  <p className="text-success/85">
                     Your shortcuts are registered directly in the <strong>{
                       desktopEnv === "gnome" ? "GNOME" :
                       desktopEnv === "kde" ? "KDE Plasma" :
@@ -737,41 +770,40 @@ export function SettingsView() {
 
           {/* Fallback generic error warning if registration fails on other platforms */}
           {platform !== "linux" && (shortcutError || copyShortcutError) && (
-            <div className="p-6 pt-0 border-t border-border">
-              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs leading-relaxed flex flex-col gap-2">
-                <div className="font-semibold flex items-center gap-1.5 text-sm">
-                  <Shield size={14} /> Shortcut Registration Error
-                </div>
-                <p>{shortcutError || copyShortcutError}</p>
-              </div>
+            <div className="p-5 pt-0 border-t border-border">
+              <Alert variant="destructive" className="mt-4 border-danger/20 bg-danger/5">
+                <Shield />
+                <AlertTitle>Shortcut Registration Error</AlertTitle>
+                <AlertDescription>{shortcutError || copyShortcutError}</AlertDescription>
+              </Alert>
             </div>
           )}
         </div>
+        </section>
 
-        {/* SECTION: System Permissions */}
+        {/* GROUP: System Permissions */}
         {platform === "macos" && (
-
-          <>
-            <h2 className="mb-4 text-base text-white font-medium flex items-center gap-2">
+          <section>
+            <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
               <Shield size={16} className="text-muted" /> System Permissions
             </h2>
-            <div className="border border-border rounded-xl overflow-hidden bg-secondary mb-10">
-              <div className="flex justify-between items-center p-6 border-b border-border">
-                <div className="flex-1">
+            <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+              <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+                <div className="flex-1 min-w-0">
                   <div className="text-fg font-medium mb-1 flex items-center gap-2">
                     Accessibility
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
                         accessibilityGranted
-                          ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
-                          : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse"
+                          ? "bg-success shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                          : "bg-warning shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse"
                       }`}
                     />
                   </div>
                   <div className="text-muted text-[13px]">
                     Required for auto-paste (keyboard simulation via Cmd+V).
                     {!accessibilityGranted && (
-                      <span className="text-amber-400 font-medium">
+                      <span className="text-warning font-medium">
                         {" "}
                         Not granted — auto-paste will not work.
                       </span>
@@ -779,7 +811,9 @@ export function SettingsView() {
                   </div>
                 </div>
                 {!accessibilityGranted ? (
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={async () => {
                       try {
                         await invoke("request_accessibility_permission");
@@ -787,33 +821,33 @@ export function SettingsView() {
                         console.error("Failed to request accessibility:", err);
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border cursor-pointer transition-all duration-200 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 border-amber-500/30"
+                    className="border-warning/30 bg-warning/10 text-warning hover:bg-warning/20 hover:text-warning"
                   >
                     Grant Access
-                  </button>
+                  </Button>
                 ) : (
-                  <span className="inline-flex items-center px-3 py-1.5 rounded text-xs font-medium text-emerald-400">
-                    ✓ Granted
+                  <span className="inline-flex items-center gap-1.5 px-2 text-xs font-medium text-success">
+                    <Check size={14} /> Granted
                   </span>
                 )}
               </div>
 
-              <div className="flex justify-between items-center p-6">
-                <div className="flex-1">
+              <div className="flex justify-between items-center gap-6 p-5">
+                <div className="flex-1 min-w-0">
                   <div className="text-fg font-medium mb-1 flex items-center gap-2">
                     Microphone
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
                         microphoneGranted
-                          ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
-                          : "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse"
+                          ? "bg-success shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                          : "bg-warning shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse"
                       }`}
                     />
                   </div>
                   <div className="text-muted text-[13px]">
                     Required for audio capture.
                     {!microphoneGranted && (
-                      <span className="text-amber-400 font-medium">
+                      <span className="text-warning font-medium">
                         {" "}
                         Not granted — recording will not work.
                       </span>
@@ -821,7 +855,9 @@ export function SettingsView() {
                   </div>
                 </div>
                 {!microphoneGranted ? (
-                  <button
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={async () => {
                       try {
                         await invoke("open_folder", {
@@ -834,18 +870,18 @@ export function SettingsView() {
                         });
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border cursor-pointer transition-all duration-200 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 border-amber-500/30"
+                    className="border-warning/30 bg-warning/10 text-warning hover:bg-warning/20 hover:text-warning"
                   >
                     Grant Access
-                  </button>
+                  </Button>
                 ) : (
-                  <span className="inline-flex items-center px-3 py-1.5 rounded text-xs font-medium text-emerald-400">
-                    ✓ Granted
+                  <span className="inline-flex items-center gap-1.5 px-2 text-xs font-medium text-success">
+                    <Check size={14} /> Granted
                   </span>
                 )}
               </div>
             </div>
-          </>
+          </section>
         )}
       </div>
 
@@ -857,9 +893,14 @@ export function SettingsView() {
               setIsRecordingShortcut(false);
             }
           }}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl transition-all duration-300 animate-in fade-in"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl transition-all duration-300 animate-[fadeIn_0.2s_ease-out]"
         >
           <div className="flex flex-col items-center justify-center text-center max-w-sm w-full mx-4">
+            <div className="text-muted-dark font-mono text-[10px] uppercase tracking-[0.2em] mb-5 select-none">
+              {shortcutTarget === "copy"
+                ? "Copy last transcription"
+                : "Start / stop recording"}
+            </div>
             <div className="flex items-center justify-center gap-2 h-16 w-full mb-6">
               {activeKeys.length === 0 ? (
                 <div className="text-white/20 font-mono text-[11px] tracking-[0.2em] animate-pulse select-none">
@@ -889,11 +930,11 @@ export function SettingsView() {
 
             <div className="h-10 flex items-center justify-center">
               {isCompleted ? (
-                <span className="text-emerald-400 font-mono text-[10px] uppercase tracking-[0.25em] animate-in zoom-in-95 duration-200">
+                <span className="text-success font-mono text-[10px] uppercase tracking-[0.25em] animate-in zoom-in-95 duration-200">
                   Shortcut Saved
                 </span>
               ) : errorMessage ? (
-                <span className="text-red-400/90 font-mono text-[10px] leading-relaxed max-w-[280px] animate-in fade-in duration-200">
+                <span className="text-danger/90 font-mono text-[10px] leading-relaxed max-w-[280px] animate-in fade-in duration-200">
                   {errorMessage}
                 </span>
               ) : (

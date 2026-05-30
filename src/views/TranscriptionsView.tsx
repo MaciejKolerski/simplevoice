@@ -1,6 +1,19 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronDown, History } from "lucide-react";
+import { ChevronDown, History, Trash2, Copy, Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface TranscriptionItem {
   id: string;
@@ -77,11 +90,13 @@ export function TranscriptionsView() {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedId(id);
+      toast.success("Copied to clipboard");
       setTimeout(() => {
         setCopiedId(null);
       }, 1500);
     } catch (err) {
       console.error("Failed to copy text:", err);
+      toast.error("Couldn't copy to clipboard");
     }
   };
 
@@ -98,8 +113,10 @@ export function TranscriptionsView() {
       setOffset(0);
       setHasMore(true);
       window.dispatchEvent(new Event("transcription-added"));
+      toast.success("History cleared");
     } catch (err) {
       console.error("Failed to clear history:", err);
+      toast.error("Failed to clear history");
     }
   };
 
@@ -123,6 +140,7 @@ export function TranscriptionsView() {
       window.dispatchEvent(new Event("transcription-added"));
     } catch (err) {
       console.error("Failed to delete item:", err);
+      toast.error("Failed to delete transcription");
     } finally {
       setIsDeleting(null);
     }
@@ -151,20 +169,25 @@ export function TranscriptionsView() {
           </p>
         </div>
         {history.length > 0 && (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleClearHistory}
-            className="btn btn-small btn-outline text-red-400 hover:text-red-300 hover:border-red-400/50 shrink-0 transition-all duration-300 cursor-pointer"
+            className="shrink-0 text-danger hover:text-danger hover:border-danger/40 hover:bg-danger/5"
           >
-            Clear History
-          </button>
+            <Trash2 size={13} />
+            Clear history
+          </Button>
         )}
       </div>
 
       {history.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
-          <History size={48} className="text-muted mb-4 opacity-50" />
+          <div className="flex size-14 items-center justify-center rounded-full bg-surface-active text-muted mb-4">
+            <History size={26} />
+          </div>
           <h3 className="text-white font-medium mb-2">No transcriptions yet</h3>
-          <p className="text-muted text-sm max-w-md mb-6 leading-relaxed">
+          <p className="text-muted text-sm max-w-md mb-2 leading-relaxed">
             Use your global shortcut to start recording audio. Once finished,
             the recorded speech will be transcribed and stored here in your
             history.
@@ -178,7 +201,7 @@ export function TranscriptionsView() {
             return (
               <div
                 key={item.id}
-                className={`group flex flex-col p-5 transition-all hover:bg-surface-hover border-b border-border last:border-b-0 cursor-pointer ${
+                className={`group flex flex-col p-5 transition-colors hover:bg-surface-hover border-b border-border last:border-b-0 cursor-pointer ${
                   isExpanded ? "bg-surface-hover" : ""
                 }`}
                 onClick={() => toggleExpanded(item.id)}
@@ -186,12 +209,15 @@ export function TranscriptionsView() {
                 <div className="flex items-start gap-6">
                   <div className="flex-1 min-w-0">
                     <div className="mb-2 flex flex-wrap gap-2.5 items-center">
-                      <span className="mono text-muted-dark text-xs font-mono">
+                      <span className="mono text-muted-dark text-xs">
                         {item.date}, {item.timestamp}
                       </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-surface-active text-muted border border-border">
+                      <Badge
+                        variant="outline"
+                        className="rounded-md bg-surface-active text-muted font-mono text-[11px]"
+                      >
                         {item.model}
-                      </span>
+                      </Badge>
                       {item.duration_sec && (
                         <span className="text-[10px] text-muted font-mono">
                           {item.duration_sec.toFixed(1)}s
@@ -207,48 +233,39 @@ export function TranscriptionsView() {
                       size={18}
                       className={`text-muted transition-transform group-hover:text-fg ${isExpanded ? "rotate-180" : ""}`}
                     />
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         deleteItem(item);
                       }}
                       disabled={isDeleting === item.id}
-                      className="btn btn-small btn-outline text-red-400 hover:text-red-300 hover:border-red-400/50 w-9 h-9 p-0 flex items-center justify-center transition-all cursor-pointer"
+                      className="text-danger hover:text-danger hover:bg-danger/10"
                       title="Delete"
                     >
                       {isDeleting === item.id ? (
-                        <span className="w-3 h-3 border-2 border-red-400/40 border-t-red-400 rounded-full animate-spin" />
+                        <Loader2 size={14} className="animate-spin" />
                       ) : (
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.25"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M3 6h18" />
-                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                        </svg>
+                        <Trash2 size={14} />
                       )}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleCopy(item.id, item.text);
                       }}
-                      className={`btn btn-small w-20 transition-all ${
+                      className={`w-[88px] ${
                         isCopied
-                          ? "btn-outline border-emerald-500/30 text-emerald-400"
-                          : "btn-outline"
+                          ? "border-success/30 text-success"
+                          : ""
                       }`}
                     >
-                      {isCopied ? "Copied!" : "Copy"}
-                    </button>
+                      {isCopied ? <Check size={13} /> : <Copy size={13} />}
+                      {isCopied ? "Copied" : "Copy"}
+                    </Button>
                   </div>
                 </div>
 
@@ -259,13 +276,14 @@ export function TranscriptionsView() {
                         <audio
                           src={`data:audio/wav;base64,${audioCache[item.id]}`}
                           controls
-                          className="w-full accent-emerald-400"
+                          className="w-full accent-success"
                           onClick={(e) => e.stopPropagation()}
                         />
                       </div>
                     ) : (
-                      <div className="text-muted text-sm py-12 text-center border border-dashed border-border rounded-2xl">
-                        Loading recording...
+                      <div className="text-muted text-sm py-12 text-center border border-dashed border-border rounded-2xl flex items-center justify-center gap-2">
+                        <Loader2 size={14} className="animate-spin" />
+                        Loading recording…
                       </div>
                     )}
                   </div>
@@ -275,75 +293,72 @@ export function TranscriptionsView() {
           })}
           {hasMore && (
             <div className="p-4 border-t border-border flex justify-center bg-secondary">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="btn btn-small btn-outline px-8 transition-all"
+                className="px-8"
               >
-                {loadingMore ? "Loading..." : "Load more older transcriptions"}
-              </button>
+                {loadingMore && <Loader2 size={13} className="animate-spin" />}
+                {loadingMore ? "Loading…" : "Load older transcriptions"}
+              </Button>
             </div>
           )}
         </div>
       )}
 
-      {/* MODAL: Confirm Delete Single Item */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
-          <div className="bg-secondary border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="text-lg font-medium text-white mb-2">
-              Delete Transcription?
-            </h3>
-            <p className="text-muted text-[13px] mb-6 leading-relaxed">
-              Are you sure you want to delete this transcription? This action
-              cannot be undone.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowDeleteModal(null)}
-                className="btn btn-outline px-4 py-2 text-xs rounded-md cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="btn bg-red-600 hover:bg-red-500 text-white border-0 px-4 py-2 text-xs font-semibold rounded-md cursor-pointer"
-              >
-                Confirm Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirm: delete a single item */}
+      <AlertDialog
+        open={!!showDeleteModal}
+        onOpenChange={(open) => {
+          if (!open) setShowDeleteModal(null);
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete transcription?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes this transcription and its audio
+              recording from your device. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-danger text-white hover:bg-danger/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      {/* MODAL: Confirm Clear All History */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300">
-          <div className="bg-secondary border border-border rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="text-lg font-medium text-white mb-2">
-              Clear Transcription History?
-            </h3>
-            <p className="text-muted text-[13px] mb-6 leading-relaxed">
-              This will permanently delete all local audio recordings and their
-              transcribed text from your device. This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                className="btn btn-outline px-4 py-2 text-xs rounded-md cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmClearHistory}
-                className="btn bg-red-600 hover:bg-red-500 text-white border-0 px-4 py-2 text-xs font-semibold rounded-md cursor-pointer"
-              >
-                Confirm Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirm: clear all history */}
+      <AlertDialog
+        open={showConfirmModal}
+        onOpenChange={setShowConfirmModal}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all history?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes every local audio recording and its
+              transcribed text from your device. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmClearHistory}
+              className="bg-danger text-white hover:bg-danger/90"
+            >
+              Clear everything
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

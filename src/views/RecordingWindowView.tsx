@@ -88,6 +88,12 @@ export function RecordingWindowView() {
     canvas.style.height = `${CANVAS_H}px`;
     ctx.scale(dpr, dpr);
 
+    // Drive the waveform gradient from the brand tokens so it stays in sync with
+    // the design system (brand: live waveform is indigo -> purple).
+    const rootStyles = getComputedStyle(document.documentElement);
+    const waveFrom = rootStyles.getPropertyValue("--wave-from").trim() || "#6366f1";
+    const waveTo = rootStyles.getPropertyValue("--wave-to").trim() || "#a855f7";
+
     let raf = 0;
     let displayAmp = 0; // smoothed amplitude, lerped toward the target each frame
 
@@ -123,8 +129,8 @@ export function RecordingWindowView() {
         if (status === "recording") {
           h = 3 + displayAmp * 21 * MULTIPLIERS[i]; // 3px..24px
           const g = ctx.createLinearGradient(0, (CANVAS_H + h) / 2, 0, (CANVAS_H - h) / 2);
-          g.addColorStop(0, "#ec4899");
-          g.addColorStop(1, "#a855f7");
+          g.addColorStop(0, waveFrom);
+          g.addColorStop(1, waveTo);
           fill = g;
           alpha = 0.3 + MULTIPLIERS[i] * 0.7;
         } else if (status === "transcribing") {
@@ -133,8 +139,8 @@ export function RecordingWindowView() {
           const pulse = (Math.sin(phase) + 1) / 2; // 0..1
           h = 6 + pulse * 6; // 6px..12px
           const g = ctx.createLinearGradient(0, (CANVAS_H + h) / 2, 0, (CANVAS_H - h) / 2);
-          g.addColorStop(0, "#6366f1");
-          g.addColorStop(1, "#a855f7");
+          g.addColorStop(0, waveFrom);
+          g.addColorStop(1, waveTo);
           fill = g;
           alpha = 0.5 + pulse * 0.5;
         } else {

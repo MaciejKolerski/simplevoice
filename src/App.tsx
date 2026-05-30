@@ -3,6 +3,8 @@ import "./App.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+import { AlertTriangle } from "lucide-react";
+
 import { TitleBar } from "./components/layout/TitleBar";
 import { Updater } from "./components/Updater";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -10,6 +12,18 @@ import { UsageView } from "./views/UsageView";
 import { ModelsView } from "./views/ModelsView";
 import { TranscriptionsView } from "./views/TranscriptionsView";
 import { SettingsView } from "./views/SettingsView";
+import { WaveBar } from "@/components/brand/WaveBar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type ViewId = "usage" | "models" | "transcriptions" | "settings";
 
@@ -255,40 +269,33 @@ function App() {
           activeViewName={getTitleName(activeView)}
           toggleSidebar={toggleSidebar}
         />
-        {errorMessage && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300 animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex flex-col items-center justify-center bg-[#1c1c1e]/95 border border-border/90 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-[0_20px_50px_rgba(0,0,0,0.7)] backdrop-blur-md text-center transform scale-100 transition-all duration-300">
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4 text-red-500">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className="w-6 h-6"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-white text-lg font-semibold mb-2">
-                Configuration Required
-              </h3>
-              <p className="text-muted text-xs leading-relaxed mb-6">
-                {errorMessage}
-              </p>
-              <button
-                onClick={() => setErrorMessage(null)}
-                className="w-full btn btn-primary py-2.5 rounded-lg text-xs font-semibold cursor-pointer"
+        <AlertDialog
+          open={!!errorMessage}
+          onOpenChange={(open) => {
+            if (!open) setErrorMessage(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogMedia className="bg-danger/10 text-danger">
+                <AlertTriangle />
+              </AlertDialogMedia>
+              <AlertDialogTitle>Configuration Required</AlertDialogTitle>
+              <AlertDialogDescription>{errorMessage}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Dismiss</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setActiveView("models");
+                  setErrorMessage(null);
+                }}
               >
-                Configure Now
-              </button>
-            </div>
-          </div>
-        )}
+                Open Models
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <div className="flex flex-1 overflow-hidden">
           <Sidebar
             collapsed={sidebarCollapsed}
@@ -316,8 +323,8 @@ function App() {
 
         {/* Global Recording / Transcribing HUD Overlay */}
         {(isRecording || isTranscribing) && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all duration-300 animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex flex-col items-center justify-center bg-[#1c1c1e]/90 border border-border/85 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-[0_12px_40px_rgba(0,0,0,0.5)] backdrop-blur-md text-center transform scale-100 transition-all duration-300">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex flex-col items-center justify-center bg-popover/95 border border-border rounded-2xl p-8 max-w-sm w-full mx-4 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.85)] backdrop-blur-md text-center">
               {isRecording ? (
                 <>
                   <div className="relative mb-6">
@@ -326,27 +333,24 @@ function App() {
                     <div className="absolute inset-[-6px] rounded-full bg-red-500/20 animate-pulse"></div>
                     {/* Recording circle */}
                     <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/30">
-                      <div className="w-6 h-6 bg-white rounded-sm animate-pulse"></div>
+                      <div className="w-6 h-6 bg-white rounded-[5px] animate-pulse"></div>
                     </div>
                   </div>
                   <h2 className="text-white text-lg font-medium mb-1 tracking-tight">
-                    Recording Audio
+                    Recording
                   </h2>
                   <p className="text-muted text-sm leading-normal">
-                    Speak now... Press shortcut or wait for silence to stop.
+                    Speak now — press your shortcut or pause to stop.
                   </p>
                 </>
               ) : (
                 <>
-                  <div className="relative mb-6">
-                    {/* Rotating loader */}
-                    <div className="w-16 h-16 rounded-full border-4 border-border/40 border-t-white animate-spin"></div>
-                  </div>
+                  <WaveBar animated className="w-16 text-white mb-6" />
                   <h2 className="text-white text-lg font-medium mb-1 tracking-tight">
                     Transcribing
                   </h2>
                   <p className="text-muted text-sm leading-normal">
-                    Processing audio locally using Whisper...
+                    Turning your voice into text…
                   </p>
                 </>
               )}

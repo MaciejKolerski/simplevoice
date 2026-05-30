@@ -2,6 +2,17 @@ import { useEffect, useState } from "react";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Download, RefreshCw, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function Updater() {
   const [updateInfo, setUpdateInfo] = useState<Update | null>(null);
@@ -49,7 +60,7 @@ export function Updater() {
 
     try {
       console.log("[Updater] Downloading and installing update...");
-      
+
       let contentLength: number | undefined = 0;
       let downloaded = 0;
 
@@ -76,7 +87,7 @@ export function Updater() {
 
       setStatus("completed");
       console.log("[Updater] Update completed, relaunching app...");
-      
+
       // Wait 1.5 seconds to show completion state then relaunch
       setTimeout(async () => {
         try {
@@ -97,120 +108,100 @@ export function Updater() {
 
   if (!isOpen) return null;
 
+  const busy = status === "downloading" || status === "installing";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md transition-all duration-300">
-      <div className="bg-[#18181b] border border-[#27272a] rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-white">
-        
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-            <RefreshCw size={20} className={status === "downloading" || status === "installing" ? "animate-spin" : ""} />
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        // Only allow dismissal in resting states — never mid-update.
+        if (!open && (status === "available" || status === "error")) {
+          setIsOpen(false);
+        }
+      }}
+    >
+      <DialogContent showCloseButton={false} className="sm:max-w-md">
+        <DialogHeader className="flex-row items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-white">
+            <RefreshCw size={18} className={busy ? "animate-spin" : ""} />
           </div>
-          <div>
-            <h3 className="text-md font-semibold text-white">
-              New Version Available!
-            </h3>
+          <div className="flex flex-col gap-0.5">
+            <DialogTitle>Update available</DialogTitle>
             {updateInfo && (
-              <p className="text-[12px] text-gray-400 mt-0.5">
+              <DialogDescription className="mono text-xs">
                 Version {updateInfo.version}
-              </p>
+              </DialogDescription>
             )}
           </div>
-        </div>
+        </DialogHeader>
 
-        {/* Content / Release Notes */}
-        <div className="mb-6">
-          {status === "available" && updateInfo?.body && (
-            <div className="bg-[#09090b] rounded-lg p-3 border border-[#27272a] max-h-48 overflow-y-auto">
-              <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 mb-2 border-b border-[#27272a] pb-1">
-                <Info size={12} />
-                <span>Changelog:</span>
-              </div>
-              <p className="text-gray-300 text-[12px] whitespace-pre-wrap leading-relaxed">
-                {updateInfo.body}
-              </p>
+        {status === "available" && updateInfo?.body && (
+          <div className="max-h-48 overflow-y-auto rounded-lg border border-border bg-background/60 p-3">
+            <div className="mb-2 flex items-center gap-1.5 border-b border-border pb-1.5 text-[11px] font-medium tracking-wider text-muted uppercase">
+              <Info size={12} />
+              <span>What&apos;s new</span>
             </div>
-          )}
+            <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/80">
+              {updateInfo.body}
+            </p>
+          </div>
+        )}
 
-          {/* Progress Section */}
-          {(status === "downloading" || status === "installing" || status === "completed") && (
-            <div className="space-y-3 py-2">
-              <div className="flex justify-between text-[12px] font-medium text-gray-300">
-                <span>
-                  {status === "downloading" && "Downloading update..."}
-                  {status === "installing" && "Installing..."}
-                  {status === "completed" && "Completed! Relaunching..."}
-                </span>
-                <span>{progress}%</span>
-              </div>
-              <div className="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden">
-                <div 
-                  className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
+        {(status === "downloading" || status === "installing" || status === "completed") && (
+          <div className="flex flex-col gap-2 py-1">
+            <div className="flex justify-between text-[12px] font-medium">
+              <span className="text-muted">
+                {status === "downloading" && "Downloading update…"}
+                {status === "installing" && "Installing…"}
+                {status === "completed" && "Done — relaunching…"}
+              </span>
+              <span className="mono text-foreground">{progress}%</span>
             </div>
-          )}
+            <Progress value={progress} />
+          </div>
+        )}
 
-          {/* Error Section */}
-          {status === "error" && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-[12px] text-red-400 flex items-start gap-2">
-              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-              <div>
-                <span className="font-semibold block mb-0.5">Update Error</span>
-                <span className="opacity-90">{errorMsg || "An unexpected error occurred."}</span>
-              </div>
-            </div>
-          )}
-        </div>
+        {status === "error" && (
+          <Alert variant="destructive" className="border-danger/20 bg-danger/5">
+            <AlertTriangle />
+            <AlertTitle>Update failed</AlertTitle>
+            <AlertDescription>{errorMsg || "An unexpected error occurred."}</AlertDescription>
+          </Alert>
+        )}
 
-        {/* Action Buttons */}
-        <div className="flex justify-end gap-3 border-t border-[#27272a] pt-4">
+        <DialogFooter>
           {status === "available" && (
             <>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="px-4 py-2 text-xs font-medium text-gray-400 hover:text-white transition-colors cursor-pointer"
-              >
+              <Button variant="ghost" onClick={() => setIsOpen(false)}>
                 Skip
-              </button>
-              <button
-                onClick={handleInstall}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-semibold rounded-md shadow-md hover:shadow-blue-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
+              </Button>
+              <Button onClick={handleInstall}>
                 <Download size={14} />
-                Update Now
-              </button>
+                Update now
+              </Button>
             </>
           )}
 
           {status === "error" && (
-            <button
-              onClick={() => setIsOpen(false)}
-              className="bg-[#27272a] hover:bg-[#3f3f46] text-white px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer"
-            >
+            <Button variant="outline" onClick={() => setIsOpen(false)}>
               Close
-            </button>
+            </Button>
           )}
 
-          {(status === "downloading" || status === "installing") && (
-            <button
-              disabled
-              className="px-4 py-2 text-xs font-medium text-gray-500 cursor-not-allowed"
-            >
-              Updating...
-            </button>
+          {busy && (
+            <Button variant="ghost" disabled>
+              Updating…
+            </Button>
           )}
 
           {status === "completed" && (
-            <div className="flex items-center gap-1.5 text-xs text-green-400 font-medium">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
               <CheckCircle size={14} />
-              Relaunching...
-            </div>
+              Relaunching…
+            </span>
           )}
-        </div>
-
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

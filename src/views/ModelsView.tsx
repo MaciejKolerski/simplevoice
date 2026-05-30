@@ -1,7 +1,30 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, RefreshCw, ChevronDown, Download, Loader2 } from "lucide-react";
+import {
+  FolderOpen,
+  RefreshCw,
+  Download,
+  Loader2,
+  Eye,
+  EyeOff,
+  X,
+  AlertTriangle,
+} from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface ModelStatus {
   active: string | null;
@@ -63,6 +86,13 @@ const FORMAT_LABELS: Record<string, string> = {
   hf_pytorch: "PyTorch",
   onnx: "ONNX",
   nemo: "NeMo",
+};
+
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+  gemini: "Google Gemini",
+  custom: "Custom…",
 };
 
 export function ModelsView() {
@@ -364,13 +394,14 @@ export function ModelsView() {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2.5">
           <span className="text-sm font-medium text-white truncate">{name}</span>
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-muted bg-surface-active border border-border shrink-0">
+          <Badge
+            variant="outline"
+            className="rounded-md bg-surface-active text-muted font-mono text-[10px] shrink-0"
+          >
             {formatLabel}
-          </span>
+          </Badge>
         </div>
-        {subtitle && (
-          <div className="mt-0.5">{subtitle}</div>
-        )}
+        {subtitle && <div className="mt-0.5">{subtitle}</div>}
       </div>
       <span className="text-xs font-mono text-muted shrink-0">{size}</span>
       <div className="shrink-0 w-24 flex justify-end">{action}</div>
@@ -386,84 +417,73 @@ export function ModelsView() {
         </h1>
         {asrEngine === "local" && (
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleOpenFolder}
-              className="btn btn-outline btn-small flex items-center gap-1.5 cursor-pointer"
               title="Open models folder"
             >
               <FolderOpen size={13} />
               <span className="hidden sm:inline">Folder</span>
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
               onClick={loadModelsList}
               disabled={scanning}
-              className="btn btn-outline btn-small flex items-center gap-1.5 cursor-pointer"
               title="Rescan models directory"
             >
               <RefreshCw size={13} className={scanning ? "animate-spin" : ""} />
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-border mb-6 gap-1">
-        <button
-          onClick={() => handleSelectEngine("local")}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 relative -mb-[2px] cursor-pointer ${
-            asrEngine === "local"
-              ? "text-white border-white"
-              : "text-muted border-transparent hover:text-white"
-          }`}
-        >
-          Local
-        </button>
-        <button
-          onClick={() => handleSelectEngine("openai-cloud")}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 relative -mb-[2px] cursor-pointer ${
-            asrEngine === "openai-cloud"
-              ? "text-white border-white"
-              : "text-muted border-transparent hover:text-white"
-          }`}
-        >
-          Cloud (BYOK)
-        </button>
-      </div>
+      <Tabs
+        value={asrEngine}
+        onValueChange={(v) => handleSelectEngine(v as "local" | "openai-cloud")}
+        className="w-full"
+      >
+        <TabsList variant="line" className="mb-6 border-b border-border w-full justify-start">
+          <TabsTrigger value="local" className="flex-none px-4">
+            Local
+          </TabsTrigger>
+          <TabsTrigger value="openai-cloud" className="flex-none px-4">
+            Cloud (BYOK)
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Global error alerts */}
-      {conversionError && (
-        <div className="mb-4 px-4 py-3 rounded-lg border border-rose-500/20 bg-rose-500/5 text-rose-400 text-xs flex items-start gap-2">
-          <span className="shrink-0 mt-px">✕</span>
-          <div>
-            <span className="font-medium">Conversion failed:</span>{" "}
-            {conversionError.message}
-          </div>
-          <button
-            onClick={() => setConversionError(null)}
-            className="ml-auto text-rose-400/60 hover:text-rose-400 cursor-pointer shrink-0"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-      {downloadError && (
-        <div className="mb-4 px-4 py-3 rounded-lg border border-rose-500/20 bg-rose-500/5 text-rose-400 text-xs flex items-start gap-2">
-          <span className="shrink-0 mt-px">✕</span>
-          <div>
-            <span className="font-medium">Download failed:</span>{" "}
-            {downloadError.message}
-          </div>
-          <button
-            onClick={() => setDownloadError(null)}
-            className="ml-auto text-rose-400/60 hover:text-rose-400 cursor-pointer shrink-0"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+        {/* Global error alerts */}
+        {conversionError && (
+          <Alert variant="destructive" className="mb-4 border-danger/20 bg-danger/5">
+            <AlertTriangle />
+            <AlertTitle>Conversion failed</AlertTitle>
+            <AlertDescription>{conversionError.message}</AlertDescription>
+            <button
+              onClick={() => setConversionError(null)}
+              className="absolute top-3 right-3 text-danger/60 hover:text-danger cursor-pointer"
+              aria-label="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </Alert>
+        )}
+        {downloadError && (
+          <Alert variant="destructive" className="mb-4 border-danger/20 bg-danger/5">
+            <AlertTriangle />
+            <AlertTitle>Download failed</AlertTitle>
+            <AlertDescription>{downloadError.message}</AlertDescription>
+            <button
+              onClick={() => setDownloadError(null)}
+              className="absolute top-3 right-3 text-danger/60 hover:text-danger cursor-pointer"
+              aria-label="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </Alert>
+        )}
 
-      {asrEngine === "local" ? (
-        <div className="flex flex-col gap-6">
+        <TabsContent value="local" className="flex flex-col gap-6">
           {/* Installed models */}
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             {models.length === 0 ? (
@@ -494,43 +514,38 @@ export function ModelsView() {
                 if (model.needs_conversion) {
                   if (convertingPath === model.path) {
                     action = (
-                      <span className="text-[10px] font-mono text-amber-400 animate-pulse truncate">
+                      <span className="text-[10px] font-mono text-warning animate-pulse truncate">
                         {conversionStatus || "Converting..."}
                       </span>
                     );
                   } else {
                     action = (
-                      <button
+                      <Button
+                        size="sm"
                         onClick={() => handleConvertModel(model.path)}
                         disabled={convertingPath !== null || loadingModelPath !== null || loadingPath !== null}
-                        className="btn btn-small text-[11px] bg-amber-500 hover:bg-amber-600 border-amber-500 text-black font-medium cursor-pointer w-full h-[30px]"
+                        className="w-full bg-warning text-black hover:bg-warning/90"
                       >
                         Convert
-                      </button>
+                      </Button>
                     );
                   }
                 } else if (isActive) {
                   action = (
-                    <button
-                      disabled
-                      className="btn btn-outline btn-small w-full h-[30px] opacity-50 cursor-not-allowed"
-                    >
+                    <Button variant="outline" size="sm" disabled className="w-full opacity-60">
                       Selected
-                    </button>
+                    </Button>
                   );
                 } else {
                   action = (
-                    <button
+                    <Button
+                      size="sm"
                       onClick={() => handleLoadModel(model.path)}
                       disabled={isLoading || loadingModelPath !== null || loadingPath !== null || convertingPath !== null}
-                      className="btn btn-primary btn-small w-full h-[30px] flex items-center justify-center cursor-pointer"
+                      className="w-full"
                     >
-                      {isLoading ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        "Load"
-                      )}
-                    </button>
+                      {isLoading ? <Loader2 size={12} className="animate-spin" /> : "Load"}
+                    </Button>
                   );
                 }
 
@@ -562,28 +577,28 @@ export function ModelsView() {
                   let action: React.ReactNode;
                   if (isDownloading) {
                     action = (
-                      <div className="flex flex-col items-end gap-1 min-w-[96px]">
-                        <span className="text-[10px] font-mono text-sky-400 animate-pulse">
+                      <div className="flex flex-col items-end gap-1 min-w-[96px] w-24">
+                        <span className="text-[10px] font-mono text-info">
                           {Math.round(downloadProgress)}%
                         </span>
-                        <div className="w-full h-1 bg-surface-active rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-sky-400 rounded-full transition-all duration-300"
-                            style={{ width: `${downloadProgress}%` }}
-                          />
-                        </div>
+                        <Progress
+                          value={downloadProgress}
+                          className="w-full [&_[data-slot=progress-track]]:h-1 [&_[data-slot=progress-indicator]]:bg-info"
+                        />
                       </div>
                     );
                   } else {
                     action = (
-                      <button
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => handleDownloadModel(rec)}
                         disabled={downloadingRepo !== null || loadingModelPath !== null || loadingPath !== null}
-                        className="btn btn-outline btn-small w-full flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="w-full"
                       >
                         <Download size={11} />
-                        <span>Get</span>
-                      </button>
+                        Get
+                      </Button>
                     );
                   }
 
@@ -603,41 +618,37 @@ export function ModelsView() {
 
           {/* Download status bar */}
           {downloadingRepo && downloadStatus && (
-            <div className="px-4 py-2 rounded-lg border border-sky-500/15 bg-sky-500/5 text-sky-400 text-[11px] font-mono">
+            <div className="px-4 py-2 rounded-lg border border-info/15 bg-info/5 text-info text-[11px] font-mono">
               {downloadStatus}
             </div>
           )}
-        </div>
-      ) : (
-        /* BYOK Cloud Configuration */
-        <div className="flex flex-col gap-5 max-w-xl">
-          <div className="flex flex-col">
-            <label className="text-fg font-medium text-xs mb-2">
-              Provider
-            </label>
-            <div className="relative w-full">
-              <select
-                value={asrProvider}
-                onChange={(e) => handleProviderChange(e.target.value as any)}
-                className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
-              >
-                <option value="openai">OpenAI</option>
-                <option value="openrouter">OpenRouter</option>
-                <option value="gemini">Google Gemini</option>
-                <option value="custom">Custom...</option>
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                <ChevronDown size={14} />
-              </div>
-            </div>
+        </TabsContent>
+
+        {/* BYOK Cloud Configuration */}
+        <TabsContent value="openai-cloud" className="flex flex-col gap-5 max-w-xl">
+          <div className="flex flex-col gap-2">
+            <Label>Provider</Label>
+            <Select
+              value={asrProvider}
+              onValueChange={(v) => handleProviderChange(v as typeof asrProvider)}
+              items={PROVIDER_LABELS}
+            >
+              <SelectTrigger className="w-full bg-black">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="openai">OpenAI</SelectItem>
+                <SelectItem value="openrouter">OpenRouter</SelectItem>
+                <SelectItem value="gemini">Google Gemini</SelectItem>
+                <SelectItem value="custom">Custom…</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="flex flex-col">
-            <label className="text-fg font-medium text-xs mb-2">
-              API Key
-            </label>
+          <div className="flex flex-col gap-2">
+            <Label>API Key</Label>
             <div className="flex gap-2">
-              <input
+              <Input
                 type={showApiKey ? "text" : "password"}
                 value={providerKey}
                 onChange={(e) => {
@@ -647,74 +658,78 @@ export function ModelsView() {
                 placeholder={
                   providerKey === "••••••••••••••••"
                     ? ""
-                    : `Enter API Key for ${asrProvider.toUpperCase()}...`
+                    : `Enter API key for ${asrProvider.toUpperCase()}…`
                 }
-                className="input flex-1 bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors"
+                className="flex-1 bg-black font-mono"
               />
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="icon"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="btn btn-outline btn-small text-xs font-medium cursor-pointer whitespace-nowrap"
+                title={showApiKey ? "Hide key" : "Show key"}
               >
-                {showApiKey ? "Hide" : "Show"}
-              </button>
+                {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+              </Button>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Stored securely in your OS keyring — never written to disk.
+            </p>
           </div>
 
-          <div className="flex flex-col">
-            <label className="text-fg font-medium text-xs mb-2">Model</label>
-            <div className="relative w-full">
-              <select
-                value={asrModel}
-                onChange={(e) => handleModelChange(e.target.value)}
-                className="input w-full bg-black border-border rounded-md pl-4 pr-10 py-2.5 appearance-none cursor-pointer hover:border-muted transition-colors text-xs font-medium"
-              >
+          <div className="flex flex-col gap-2">
+            <Label>Model</Label>
+            <Select
+              value={asrModel}
+              onValueChange={(v) => handleModelChange(v as string)}
+            >
+              <SelectTrigger className="w-full bg-black">
+                <SelectValue>
+                  {(v: string) => (v === "custom" ? "Custom model…" : v)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
                 {asrProvider === "openai" && (
                   <>
-                    <option value="whisper-1">whisper-1</option>
-                    <option value="gpt-4o-mini">gpt-4o-mini</option>
-                    <option value="gpt-4o">gpt-4o</option>
+                    <SelectItem value="whisper-1">whisper-1</SelectItem>
+                    <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
+                    <SelectItem value="gpt-4o">gpt-4o</SelectItem>
                   </>
                 )}
                 {asrProvider === "openrouter" && (
                   <>
-                    <option value="openai/whisper-large-v3">
+                    <SelectItem value="openai/whisper-large-v3">
                       openai/whisper-large-v3
-                    </option>
-                    <option value="meta-llama/llama-3.2-11b-vision-instruct:free">
+                    </SelectItem>
+                    <SelectItem value="meta-llama/llama-3.2-11b-vision-instruct:free">
                       meta-llama/llama-3.2-11b-vision-instruct:free
-                    </option>
-                    <option value="deepseek/deepseek-chat">
+                    </SelectItem>
+                    <SelectItem value="deepseek/deepseek-chat">
                       deepseek/deepseek-chat
-                    </option>
-                    <option value="google/gemini-2.0-flash-exp:free">
+                    </SelectItem>
+                    <SelectItem value="google/gemini-2.0-flash-exp:free">
                       google/gemini-2.0-flash-exp:free
-                    </option>
+                    </SelectItem>
                   </>
                 )}
                 {asrProvider === "gemini" && (
                   <>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                    <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                    <option value="gemini-2.0-flash-exp">
+                    <SelectItem value="gemini-1.5-flash">gemini-1.5-flash</SelectItem>
+                    <SelectItem value="gemini-1.5-pro">gemini-1.5-pro</SelectItem>
+                    <SelectItem value="gemini-2.0-flash-exp">
                       gemini-2.0-flash-exp
-                    </option>
+                    </SelectItem>
                   </>
                 )}
-                <option value="custom">Custom (type below)...</option>
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-                <ChevronDown size={14} />
-              </div>
-            </div>
+                <SelectItem value="custom">Custom (type below)…</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {isCustomModel && (
-            <div className="flex flex-col">
-              <label className="text-fg font-medium text-xs mb-2">
-                Custom Model ID
-              </label>
-              <input
+            <div className="flex flex-col gap-2">
+              <Label>Custom Model ID</Label>
+              <Input
                 type="text"
                 value={asrModel === "custom" ? asrCustomModel : asrModel}
                 onChange={(e) => {
@@ -725,28 +740,26 @@ export function ModelsView() {
                   }
                 }}
                 placeholder="e.g. openrouter/owl-alpha"
-                className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors font-mono"
+                className="bg-black font-mono"
               />
             </div>
           )}
 
-          <div className="flex flex-col">
-            <label className="text-fg font-medium text-xs mb-2">
-              Base URL
-            </label>
-            <input
+          <div className="flex flex-col gap-2">
+            <Label>Base URL</Label>
+            <Input
               type="text"
               value={asrBaseUrl}
               onChange={(e) => handleBaseUrlChange(e.target.value)}
               placeholder="e.g. https://api.openai.com/v1"
-              className="input w-full bg-black border-border rounded-md px-4 py-2.5 text-xs focus:border-muted transition-colors font-mono"
+              className="bg-black font-mono"
             />
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              Leave empty for standard OpenAI endpoint.
+            <p className="text-[11px] text-muted-foreground">
+              Leave empty for the standard OpenAI endpoint.
             </p>
           </div>
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

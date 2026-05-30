@@ -3,6 +3,8 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { RecordingWindowView } from "./views/RecordingWindowView";
 import { ConfigProvider } from "./context/ConfigContext";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 let initialLabel = "";
@@ -88,7 +90,10 @@ function Root() {
 
   return (
     <ConfigProvider>
-      <App />
+      <TooltipProvider delay={300}>
+        <App />
+        <Toaster />
+      </TooltipProvider>
     </ConfigProvider>
   );
 }

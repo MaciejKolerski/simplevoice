@@ -2,6 +2,20 @@ import { useEffect, useState } from "react";
 import { Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const TIME_RANGES: Record<string, string> = {
+  "7days": "Last 7 days",
+  "30days": "Last 30 days",
+  all: "All time",
+};
 
 interface ModelStatus {
   active: string | null;
@@ -400,7 +414,7 @@ export function UsageView() {
     if (value > 0) {
       return (
         <>
-          <span className="trend up flex items-center gap-0.5 text-emerald-400 font-semibold whitespace-nowrap shrink-0">
+          <span className="trend up flex items-center gap-0.5 text-success font-semibold whitespace-nowrap shrink-0">
             <TrendingUp size={12} /> +{value}%
           </span>
           <span className="truncate opacity-70">vs last period</span>
@@ -409,7 +423,7 @@ export function UsageView() {
     } else if (value < 0) {
       return (
         <>
-          <span className="trend down flex items-center gap-0.5 text-rose-400 font-semibold whitespace-nowrap shrink-0">
+          <span className="trend down flex items-center gap-0.5 text-danger font-semibold whitespace-nowrap shrink-0">
             <TrendingUp size={12} className="rotate-180" /> {value}%
           </span>
           <span className="truncate opacity-70">vs last period</span>
@@ -433,66 +447,65 @@ export function UsageView() {
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
           Overview
         </h1>
-        <div className="flex items-center gap-2 w-full sm:w-auto overflow-hidden">
-          <div className="relative flex-1 sm:flex-none sm:min-w-[140px]">
-            <select
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value as any)}
-              className="input pl-3 pr-8 py-2 w-full text-xs bg-black border-border rounded-md appearance-none cursor-pointer"
-            >
-              <option value="7days">Last 7 days</option>
-              <option value="30days">Last 30 days</option>
-              <option value="all">All time</option>
-            </select>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted">
-              <Calendar size={12} />
-            </div>
-          </div>
-        </div>
+        <Select
+          value={timeRange}
+          onValueChange={(v) => setTimeRange(v as typeof timeRange)}
+          items={TIME_RANGES}
+        >
+          <SelectTrigger className="w-full sm:w-[160px] bg-secondary text-xs">
+            <Calendar size={13} className="text-muted" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7days">Last 7 days</SelectItem>
+            <SelectItem value="30days">Last 30 days</SelectItem>
+            <SelectItem value="all">All time</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Stat Cards - Responsive Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        <div className="card min-w-0">
+        <Card className="p-6 gap-0 min-w-0 transition-colors hover:border-border-hover">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">Time Transcribed</span>
-            <Clock size={14} className="opacity-50 shrink-0" />
+            <Clock size={14} className="text-muted-dark shrink-0" />
           </div>
           <div className="stat-value mono truncate">
             {formatDuration(totalDuration)}
           </div>
-          <div className="muted text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
+          <div className="text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
             {renderTrend(durationTrend)}
           </div>
-        </div>
-        <div className="card min-w-0">
+        </Card>
+        <Card className="p-6 gap-0 min-w-0 transition-colors hover:border-border-hover">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">Words Generated</span>
-            <FileText size={14} className="opacity-50 shrink-0" />
+            <FileText size={14} className="text-muted-dark shrink-0" />
           </div>
           <div className="stat-value mono truncate">
             {totalWords.toLocaleString()}
           </div>
-          <div className="muted text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
+          <div className="text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
             {renderTrend(wordsTrend)}
           </div>
-        </div>
-        <div className="card min-w-0 md:col-span-2 lg:col-span-1">
+        </Card>
+        <Card className="p-6 gap-0 min-w-0 md:col-span-2 lg:col-span-1 transition-colors hover:border-border-hover">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">Active Model</span>
-            <Cpu size={14} className="opacity-50 shrink-0" />
+            <Cpu size={14} className="text-muted-dark shrink-0" />
           </div>
           <div className="text-xl leading-tight pt-1 tracking-tight text-white font-medium truncate">
             {loadingModel ? loadingModel : activeModel}
           </div>
-          <div className="muted text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
+          <div className="text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
             <span
               className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
                 loadingModel
-                  ? "bg-sky-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.5)]"
+                  ? "bg-info animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]"
                   : activeModel === "None"
-                    ? "bg-amber-400"
-                    : "bg-emerald-400"
+                    ? "bg-warning"
+                    : "bg-success"
               }`}
             ></span>
             <span className="truncate opacity-70">
@@ -505,11 +518,11 @@ export function UsageView() {
                     : "Running in the cloud"}
             </span>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Activity Details Chart */}
-      <div className="bg-secondary border border-border rounded-xl p-6 relative min-h-[320px] flex flex-col w-full overflow-hidden">
+      <div className="bg-secondary border border-border rounded-xl p-6 relative min-h-[340px] lg:min-h-[420px] 2xl:min-h-[500px] flex flex-col w-full overflow-hidden">
         <div className="flex justify-between items-center mb-6">
           <h2 className="m-0 text-base text-white font-medium">
             Activity Details
@@ -533,24 +546,24 @@ export function UsageView() {
             <div className="h-px w-full border-t border-dashed border-white/10"></div>
             <div className="h-px w-full border-t border-dashed border-white/10"></div>
             <div className="h-px w-full border-t border-dashed border-white/10"></div>
-            <div className="h-px w-full"></div>
+            <div className="h-px w-full border-t border-white/15"></div>
           </div>
 
-          <div className="flex-1 flex justify-between items-end pb-6 relative z-10 min-w-0 gap-1 sm:gap-2 pl-2">
+          <div className="flex-1 flex justify-between items-end pb-6 relative z-10 min-w-0 gap-1.5 sm:gap-2 pl-2">
             {bars.map((day, i) => (
               <div
                 key={i}
                 className="flex-1 flex flex-col items-center justify-end h-full relative group min-w-0"
               >
-                <div className="absolute -top-9 bg-white text-black px-2 py-1 rounded-md text-[10px] sm:text-xs font-mono font-bold opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 pointer-events-none z-20 shadow-lg whitespace-nowrap">
+                <div className="absolute -top-9 bg-white text-black px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-mono font-bold opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 pointer-events-none z-20 shadow-lg whitespace-nowrap">
                   {day.tooltip}
                   <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 border-l-4 border-r-4 border-l-transparent border-r-transparent border-t-4 border-t-white"></div>
                 </div>
                 <div
-                  className={`w-full max-w-[48px] h-full rounded-md flex items-end relative overflow-hidden transition-colors duration-200 ${day.today ? "bg-white/5" : "bg-white/2"} group-hover:bg-white/10`}
+                  className={`w-full max-w-[56px] sm:max-w-[72px] lg:max-w-[100px] xl:max-w-[132px] 2xl:max-w-[176px] h-full rounded-lg flex items-end relative overflow-hidden transition-colors duration-200 ${day.today ? "bg-white/5" : "bg-white/[0.03]"} group-hover:bg-white/10`}
                 >
                   <div
-                    className={`w-full rounded-md transition-all duration-300 relative ${day.today ? "bg-gradient-to-t from-white/40 to-white shadow-[0_-4px_20px_rgba(255,255,255,0.15)]" : "bg-gradient-to-t from-white/20 to-white/90"}`}
+                    className={`w-full rounded-lg transition-all duration-300 relative ${day.today ? "bg-gradient-to-t from-white/40 to-white shadow-[0_-4px_24px_rgba(255,255,255,0.18)]" : "bg-gradient-to-t from-white/15 to-white/85 group-hover:to-white"}`}
                     style={{ height: `${day.val}%` }}
                   ></div>
                 </div>
