@@ -9,7 +9,7 @@ license=('Apache-2.0')
 depends=('cairo' 'desktop-file-utils' 'gdk-pixbuf2' 'glib2' 'gtk3'
          'hicolor-icon-theme' 'libsoup' 'pango' 'webkit2gtk-4.1'
          'alsa-lib' 'vulkan-icd-loader')
-makedepends=('git' 'rust' 'cargo' 'nodejs' 'pnpm' 'cmake' 'clang'
+makedepends=('git' 'rust' 'nodejs' 'pnpm' 'cmake' 'clang'
              'librsvg' 'libayatana-appindicator'
              'shaderc' 'vulkan-headers' 'vulkan-icd-loader')
 provides=('simplevoice')
