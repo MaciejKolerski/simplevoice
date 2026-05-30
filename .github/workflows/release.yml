@@ -16,7 +16,7 @@ jobs:
           - platform: "macos-latest" # Apple Silicon
             target: "aarch64-apple-darwin"
             args: "--target aarch64-apple-darwin"
-          - platform: "macos-13" # Intel Mac (native x86_64 runner; ort can't cross-compile)
+          - platform: "macos-15-intel" # Intel Mac (native x86_64; macos-13 was retired Dec 2025)
             target: "x86_64-apple-darwin"
             args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-22.04" # Linux
