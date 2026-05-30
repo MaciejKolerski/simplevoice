@@ -1,0 +1,86 @@
+name: "publish"
+
+on:
+  push:
+    tags:
+      - "v*" # Triggers on tags starting with 'v', e.g., v0.2.0
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "macos-latest" # Apple Silicon
+            args: "--target aarch64-apple-darwin"
+          - platform: "macos-latest" # Intel Mac
+            args: "--target x86_64-apple-darwin"
+          - platform: "ubuntu-22.04" # Linux
+            args: ""
+          - platform: "windows-latest" # Windows
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: "pnpm"
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Those targets are only needed on MacOS
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      # Tauri base deps + this app's extras: ALSA (cpal capture) and Vulkan
+      # (whisper-rs `vulkan` feature compiles shaders with glslc at build time).
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libasound2-dev \
+            libvulkan-dev \
+            glslc \
+            glslang-tools
+
+      # The `pnpm tauri` wrapper (scripts/tauri.js) redirects the Cargo target dir
+      # to a short path on Windows (260-char limit + static CRT for sherpa-onnx).
+      # Mirror it here so tauri-action looks in the same place for the bundles.
+      - name: configure windows build (windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: echo 'CARGO_TARGET_DIR=C:\t\sv' >> "$GITHUB_ENV"
+
+      - name: install frontend dependencies
+        run: pnpm install
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          # Reuse scripts/tauri.js so Windows gets its static-CRT / target-dir
+          # fixes (no-op passthrough on macOS and Linux).
+          tauriScript: pnpm tauri
+          tagName: v__VERSION__ # This automatically extracts the version from tauri.conf.json
+          releaseName: "v__VERSION__"
+          releaseBody: "See the assets to download this version."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
