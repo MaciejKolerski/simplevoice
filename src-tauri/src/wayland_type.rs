@@ -41,6 +41,23 @@ const XKB_KEYCODE_OFFSET: usize = 8;
 // caller fall back (e.g. to clipboard paste) for pathological inputs.
 const MAX_UNIQUE_CHARS: usize = 240;
 
+// After uploading a fresh keymap there is no protocol acknowledgement that the
+// compositor has compiled it AND that the focused client has recompiled its own
+// copy (the client does that asynchronously when it receives the `wl_keyboard.keymap`
+// event). Key events that reach the client before that swap finishes are resolved
+// against the stale keymap and silently dropped — which is exactly the "first part
+// of the dictation goes missing" symptom. The race is unackable, so the only cure
+// is a wall-clock settle delay before the first keystroke. 90ms is reliable on
+// lightweight wlroots compositors (Sway/Hyprland/niri) and the heavier KWin alike;
+// raise it first if leading characters still vanish on a slow compositor.
+const KEYMAP_SETTLE_MS: u64 = 90;
+
+// Don't ship every keystroke in one buffered burst at the final roundtrip: flush
+// in small batches with a short pause so the compositor drains them steadily and
+// no key is lost to input coalescing on slower compositors.
+const FLUSH_EVERY_N_KEYS: usize = 16;
+const KEY_BATCH_PAUSE_MS: u64 = 2;
+
 /// Type `text` into the focused Wayland surface using a virtual keyboard.
 ///
 /// Returns `Err` if no Wayland connection is available, the compositor lacks the
@@ -85,19 +102,34 @@ pub fn type_text(text: &str) -> Result<(), String> {
         .roundtrip(&mut state)
         .map_err(|e| format!("Wayland roundtrip (keymap) failed: {e}"))?;
 
+    // The roundtrip above only proves the *compositor* received and parsed the
+    // keymap fd — not that the focused client has recompiled and applied it. That
+    // propagation is asynchronous and unacked, so wait it out before typing;
+    // otherwise the leading characters land under the old keymap and disappear.
+    std::thread::sleep(std::time::Duration::from_millis(KEYMAP_SETTLE_MS));
+
     // Emit a press/release pair per character. `time` is just a monotonic stamp.
     let mut time: u32 = 0;
-    for ch in text.chars() {
+    for (i, ch) in text.chars().enumerate() {
         let wire_keycode = (index_of[&ch] + 1) as u32;
         keyboard.key(time, wire_keycode, KEY_PRESSED);
         time = time.wrapping_add(1);
         keyboard.key(time, wire_keycode, KEY_RELEASED);
         time = time.wrapping_add(1);
+
+        // Flush in small batches rather than letting every request pile up until
+        // the final roundtrip, so the compositor processes the stream steadily and
+        // none of the keys are coalesced away on a busy/slow compositor.
+        if (i + 1) % FLUSH_EVERY_N_KEYS == 0 {
+            conn.flush()
+                .map_err(|e| format!("Wayland flush (keys) failed: {e}"))?;
+            std::thread::sleep(std::time::Duration::from_millis(KEY_BATCH_PAUSE_MS));
+        }
     }
 
     keyboard.destroy();
-    // Final roundtrip flushes the requests and lets the compositor process them
-    // before `fd`/`conn` are dropped.
+    // Final roundtrip flushes any remaining requests and lets the compositor
+    // process them before `fd`/`conn` are dropped.
     queue
         .roundtrip(&mut state)
         .map_err(|e| format!("Wayland roundtrip (flush) failed: {e}"))?;
