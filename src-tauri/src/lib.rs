@@ -1312,6 +1312,58 @@ fn has_secure_api_key(provider: String) -> Result<bool, String> {
     }
 }
 
+/// macOS App Nap suppression, held for the lifetime of a transcription.
+///
+/// SimpleVoice runs as an `Accessory` (menu-bar) app with its main window
+/// `visible: false`. Once recording stops, the process has no visible window,
+/// is no longer audible, and holds no power assertions — so it satisfies every
+/// macOS App Nap eligibility criterion and gets napped, which throttles the
+/// main run loop. Tauri can only deliver a command's result to the webview by
+/// evaluating JavaScript on that main thread (WKWebView is main-thread-only),
+/// so while the app is napping the `transcribe_audio` response sits undelivered
+/// until the next event (e.g. starting another recording) wakes the run loop —
+/// the transcription appears to "hang" until you record again.
+///
+/// Holding an `NSProcessInfo` activity opts the app out of App Nap for the
+/// duration of the work. This is the Apple-recommended, scoped mechanism; the
+/// old `NSAppSleepDisabled` Info.plist key has been ignored since macOS 10.12.
+#[cfg(target_os = "macos")]
+struct AppNapGuard {
+    process_info: objc2::rc::Retained<objc2_foundation::NSProcessInfo>,
+    activity:
+        objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2::runtime::NSObjectProtocol>>,
+}
+
+// The `NSProcessInfo` activity API is thread-safe (begin/end may be called from
+// any thread), so the guard is safe to send across the `.await` points of the
+// async command even though the underlying Objective-C smart pointers are not
+// `Send` by default.
+#[cfg(target_os = "macos")]
+unsafe impl Send for AppNapGuard {}
+
+#[cfg(target_os = "macos")]
+impl AppNapGuard {
+    fn begin(reason: &str) -> Self {
+        use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+        let process_info = NSProcessInfo::processInfo();
+        // `UserInitiated` opts out of App Nap (it also implies
+        // `IdleSystemSleepDisabled`); transcription is short-lived work the user
+        // is actively waiting on.
+        let activity = process_info
+            .beginActivityWithOptions_reason(NSActivityOptions::UserInitiated, &NSString::from_str(reason));
+        Self { process_info, activity }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for AppNapGuard {
+    fn drop(&mut self) {
+        // SAFETY: `self.activity` is exactly the token returned by the matching
+        // `beginActivityWithOptions:reason:` on this same `NSProcessInfo`.
+        unsafe { self.process_info.endActivity(&self.activity) };
+    }
+}
+
 #[tauri::command]
 async fn transcribe_audio(
     samples: Option<Vec<f32>>,
@@ -1323,6 +1375,13 @@ async fn transcribe_audio(
     stt_controller: tauri::State<'_, SttController>,
     audio_controller: tauri::State<'_, AudioController>,
 ) -> Result<String, String> {
+    // Keep the macOS main run loop awake until this command returns, so the
+    // result is delivered to the webview immediately instead of being deferred
+    // by App Nap. RAII: the activity ends on every exit path (incl. `?` errors).
+    // (Named binding, not a bare `_`, so it lives for the whole function body.)
+    #[cfg(target_os = "macos")]
+    let _app_nap_guard = AppNapGuard::begin("SimpleVoice is transcribing audio");
+
     let controller = stt_controller.inner().clone();
 
     let final_samples = samples.unwrap_or_else(|| {
