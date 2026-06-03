@@ -65,6 +65,9 @@ objc2 = "0.6.4"
 # They are part of the default feature set, but list them explicitly so the build
 # does not silently lose them if defaults are ever disabled.
 objc2-foundation = { version = "0.3.2", features = ["NSProcessInfo", "NSString"] }
+# Encode-able CGRect/CGPoint geometry for re-pinning the main window traffic
+# lights (reposition_main_traffic_lights in lib.rs). Already in the tree via tao.
+objc2-core-foundation = "0.3.2"
 candle-core = { version = "0.8", optional = true, features = ["metal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

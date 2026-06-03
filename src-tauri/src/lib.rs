@@ -432,6 +432,77 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     }
 }
 
+/// Re-pins the macOS traffic-light buttons of the main window to the inset
+/// configured in `tauri.macos.conf.json` (x: 12, y: 21).
+///
+/// Tauri's `trafficLightPosition` only positions the buttons once at window
+/// creation; tao re-applies it from its NSView `drawRect:`, but the content
+/// view of a wry window is a WKWebView, so that hook rarely fires. After the
+/// window is shown AppKit re-lays out the buttons, and the timing differs
+/// between a `tauri dev` binary and a bundled `.app` — so the release build
+/// drifts lower than dev. Re-running tao's exact inset math on the relevant
+/// window events keeps the buttons pinned identically in both.
+#[cfg(target_os = "macos")]
+fn reposition_main_traffic_lights<R: tauri::Runtime>(window: &tauri::Window<R>) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use objc2_core_foundation::{CGPoint, CGRect};
+
+    // Keep in sync with `trafficLightPosition` in src-tauri/tauri.macos.conf.json.
+    // This runtime re-pin is authoritative once the window is shown, so editing
+    // only the JSON would be silently reverted to these values on the next event.
+    const INSET_X: f64 = 12.0;
+    const INSET_Y: f64 = 21.0;
+
+    let Ok(ns_window_ptr) = window.ns_window() else {
+        return;
+    };
+    let ns_window = ns_window_ptr as *mut AnyObject;
+
+    unsafe {
+        // NSWindowButton discriminants: Close = 0, Miniaturize = 1, Zoom = 2.
+        let close: *mut AnyObject = msg_send![ns_window, standardWindowButton: 0usize];
+        let miniaturize: *mut AnyObject = msg_send![ns_window, standardWindowButton: 1usize];
+        let zoom: *mut AnyObject = msg_send![ns_window, standardWindowButton: 2usize];
+        if close.is_null() || miniaturize.is_null() || zoom.is_null() {
+            return;
+        }
+
+        // The title bar container view is two superviews above the buttons.
+        let close_superview: *mut AnyObject = msg_send![close, superview];
+        if close_superview.is_null() {
+            return;
+        }
+        let title_bar_container: *mut AnyObject = msg_send![close_superview, superview];
+        if title_bar_container.is_null() {
+            return;
+        }
+
+        let close_rect: CGRect = msg_send![close, frame];
+        let window_rect: CGRect = msg_send![ns_window, frame];
+
+        // Grow the title bar container so the buttons sit INSET_Y below the top.
+        let title_bar_height = close_rect.size.height + INSET_Y;
+        let mut title_bar_rect: CGRect = msg_send![title_bar_container, frame];
+        title_bar_rect.size.height = title_bar_height;
+        title_bar_rect.origin.y = window_rect.size.height - title_bar_height;
+        let _: () = msg_send![title_bar_container, setFrame: title_bar_rect];
+
+        // Preserve the system's button spacing, anchor the leftmost at INSET_X.
+        let miniaturize_rect: CGRect = msg_send![miniaturize, frame];
+        let space_between = miniaturize_rect.origin.x - close_rect.origin.x;
+
+        for (i, &button) in [close, miniaturize, zoom].iter().enumerate() {
+            let button_rect: CGRect = msg_send![button, frame];
+            let origin = CGPoint {
+                x: INSET_X + (i as f64) * space_between,
+                y: button_rect.origin.y,
+            };
+            let _: () = msg_send![button, setFrameOrigin: origin];
+        }
+    }
+}
+
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     let mode = get_recording_window_mode(app);
@@ -2218,6 +2289,15 @@ pub fn run() {
                 tauri::WindowEvent::Moved(pos) => {
                     if window.label() == "recording_window" {
                         save_recording_window_position(window.app_handle(), pos.x, pos.y);
+                    }
+                }
+                #[cfg(target_os = "macos")]
+                tauri::WindowEvent::Resized(_)
+                | tauri::WindowEvent::Focused(true)
+                | tauri::WindowEvent::ScaleFactorChanged { .. }
+                | tauri::WindowEvent::ThemeChanged(_) => {
+                    if window.label() == "main" {
+                        reposition_main_traffic_lights(window);
                     }
                 }
                 _ => {}

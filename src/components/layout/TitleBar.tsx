@@ -27,7 +27,7 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
     <div data-tauri-drag-region className="title-bar select-none relative">
       <div data-tauri-drag-region className="flex items-center w-[240px] pl-4">
         {isMac && !isWindows && (
-          <div data-tauri-drag-region className="w-[80px] h-full"></div>
+          <div data-tauri-drag-region className="w-[64px] h-full"></div>
         )}
 
         <Tooltip>
