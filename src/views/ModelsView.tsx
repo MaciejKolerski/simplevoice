@@ -57,6 +57,59 @@ interface RecommendedModel {
 
 const RECOMMENDED_MODELS: RecommendedModel[] = [
   {
+    name: "Whisper Tiny (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-tiny.bin"],
+    description: "Ultra-fast multilingual model by OpenAI. Tiny footprint, great for quick notes.",
+    format: "ggml_bin",
+    size_formatted: "74 MB"
+  },
+  {
+    name: "Whisper Tiny English (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-tiny.en.bin"],
+    description: "English-only Tiny. Even faster and more accurate when you only dictate in English.",
+    format: "ggml_bin",
+    size_formatted: "74 MB"
+  },
+  {
+    name: "Whisper Base (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-base.bin"],
+    description: "A step up from Tiny: better accuracy while staying light and fast. Multilingual.",
+    format: "ggml_bin",
+    size_formatted: "141 MB"
+  },
+  {
+    name: "Whisper Small (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-small.bin"],
+    description: "Balanced multilingual model. Reliable accuracy for everyday dictation.",
+    format: "ggml_bin",
+    size_formatted: "465 MB"
+  },
+  {
+    name: "Whisper Small English (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-small.en.bin"],
+    description: "English-only Small. Higher accuracy for English at the same speed.",
+    format: "ggml_bin",
+    size_formatted: "465 MB"
+  },
+  {
+    name: "Parakeet TDT v2 (ONNX)",
+    repo_id: "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+    files: [
+      "encoder.int8.onnx",
+      "decoder.int8.onnx",
+      "joiner.int8.onnx",
+      "tokens.txt"
+    ],
+    description: "Previous-generation NVIDIA Parakeet (English). Very fast INT8 ASR on CPU.",
+    format: "onnx",
+    size_formatted: "631 MB"
+  },
+  {
     name: "Parakeet TDT v3 (ONNX)",
     repo_id: "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
     files: [
@@ -67,15 +120,39 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     ],
     description: "State-of-the-art multilingual ASR by NVIDIA. INT8 quantized, runs natively on CPU.",
     format: "onnx",
-    size_formatted: "600 MB"
+    size_formatted: "639 MB"
   },
   {
-    name: "Whisper Tiny (GGML)",
+    name: "Whisper Medium (GGML)",
     repo_id: "ggerganov/whisper.cpp",
-    files: ["ggml-tiny.bin"],
-    description: "Ultra-fast, tiny model by OpenAI. Low memory footprint, great for quick transcription.",
-    format: "gguf",
-    size_formatted: "75 MB"
+    files: ["ggml-medium.bin"],
+    description: "Larger multilingual model. Clearly better accuracy; needs more RAM and time.",
+    format: "ggml_bin",
+    size_formatted: "1.4 GB"
+  },
+  {
+    name: "Whisper Large v3 Turbo (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-large-v3-turbo.bin"],
+    description: "Newest large model tuned for speed. Near large-v3 quality, much faster.",
+    format: "ggml_bin",
+    size_formatted: "1.5 GB"
+  },
+  {
+    name: "Whisper Large v2 (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-large-v2.bin"],
+    description: "Proven previous flagship. Excellent multilingual accuracy.",
+    format: "ggml_bin",
+    size_formatted: "2.9 GB"
+  },
+  {
+    name: "Whisper Large v3 (GGML)",
+    repo_id: "ggerganov/whisper.cpp",
+    files: ["ggml-large-v3.bin"],
+    description: "Most accurate multilingual Whisper. Top quality, highest resource use.",
+    format: "ggml_bin",
+    size_formatted: "2.9 GB"
   }
 ];
 
