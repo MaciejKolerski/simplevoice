@@ -112,7 +112,11 @@ export function TranscriptionsView() {
       setHistory([]);
       setOffset(0);
       setHasMore(true);
-      window.dispatchEvent(new Event("transcription-added"));
+      window.dispatchEvent(
+        new CustomEvent("transcription-added", {
+          detail: { source: "history" },
+        }),
+      );
       toast.success("History cleared");
     } catch (err) {
       console.error("Failed to clear history:", err);
@@ -137,7 +141,11 @@ export function TranscriptionsView() {
       });
 
       await loadHistory(true); // refresh from start after delete
-      window.dispatchEvent(new Event("transcription-added"));
+      window.dispatchEvent(
+        new CustomEvent("transcription-added", {
+          detail: { source: "history" },
+        }),
+      );
     } catch (err) {
       console.error("Failed to delete item:", err);
       toast.error("Failed to delete transcription");

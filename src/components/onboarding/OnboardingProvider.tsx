@@ -86,7 +86,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         new CustomEvent("navigate-to-view", { detail: step.view }),
       );
     }
-  }, [index, active]);
+  }, [index, active, step?.view]);
 
   useEffect(() => {
     if (!active || !step?.gate) {
@@ -114,10 +114,21 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!active || !step?.awaitWindowEvent) return;
     const eventName = step.awaitWindowEvent;
-    const handler = () => next();
+    // Ignore events that fire in the first moment after the step mounts: those
+    // are stale / in-flight dispatches that would skip the step before the user
+    // has done anything.
+    const enteredAt = Date.now();
+    const handler = (e: Event) => {
+      if (Date.now() - enteredAt < 400) return;
+      // If a dispatcher tags an explicit non-recording source (delete / clear
+      // history), do not treat it as completing the test step.
+      const source = (e as CustomEvent).detail?.source;
+      if (source && source !== "recording") return;
+      next();
+    };
     window.addEventListener(eventName, handler);
     return () => window.removeEventListener(eventName, handler);
-  }, [index, active]);
+  }, [index, active, step?.awaitWindowEvent]);
 
   return (
     <OnboardingContext.Provider

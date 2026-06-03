@@ -229,7 +229,11 @@ function App() {
               console.error("Failed to set last transcription:", e);
             }
 
-            window.dispatchEvent(new Event("transcription-added"));
+            window.dispatchEvent(
+              new CustomEvent("transcription-added", {
+                detail: { source: "recording" },
+              }),
+            );
             console.log("Transcription successful:", text);
           }
         }
