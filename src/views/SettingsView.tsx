@@ -564,7 +564,7 @@ export function SettingsView() {
             </Select>
           </div>
 
-          <div className="flex flex-col p-5 border-b border-border last:border-b-0">
+          <div data-tour="language-select" className="flex flex-col p-5 border-b border-border last:border-b-0">
             <Label className="mb-3">Transcription Language</Label>
             <Select
               value={asrLanguage}
@@ -610,7 +610,7 @@ export function SettingsView() {
         </section>
 
         {/* GROUP: Recording & Feedback */}
-        <section>
+        <section data-tour="recording-section">
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
             <Mic size={16} className="text-muted" /> Recording &amp; Feedback
           </h2>
@@ -694,7 +694,7 @@ export function SettingsView() {
         </section>
 
         {/* GROUP: Keyboard Shortcuts */}
-        <section>
+        <section data-tour="shortcuts-section">
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
             <Keyboard size={16} className="text-muted" /> Keyboard Shortcuts
           </h2>
@@ -710,6 +710,7 @@ export function SettingsView() {
               </div>
             </div>
             <button
+              data-tour="record-shortcut"
               onClick={() => startRecordingShortcut("record")}
               className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none"
               title="Click to change shortcut"
@@ -802,7 +803,7 @@ export function SettingsView() {
 
         {/* GROUP: System Permissions */}
         {platform === "macos" && (
-          <section>
+          <section data-tour="permissions-section">
             <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
               <Shield size={16} className="text-muted" /> System Permissions
             </h2>

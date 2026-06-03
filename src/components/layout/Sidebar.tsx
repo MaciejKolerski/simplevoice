@@ -49,7 +49,7 @@ export function Sidebar({ collapsed, activeView, setActiveView }: SidebarProps) 
   };
 
   return (
-    <aside className={clsx("sidebar", collapsed && "collapsed")}>
+    <aside data-tour="sidebar" className={clsx("sidebar", collapsed && "collapsed")}>
       <div className="flex flex-col gap-0.5 p-3 flex-1">
         {NAV_ITEMS.map(({ id, label, Icon }) => renderItem(id, label, Icon))}
         {renderItem("settings", "Settings", Settings, "mt-auto")}
