@@ -218,7 +218,10 @@ export function OnboardingOverlay() {
   const belowH = vh - (display.top + display.height);
 
   return (
-    <div key={`onboarding-spot-${index}`} className="fixed inset-0 z-40">
+    <div
+      key={`onboarding-spot-${index}`}
+      className="pointer-events-none fixed inset-0 z-40"
+    >
       <div
         className={maskClass}
         style={{ top: 0, left: 0, width: vw, height: Math.max(0, display.top) }}
