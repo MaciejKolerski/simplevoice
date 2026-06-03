@@ -466,7 +466,7 @@ export function UsageView() {
 
       {/* Stat Cards - Responsive Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        <Card className="p-6 gap-0 min-w-0 transition-colors hover:border-border-hover">
+        <Card className="p-6 gap-0 min-w-0">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">Time Transcribed</span>
             <Clock size={14} className="text-muted-dark shrink-0" />
@@ -478,7 +478,7 @@ export function UsageView() {
             {renderTrend(durationTrend)}
           </div>
         </Card>
-        <Card className="p-6 gap-0 min-w-0 transition-colors hover:border-border-hover">
+        <Card className="p-6 gap-0 min-w-0">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">Words Generated</span>
             <FileText size={14} className="text-muted-dark shrink-0" />
@@ -490,7 +490,7 @@ export function UsageView() {
             {renderTrend(wordsTrend)}
           </div>
         </Card>
-        <Card className="p-6 gap-0 min-w-0 md:col-span-2 lg:col-span-1 transition-colors hover:border-border-hover">
+        <Card className="p-6 gap-0 min-w-0 md:col-span-2 lg:col-span-1">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">Active Model</span>
             <Cpu size={14} className="text-muted-dark shrink-0" />
