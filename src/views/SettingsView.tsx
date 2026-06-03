@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
-import { Cpu, Shield, Keyboard, Check, Mic } from "lucide-react";
+import { Cpu, Shield, Keyboard, Check, Mic, Info, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 import { useConfig } from "../context/ConfigContext";
 import { Switch } from "@/components/ui/switch";
@@ -125,6 +126,8 @@ export function SettingsView() {
   const [asrLanguage, setAsrLanguage] = useState("auto");
   const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [recordingWindowMode, setRecordingWindowMode] = useState("always");
+  const [appVersion, setAppVersion] = useState("");
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
@@ -219,6 +222,17 @@ export function SettingsView() {
     invoke("set_recording_window_mode", { mode: savedOverlayMode }).catch((err) => {
       console.error("Failed to initialize recording window mode:", err);
     });
+  }, []);
+
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch((err) => console.error("Failed to read app version:", err));
+
+    const handleCheckComplete = () => setCheckingUpdate(false);
+    window.addEventListener("update-check-complete", handleCheckComplete);
+    return () =>
+      window.removeEventListener("update-check-complete", handleCheckComplete);
   }, []);
 
   // Check system permissions and Wayland status on mount and periodically
@@ -502,6 +516,11 @@ export function SettingsView() {
     } catch (err) {
       console.error("Failed to set GPU state:", err);
     }
+  };
+
+  const handleCheckForUpdates = () => {
+    setCheckingUpdate(true);
+    window.dispatchEvent(new Event("check-for-updates"));
   };
 
   const micItems: Record<string, string> = {
@@ -883,6 +902,35 @@ export function SettingsView() {
             </div>
           </section>
         )}
+
+        {/* GROUP: About */}
+        <section>
+          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
+            <Info size={16} className="text-muted" /> About
+          </h2>
+          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+            <div className="flex justify-between items-center gap-6 p-5">
+              <div className="min-w-0">
+                <div className="text-fg font-medium mb-1">Simplevoice</div>
+                <div className="text-muted text-[13px]">
+                  Version {appVersion || "…"}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCheckForUpdates}
+                disabled={checkingUpdate}
+              >
+                <RefreshCw
+                  size={14}
+                  className={checkingUpdate ? "animate-spin" : ""}
+                />
+                {checkingUpdate ? "Checking…" : "Check for updates"}
+              </Button>
+            </div>
+          </div>
+        </section>
       </div>
 
       {isRecordingShortcut && (

@@ -8,13 +8,13 @@ import {
   EyeOff,
   X,
   AlertTriangle,
+  Cloud,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -702,138 +702,162 @@ export function ModelsView() {
         </TabsContent>
 
         {/* BYOK Cloud Configuration */}
-        <TabsContent value="openai-cloud" className="flex flex-col gap-5 max-w-xl">
-          <div className="flex flex-col gap-2">
-            <Label>Provider</Label>
-            <Select
-              value={asrProvider}
-              onValueChange={(v) => handleProviderChange(v as typeof asrProvider)}
-              items={PROVIDER_LABELS}
-            >
-              <SelectTrigger className="w-full bg-black">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="openai">OpenAI</SelectItem>
-                <SelectItem value="openrouter">OpenRouter</SelectItem>
-                <SelectItem value="gemini">Google Gemini</SelectItem>
-                <SelectItem value="custom">Custom…</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>API Key</Label>
-            <div className="flex gap-2">
-              <Input
-                type={showApiKey ? "text" : "password"}
-                value={providerKey}
-                onChange={(e) => {
-                  setProviderKey(e.target.value);
-                  saveProviderKey(asrProvider, e.target.value);
-                }}
-                placeholder={
-                  providerKey === "••••••••••••••••"
-                    ? ""
-                    : `Enter API key for ${asrProvider.toUpperCase()}…`
-                }
-                className="flex-1 bg-black font-mono"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setShowApiKey(!showApiKey)}
-                title={showApiKey ? "Hide key" : "Show key"}
+        <TabsContent value="openai-cloud" className="flex flex-col">
+          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
+            <Cloud size={16} className="text-muted" /> Cloud Provider
+          </h2>
+          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+              <div className="flex-1 min-w-0">
+                <div className="text-fg font-medium mb-1">Provider</div>
+                <div className="text-muted text-[13px]">
+                  Choose which cloud service transcribes your audio.
+                </div>
+              </div>
+              <Select
+                value={asrProvider}
+                onValueChange={(v) => handleProviderChange(v as typeof asrProvider)}
+                items={PROVIDER_LABELS}
               >
-                {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-              </Button>
+                <SelectTrigger className="w-72 bg-black shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="openrouter">OpenRouter</SelectItem>
+                  <SelectItem value="gemini">Google Gemini</SelectItem>
+                  <SelectItem value="custom">Custom…</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Stored securely in your OS keyring — never written to disk.
-            </p>
-          </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>Model</Label>
-            <Select
-              value={asrModel}
-              onValueChange={(v) => handleModelChange(v as string)}
-            >
-              <SelectTrigger className="w-full bg-black">
-                <SelectValue>
-                  {(v: string) => (v === "custom" ? "Custom model…" : v)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {asrProvider === "openai" && (
-                  <>
-                    <SelectItem value="whisper-1">whisper-1</SelectItem>
-                    <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
-                    <SelectItem value="gpt-4o">gpt-4o</SelectItem>
-                  </>
-                )}
-                {asrProvider === "openrouter" && (
-                  <>
-                    <SelectItem value="openai/whisper-large-v3">
-                      openai/whisper-large-v3
-                    </SelectItem>
-                    <SelectItem value="meta-llama/llama-3.2-11b-vision-instruct:free">
-                      meta-llama/llama-3.2-11b-vision-instruct:free
-                    </SelectItem>
-                    <SelectItem value="deepseek/deepseek-chat">
-                      deepseek/deepseek-chat
-                    </SelectItem>
-                    <SelectItem value="google/gemini-2.0-flash-exp:free">
-                      google/gemini-2.0-flash-exp:free
-                    </SelectItem>
-                  </>
-                )}
-                {asrProvider === "gemini" && (
-                  <>
-                    <SelectItem value="gemini-1.5-flash">gemini-1.5-flash</SelectItem>
-                    <SelectItem value="gemini-1.5-pro">gemini-1.5-pro</SelectItem>
-                    <SelectItem value="gemini-2.0-flash-exp">
-                      gemini-2.0-flash-exp
-                    </SelectItem>
-                  </>
-                )}
-                <SelectItem value="custom">Custom (type below)…</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+              <div className="flex-1 min-w-0">
+                <div className="text-fg font-medium mb-1">API Key</div>
+                <div className="text-muted text-[13px]">
+                  Stored securely in your OS keyring — never written to disk.
+                </div>
+              </div>
+              <div className="flex gap-2 w-72 shrink-0">
+                <Input
+                  type={showApiKey ? "text" : "password"}
+                  value={providerKey}
+                  onChange={(e) => {
+                    setProviderKey(e.target.value);
+                    saveProviderKey(asrProvider, e.target.value);
+                  }}
+                  placeholder={
+                    providerKey === "••••••••••••••••"
+                      ? ""
+                      : `Enter API key for ${asrProvider.toUpperCase()}…`
+                  }
+                  className="flex-1 bg-black font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  title={showApiKey ? "Hide key" : "Show key"}
+                >
+                  {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                </Button>
+              </div>
+            </div>
 
-          {isCustomModel && (
-            <div className="flex flex-col gap-2">
-              <Label>Custom Model ID</Label>
+            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+              <div className="flex-1 min-w-0">
+                <div className="text-fg font-medium mb-1">Model</div>
+                <div className="text-muted text-[13px]">
+                  The transcription model requested from this provider.
+                </div>
+              </div>
+              <Select
+                value={asrModel}
+                onValueChange={(v) => handleModelChange(v as string)}
+              >
+                <SelectTrigger className="w-72 bg-black shrink-0">
+                  <SelectValue>
+                    {(v: string) => (v === "custom" ? "Custom model…" : v)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {asrProvider === "openai" && (
+                    <>
+                      <SelectItem value="whisper-1">whisper-1</SelectItem>
+                      <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
+                      <SelectItem value="gpt-4o">gpt-4o</SelectItem>
+                    </>
+                  )}
+                  {asrProvider === "openrouter" && (
+                    <>
+                      <SelectItem value="openai/whisper-large-v3">
+                        openai/whisper-large-v3
+                      </SelectItem>
+                      <SelectItem value="meta-llama/llama-3.2-11b-vision-instruct:free">
+                        meta-llama/llama-3.2-11b-vision-instruct:free
+                      </SelectItem>
+                      <SelectItem value="deepseek/deepseek-chat">
+                        deepseek/deepseek-chat
+                      </SelectItem>
+                      <SelectItem value="google/gemini-2.0-flash-exp:free">
+                        google/gemini-2.0-flash-exp:free
+                      </SelectItem>
+                    </>
+                  )}
+                  {asrProvider === "gemini" && (
+                    <>
+                      <SelectItem value="gemini-1.5-flash">gemini-1.5-flash</SelectItem>
+                      <SelectItem value="gemini-1.5-pro">gemini-1.5-pro</SelectItem>
+                      <SelectItem value="gemini-2.0-flash-exp">
+                        gemini-2.0-flash-exp
+                      </SelectItem>
+                    </>
+                  )}
+                  <SelectItem value="custom">Custom (type below)…</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {isCustomModel && (
+              <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+                <div className="flex-1 min-w-0">
+                  <div className="text-fg font-medium mb-1">Custom Model ID</div>
+                  <div className="text-muted text-[13px]">
+                    Exact model identifier sent to the API.
+                  </div>
+                </div>
+                <Input
+                  type="text"
+                  value={asrModel === "custom" ? asrCustomModel : asrModel}
+                  onChange={(e) => {
+                    if (asrModel === "custom") {
+                      handleCustomModelChange(e.target.value);
+                    } else {
+                      handleModelChange(e.target.value);
+                    }
+                  }}
+                  placeholder="e.g. openrouter/owl-alpha"
+                  className="w-72 shrink-0 bg-black font-mono"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+              <div className="flex-1 min-w-0">
+                <div className="text-fg font-medium mb-1">Base URL</div>
+                <div className="text-muted text-[13px]">
+                  Override the default API endpoint for this provider.
+                </div>
+              </div>
               <Input
                 type="text"
-                value={asrModel === "custom" ? asrCustomModel : asrModel}
-                onChange={(e) => {
-                  if (asrModel === "custom") {
-                    handleCustomModelChange(e.target.value);
-                  } else {
-                    handleModelChange(e.target.value);
-                  }
-                }}
-                placeholder="e.g. openrouter/owl-alpha"
-                className="bg-black font-mono"
+                value={asrBaseUrl}
+                onChange={(e) => handleBaseUrlChange(e.target.value)}
+                placeholder="e.g. https://api.openai.com/v1"
+                className="w-72 shrink-0 bg-black font-mono"
               />
             </div>
-          )}
-
-          <div className="flex flex-col gap-2">
-            <Label>Base URL</Label>
-            <Input
-              type="text"
-              value={asrBaseUrl}
-              onChange={(e) => handleBaseUrlChange(e.target.value)}
-              placeholder="e.g. https://api.openai.com/v1"
-              className="bg-black font-mono"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Leave empty for the standard OpenAI endpoint.
-            </p>
           </div>
         </TabsContent>
       </Tabs>

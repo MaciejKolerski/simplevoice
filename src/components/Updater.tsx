@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { toast } from "sonner";
 import { Download, RefreshCw, AlertTriangle, CheckCircle, Info } from "lucide-react";
 import {
   Dialog,
@@ -21,35 +22,66 @@ export function Updater() {
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Read the latest status inside runCheck without re-creating the callback
+  // (which would re-arm the startup timer and the manual-trigger listener).
+  const statusRef = useRef(status);
   useEffect(() => {
-    const checkForUpdates = async () => {
-      setStatus("checking");
-      try {
-        console.log("[Updater] Checking for updates...");
-        const update = await check();
-        if (update) {
-          console.log(`[Updater] Update found: ${update.version}`);
-          setUpdateInfo(update);
-          setStatus("available");
-          setIsOpen(true);
-        } else {
-          console.log("[Updater] App is up to date.");
-          setStatus("idle");
-        }
-      } catch (err) {
-        console.error("[Updater] Error checking for updates:", err);
-        setStatus("error");
-        setErrorMsg(err instanceof Error ? err.message : String(err));
-      }
-    };
+    statusRef.current = status;
+  }, [status]);
+  // Discards a stale check's result if a newer check superseded it mid-flight.
+  const checkSeqRef = useRef(0);
 
-    // Check for updates on startup (with a slight delay to let the app load smoothly)
+  const runCheck = useCallback(async (manual: boolean) => {
+    // Never restart a check while an update is already surfaced or installing.
+    const current = statusRef.current;
+    if (current !== "idle" && current !== "checking" && current !== "error") {
+      if (manual) window.dispatchEvent(new Event("update-check-complete"));
+      return;
+    }
+
+    const seq = ++checkSeqRef.current;
+    setStatus("checking");
+    try {
+      console.log("[Updater] Checking for updates...");
+      const update = await check();
+      if (checkSeqRef.current !== seq) return;
+      if (update) {
+        console.log(`[Updater] Update found: ${update.version}`);
+        setUpdateInfo(update);
+        setStatus("available");
+        setIsOpen(true);
+      } else {
+        console.log("[Updater] App is up to date.");
+        setStatus("idle");
+        if (manual) toast.success("You're on the latest version.");
+      }
+    } catch (err) {
+      if (checkSeqRef.current !== seq) return;
+      console.error("[Updater] Error checking for updates:", err);
+      setStatus("error");
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(msg);
+      if (manual) toast.error(`Update check failed: ${msg}`);
+    } finally {
+      if (manual) window.dispatchEvent(new Event("update-check-complete"));
+    }
+  }, []);
+
+  // Check for updates on startup (with a slight delay to let the app load smoothly)
+  useEffect(() => {
     const timer = setTimeout(() => {
-      checkForUpdates();
+      runCheck(false);
     }, 3000);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [runCheck]);
+
+  // Allow a manual check to be triggered from elsewhere (Settings -> About).
+  useEffect(() => {
+    const handler = () => runCheck(true);
+    window.addEventListener("check-for-updates", handler);
+    return () => window.removeEventListener("check-for-updates", handler);
+  }, [runCheck]);
 
   const handleInstall = async () => {
     if (!updateInfo) return;
