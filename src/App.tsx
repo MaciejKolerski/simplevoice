@@ -7,6 +7,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { TitleBar } from "./components/layout/TitleBar";
 import { Updater } from "./components/Updater";
+import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { Sidebar } from "./components/layout/Sidebar";
 import { UsageView } from "./views/UsageView";
 import { ModelsView } from "./views/ModelsView";
@@ -358,6 +359,7 @@ function App() {
           </div>
         )}
         <Updater />
+        <OnboardingOverlay />
       </div>
   );
 }

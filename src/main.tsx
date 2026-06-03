@@ -5,6 +5,7 @@ import { RecordingWindowView } from "./views/RecordingWindowView";
 import { ConfigProvider } from "./context/ConfigContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { OnboardingProvider } from "./components/onboarding/OnboardingProvider";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 let initialLabel = "";
@@ -91,7 +92,9 @@ function Root() {
   return (
     <ConfigProvider>
       <TooltipProvider delay={300}>
-        <App />
+        <OnboardingProvider>
+          <App />
+        </OnboardingProvider>
         <Toaster />
       </TooltipProvider>
     </ConfigProvider>
