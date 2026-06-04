@@ -709,6 +709,55 @@ fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Deserialize, Clone)]
+struct TrayLabels {
+    start_recording: String,
+    stop_recording: String,
+    copy_last: String,
+    usage: String,
+    models: String,
+    history: String,
+    settings: String,
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    lock_window: String,
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    unlock_window: String,
+    select_microphone: String,
+    default_microphone: String,
+    quit: String,
+}
+
+impl Default for TrayLabels {
+    fn default() -> Self {
+        TrayLabels {
+            start_recording: "Start Recording".into(),
+            stop_recording: "Stop Recording".into(),
+            copy_last: "Copy Last Transcription".into(),
+            usage: "Usage".into(),
+            models: "Models".into(),
+            history: "History".into(),
+            settings: "Settings".into(),
+            lock_window: "Lock Recording Window Position".into(),
+            unlock_window: "Unlock Recording Window Position".into(),
+            select_microphone: "Select Microphone".into(),
+            default_microphone: "Default System Microphone".into(),
+            quit: "Quit".into(),
+        }
+    }
+}
+
+struct TrayLabelsState(std::sync::Mutex<TrayLabels>);
+
+#[tauri::command]
+fn set_tray_labels(labels: TrayLabels, app_handle: tauri::AppHandle) -> Result<(), String> {
+    {
+        let state = app_handle.state::<TrayLabelsState>();
+        let mut current = state.0.lock().unwrap();
+        *current = labels;
+    }
+    rebuild_tray_menu(&app_handle)
+}
+
 pub fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
     let app_handle_clone = app_handle.clone();
     app_handle
@@ -725,6 +774,13 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let is_recording = controller.is_recording();
     let is_saving = controller.is_saving();
     let is_transcribing = controller.is_transcribing();
+
+    let labels = app_handle
+        .state::<TrayLabelsState>()
+        .0
+        .lock()
+        .unwrap()
+        .clone();
 
     let base_icon = app_handle.default_window_icon().cloned();
 
@@ -769,16 +825,16 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     };
 
     let toggle_label = if is_recording {
-        "Stop Recording"
+        labels.stop_recording.as_str()
     } else {
-        "Start Recording"
+        labels.start_recording.as_str()
     };
     let toggle_recording_item = MenuItemBuilder::new(toggle_label)
         .id("toggle_recording")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
-    let copy_last_item = MenuItemBuilder::new("Copy Last Transcription")
+    let copy_last_item = MenuItemBuilder::new(labels.copy_last.as_str())
         .id("copy_last")
         .enabled({
             let last = app_handle.state::<LastTranscription>();
@@ -788,22 +844,22 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
-    let nav_usage_item = MenuItemBuilder::new("Usage")
+    let nav_usage_item = MenuItemBuilder::new(labels.usage.as_str())
         .id("nav_usage")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
-    let nav_models_item = MenuItemBuilder::new("Models")
+    let nav_models_item = MenuItemBuilder::new(labels.models.as_str())
         .id("nav_models")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
-    let nav_history_item = MenuItemBuilder::new("History")
+    let nav_history_item = MenuItemBuilder::new(labels.history.as_str())
         .id("nav_transcriptions")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
-    let nav_settings_item = MenuItemBuilder::new("Settings")
+    let nav_settings_item = MenuItemBuilder::new(labels.settings.as_str())
         .id("nav_settings")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
@@ -812,9 +868,9 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let lock_item = {
         let locked = is_recording_window_locked(app_handle);
         let lock_label = if locked {
-            "Unlock Recording Window Position"
+            labels.unlock_window.as_str()
         } else {
-            "Lock Recording Window Position"
+            labels.lock_window.as_str()
         };
         MenuItemBuilder::new(lock_label)
             .id("toggle_recording_window_lock")
@@ -824,10 +880,10 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
 
     let devices = controller.list_devices().unwrap_or_default();
     let mic_menu = {
-        let mut builder = SubmenuBuilder::new(app_handle, "Select Microphone");
+        let mut builder = SubmenuBuilder::new(app_handle, labels.select_microphone.as_str());
 
         let is_default_checked = selected_device.is_none();
-        let default_mic_item = CheckMenuItemBuilder::new("Default System Microphone")
+        let default_mic_item = CheckMenuItemBuilder::new(labels.default_microphone.as_str())
             .id("mic_default")
             .checked(is_default_checked)
             .build(app_handle)
@@ -847,7 +903,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         builder.build().map_err(|e| e.to_string())?
     };
 
-    let quit_item = MenuItemBuilder::new("Quit")
+    let quit_item = MenuItemBuilder::new(labels.quit.as_str())
         .id("quit")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
@@ -2290,6 +2346,7 @@ pub fn run() {
         .manage(ShortcutRegistry {
             entries: Mutex::new(Vec::new()),
         })
+        .manage(TrayLabelsState(std::sync::Mutex::new(TrayLabels::default())))
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -2446,6 +2503,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            set_tray_labels,
             list_audio_devices,
             set_selected_device,
             start_recording,
