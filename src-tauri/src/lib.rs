@@ -311,6 +311,7 @@ fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32)
     };
     let config_path = app_local_data.join("config.json");
     let _ = std::fs::create_dir_all(&app_local_data);
+    let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut json = if config_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&config_path) {
@@ -1523,29 +1524,36 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
 
     let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
-    // `gpu_enabled` is owned by the backend (set_gpu_enabled), not by the frontend
-    // config blob. The frontend caches the whole config at mount, so its copy goes
-    // stale the moment the GPU toggle changes it directly; writing that stale blob
-    // back would silently revert the setting on the next launch. Force the on-disk
-    // value to win for this key (and drop any frontend-seeded value if the backend
-    // hasn't set one yet).
+    // The frontend caches the whole config at mount and writes the entire blob
+    // back, so a plain overwrite silently drops keys it never loaded. Most
+    // importantly `onboarding_completed` is written out-of-band: a stale settings
+    // write would erase it and replay the tour on every launch. Merge the incoming
+    // config over what is already on disk so unknown keys survive. `gpu_enabled` is
+    // owned by the backend (set_gpu_enabled), so the on-disk value still wins for it.
     let to_write = match serde_json::from_str::<serde_json::Value>(&config) {
-        Ok(mut incoming) => {
-            if let Some(obj) = incoming.as_object_mut() {
-                let disk_gpu = std::fs::read_to_string(&config_path)
-                    .ok()
-                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-                    .and_then(|v| v.get("gpu_enabled").cloned());
+        Ok(incoming) => {
+            let mut merged = std::fs::read_to_string(&config_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                .filter(|v| v.is_object())
+                .unwrap_or_else(|| serde_json::json!({}));
+            let disk_gpu = merged.get("gpu_enabled").cloned();
+            if let (Some(merged_obj), Some(incoming_obj)) =
+                (merged.as_object_mut(), incoming.as_object())
+            {
+                for (k, v) in incoming_obj {
+                    merged_obj.insert(k.clone(), v.clone());
+                }
                 match disk_gpu {
                     Some(gpu) => {
-                        obj.insert("gpu_enabled".to_string(), gpu);
+                        merged_obj.insert("gpu_enabled".to_string(), gpu);
                     }
                     None => {
-                        obj.remove("gpu_enabled");
+                        merged_obj.remove("gpu_enabled");
                     }
                 }
             }
-            serde_json::to_string_pretty(&incoming).map_err(|e| e.to_string())?
+            serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?
         }
         // Not a JSON object we can reason about: persist verbatim.
         Err(_) => config,
@@ -1623,6 +1631,7 @@ fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Resu
         .map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
     let config_path = app_local_data.join("config.json");
+    let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut json = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
@@ -1667,6 +1676,7 @@ fn set_recording_window_locked(locked: bool, app_handle: tauri::AppHandle) -> Re
         .map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
     let config_path = app_local_data.join("config.json");
+    let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut json = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
