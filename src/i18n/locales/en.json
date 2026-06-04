@@ -41,7 +41,6 @@
   "settings": {
     "interfaceLanguageGroup": "Interface",
     "interfaceLanguage": "Interface language",
-    "interfaceLanguageDesc": "The language of the app's interface.",
     "preferencesTitle": "Preferences",
     "audioSttGroup": "Audio & Speech-to-Text",
     "inputMicrophone": "Input Microphone",

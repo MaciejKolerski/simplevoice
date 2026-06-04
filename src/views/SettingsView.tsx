@@ -555,13 +555,8 @@ export function SettingsView() {
             <Languages size={16} className="text-muted" /> {t("settings.interfaceLanguageGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-            <div className="flex justify-between items-center gap-6 p-5">
-              <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">{t("settings.interfaceLanguage")}</div>
-                <div className="text-xs text-muted leading-snug">
-                  {t("settings.interfaceLanguageDesc")}
-                </div>
-              </div>
+            <div className="flex flex-col p-5 border-b border-border last:border-b-0">
+              <Label className="mb-3">{t("settings.interfaceLanguage")}</Label>
               <Select
                 value={i18n.language}
                 onValueChange={(v) => changeLanguage((v ?? "en") as Language)}
@@ -569,7 +564,7 @@ export function SettingsView() {
                   SUPPORTED_LANGUAGES.map((l) => [l, t(`languages.${l}`)]),
                 )}
               >
-                <SelectTrigger className="w-48 bg-black shrink-0">
+                <SelectTrigger className="w-full bg-black">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
