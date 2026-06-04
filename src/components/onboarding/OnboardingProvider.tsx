@@ -7,6 +7,7 @@ import {
   ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { buildSteps, OnboardingStep, PermissionsStatus } from "./steps";
 
 interface OnboardingContextValue {
@@ -48,6 +49,15 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           setSteps(buildSteps(status.platform));
           setIndex(0);
           setActive(true);
+          // The main window starts hidden (visible: false); reveal it on first
+          // run so the tour is actually visible.
+          try {
+            const win = getCurrentWindow();
+            await win.show();
+            await win.setFocus();
+          } catch (err) {
+            console.error("Onboarding: failed to show main window:", err);
+          }
         }
       } catch (err) {
         console.error("Onboarding: failed to detect first run:", err);
