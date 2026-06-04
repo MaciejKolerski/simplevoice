@@ -7,6 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { OnboardingProvider } from "./components/onboarding/OnboardingProvider";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import "./i18n";
+import { applyPersistedLanguage } from "./i18n/language";
 
 let initialLabel = "";
 try {
@@ -31,6 +33,11 @@ if (initialLabel === "recording_window") {
 }
 
 function Root() {
+  useEffect(() => {
+    if (initialLabel === "recording_window") return;
+    applyPersistedLanguage();
+  }, []);
+
   useEffect(() => {
     if (import.meta.env.PROD) {
       const handleContextMenu = (e: MouseEvent) => {

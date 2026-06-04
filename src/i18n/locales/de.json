@@ -1,0 +1,46 @@
+{
+  "common": {
+    "next": "Weiter",
+    "back": "Zurück",
+    "finish": "Fertig",
+    "skip": "Überspringen",
+    "dismiss": "Schließen",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "close": "Schließen",
+    "loading": "Wird geladen…"
+  },
+  "languages": {
+    "en": "English",
+    "pl": "Polski",
+    "de": "Deutsch"
+  },
+  "nav": {
+    "usage": "Nutzung",
+    "models": "Modelle",
+    "transcriptions": "Transkriptionen",
+    "settings": "Einstellungen"
+  },
+  "tray": {
+    "startRecording": "Aufnahme starten",
+    "stopRecording": "Aufnahme stoppen",
+    "copyLast": "Letzte Transkription kopieren",
+    "lockWindow": "Position des Aufnahmefensters sperren",
+    "unlockWindow": "Position des Aufnahmefensters entsperren",
+    "selectMicrophone": "Mikrofon auswählen",
+    "defaultMicrophone": "Standard-Systemmikrofon",
+    "quit": "Beenden"
+  },
+  "errors": {
+    "title": "Konfiguration erforderlich",
+    "openModels": "Modelle öffnen",
+    "no_model_loaded": "Kein lokales Modell geladen. Lade eines unter Modelle herunter oder lade es.",
+    "cloud_not_configured": "Cloud-Transkription ist nicht konfiguriert. Füge deinen API-Schlüssel unter Modelle hinzu.",
+    "model_load_failed": "Modell konnte nicht geladen werden. Versuche ein anderes Modell unter Modelle."
+  },
+  "settings": {
+    "interfaceLanguageGroup": "Oberfläche",
+    "interfaceLanguage": "Anzeigesprache",
+    "interfaceLanguageDesc": "Die Sprache der App-Oberfläche."
+  }
+}

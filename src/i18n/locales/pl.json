@@ -1,0 +1,46 @@
+{
+  "common": {
+    "next": "Dalej",
+    "back": "Wstecz",
+    "finish": "Zakończ",
+    "skip": "Pomiń",
+    "dismiss": "Zamknij",
+    "cancel": "Anuluj",
+    "save": "Zapisz",
+    "close": "Zamknij",
+    "loading": "Ładowanie…"
+  },
+  "languages": {
+    "en": "English",
+    "pl": "Polski",
+    "de": "Deutsch"
+  },
+  "nav": {
+    "usage": "Użycie",
+    "models": "Modele",
+    "transcriptions": "Transkrypcje",
+    "settings": "Ustawienia"
+  },
+  "tray": {
+    "startRecording": "Rozpocznij nagrywanie",
+    "stopRecording": "Zatrzymaj nagrywanie",
+    "copyLast": "Kopiuj ostatnią transkrypcję",
+    "lockWindow": "Zablokuj pozycję okna nagrywania",
+    "unlockWindow": "Odblokuj pozycję okna nagrywania",
+    "selectMicrophone": "Wybierz mikrofon",
+    "defaultMicrophone": "Domyślny mikrofon systemowy",
+    "quit": "Zamknij"
+  },
+  "errors": {
+    "title": "Wymagana konfiguracja",
+    "openModels": "Otwórz Modele",
+    "no_model_loaded": "Brak załadowanego modelu lokalnego. Pobierz lub załaduj model w sekcji Modele.",
+    "cloud_not_configured": "Transkrypcja w chmurze nie jest skonfigurowana. Dodaj klucz API w sekcji Modele.",
+    "model_load_failed": "Nie udało się załadować modelu. Spróbuj innego modelu w sekcji Modele."
+  },
+  "settings": {
+    "interfaceLanguageGroup": "Interfejs",
+    "interfaceLanguage": "Język interfejsu",
+    "interfaceLanguageDesc": "Język interfejsu aplikacji."
+  }
+}

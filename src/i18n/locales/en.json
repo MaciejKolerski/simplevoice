@@ -1,0 +1,46 @@
+{
+  "common": {
+    "next": "Next",
+    "back": "Back",
+    "finish": "Finish",
+    "skip": "Skip",
+    "dismiss": "Dismiss",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "loading": "Loading…"
+  },
+  "languages": {
+    "en": "English",
+    "pl": "Polski",
+    "de": "Deutsch"
+  },
+  "nav": {
+    "usage": "Usage",
+    "models": "Models",
+    "transcriptions": "Transcriptions",
+    "settings": "Settings"
+  },
+  "tray": {
+    "startRecording": "Start Recording",
+    "stopRecording": "Stop Recording",
+    "copyLast": "Copy Last Transcription",
+    "lockWindow": "Lock Recording Window Position",
+    "unlockWindow": "Unlock Recording Window Position",
+    "selectMicrophone": "Select Microphone",
+    "defaultMicrophone": "Default System Microphone",
+    "quit": "Quit"
+  },
+  "errors": {
+    "title": "Configuration Required",
+    "openModels": "Open Models",
+    "no_model_loaded": "No local model loaded. Download or load one in Models.",
+    "cloud_not_configured": "Cloud transcription is not configured. Add your API key in Models.",
+    "model_load_failed": "Failed to load the model. Try another model in Models."
+  },
+  "settings": {
+    "interfaceLanguageGroup": "Interface",
+    "interfaceLanguage": "Interface language",
+    "interfaceLanguageDesc": "The language of the app's interface."
+  }
+}
