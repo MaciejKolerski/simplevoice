@@ -1,5 +1,6 @@
 import { Activity, Box, History, Settings } from "lucide-react";
 import { clsx } from "clsx";
+import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface SidebarProps {
@@ -9,12 +10,13 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
-  { id: "usage", label: "Usage", Icon: Activity },
-  { id: "models", label: "Models", Icon: Box },
-  { id: "transcriptions", label: "Transcriptions", Icon: History },
+  { id: "usage", Icon: Activity },
+  { id: "models", Icon: Box },
+  { id: "transcriptions", Icon: History },
 ] as const;
 
 export function Sidebar({ collapsed, activeView, setActiveView }: SidebarProps) {
+  const { t } = useTranslation();
   const renderItem = (
     id: string,
     label: string,
@@ -51,8 +53,8 @@ export function Sidebar({ collapsed, activeView, setActiveView }: SidebarProps) 
   return (
     <aside data-tour="sidebar" className={clsx("sidebar", collapsed && "collapsed")}>
       <div className="flex flex-col gap-0.5 p-3 flex-1">
-        {NAV_ITEMS.map(({ id, label, Icon }) => renderItem(id, label, Icon))}
-        {renderItem("settings", "Settings", Settings, "mt-auto")}
+        {NAV_ITEMS.map(({ id, Icon }) => renderItem(id, t(`nav.${id}`), Icon))}
+        {renderItem("settings", t("nav.settings"), Settings, "mt-auto")}
       </div>
     </aside>
   );

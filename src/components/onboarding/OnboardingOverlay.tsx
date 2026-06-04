@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useOnboarding } from "./OnboardingProvider";
 import { useSpotlight, SpotlightRect } from "./useSpotlight";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ function placeCard(
 }
 
 export function OnboardingOverlay() {
+  const { t } = useTranslation();
   const { active, step, index, total, gateReady, next, back, skip } =
     useOnboarding();
   const rect = useSpotlight(step?.target, active, index);
@@ -126,13 +128,14 @@ export function OnboardingOverlay() {
   if (!active || !step) return null;
 
   const isLast = index === total - 1;
-  const nextLabel = step.nextLabel ?? (isLast ? "Finish" : "Next");
+  const nextLabel =
+    step.nextLabel ?? (isLast ? t("common.finish") : t("common.next"));
   const nextDisabled = !gateReady;
 
   const cardBody = (
     <>
       <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-        Step {index + 1} / {total}
+        {t("onboarding.stepCounter", { current: index + 1, total })}
       </div>
       <h2 className="mb-2 text-lg font-medium tracking-tight text-white">
         {step.title}
@@ -143,16 +146,16 @@ export function OnboardingOverlay() {
           onClick={skip}
           className="cursor-pointer bg-transparent text-xs text-muted-foreground transition-colors hover:text-white"
         >
-          Skip tour
+          {t("onboarding.skipTour")}
         </button>
         <div className="flex gap-2">
           {index > 0 && (
             <Button variant="outline" size="sm" onClick={back}>
-              Back
+              {t("common.back")}
             </Button>
           )}
           <Button size="sm" onClick={next} disabled={nextDisabled}>
-            {nextDisabled ? "Waiting…" : nextLabel}
+            {nextDisabled ? t("onboarding.waiting") : nextLabel}
           </Button>
         </div>
       </div>

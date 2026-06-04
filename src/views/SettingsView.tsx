@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 import { useConfig } from "../context/ConfigContext";
-import { useTranslation } from "react-i18next";
+import { useTranslation, Trans } from "react-i18next";
 import { changeLanguage } from "@/i18n/language";
 import { SUPPORTED_LANGUAGES, Language } from "@/i18n/detect";
 import { Switch } from "@/components/ui/switch";
@@ -22,8 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function formatShortcutDisplay(str: string): string {
-  if (!str) return "None";
+function formatShortcutDisplay(str: string, noneLabel: string): string {
+  if (!str) return noneLabel;
   return str
     .split("+")
     .map((part) => {
@@ -49,9 +49,10 @@ function formatKeycapLabel(key: string): string {
   return key;
 }
 
-const LANGUAGE_GROUPS: { label: string; items: [string, string][] }[] = [
+const LANGUAGE_GROUPS: { label: string; labelKey: string; items: [string, string][] }[] = [
   {
     label: "Popular",
+    labelKey: "settings.languageGroupPopular",
     items: [
       ["en", "English"],
       ["fr", "French (Français)"],
@@ -63,6 +64,7 @@ const LANGUAGE_GROUPS: { label: string; items: [string, string][] }[] = [
   },
   {
     label: "Europe",
+    labelKey: "settings.languageGroupEurope",
     items: [
       ["bg", "Bulgarian (Български)"],
       ["hr", "Croatian (Hrvatski)"],
@@ -85,6 +87,7 @@ const LANGUAGE_GROUPS: { label: string; items: [string, string][] }[] = [
   },
   {
     label: "Asia & Middle East",
+    labelKey: "settings.languageGroupAsiaMiddleEast",
     items: [
       ["ar", "Arabic (العربية)"],
       ["zh", "Chinese (中文)"],
@@ -101,6 +104,7 @@ const LANGUAGE_GROUPS: { label: string; items: [string, string][] }[] = [
   },
   {
     label: "Other",
+    labelKey: "settings.languageGroupOther",
     items: [
       ["af", "Afrikaans"],
       ["sw", "Swahili (Kiswahili)"],
@@ -109,16 +113,9 @@ const LANGUAGE_GROUPS: { label: string; items: [string, string][] }[] = [
   },
 ];
 
-const LANGUAGE_LABELS: Record<string, string> = {
-  auto: "Auto-detect",
-  ...Object.fromEntries(LANGUAGE_GROUPS.flatMap((g) => g.items)),
-};
-
-const RECORDING_MODE_LABELS: Record<string, string> = {
-  always: "Always Show",
-  recording: "Show During Recording",
-  never: "Do Not Show",
-};
+const LANGUAGE_NAMES: Record<string, string> = Object.fromEntries(
+  LANGUAGE_GROUPS.flatMap((g) => g.items),
+);
 
 export function SettingsView() {
   const { updateConfig } = useConfig();
@@ -366,8 +363,8 @@ export function SettingsView() {
             setActiveKeys([]);
             setErrorMessage(
               shortcutStr.includes("+")
-                ? `System error: ${err}`
-                : "Global shortcuts require a modifier (Cmd, Shift, Alt, etc.) or a Function key (F1-F12).",
+                ? t("settings.shortcutSystemError", { error: String(err) })
+                : t("settings.shortcutNeedsModifier"),
             );
             setTimeout(() => {
               setErrorMessage(null);
@@ -528,15 +525,26 @@ export function SettingsView() {
   };
 
   const micItems: Record<string, string> = {
-    default: "Default System Microphone",
+    default: t("settings.defaultMicrophone"),
     ...Object.fromEntries(devices.map((d) => [d, d])),
+  };
+
+  const languageLabels: Record<string, string> = {
+    auto: t("settings.autoDetect"),
+    ...LANGUAGE_NAMES,
+  };
+
+  const recordingModeLabels: Record<string, string> = {
+    always: t("settings.recordingModeAlways"),
+    recording: t("settings.recordingModeRecording"),
+    never: t("settings.recordingModeNever"),
   };
 
   return (
     <div className="flex flex-col">
       <div className="mb-6">
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
-          Preferences
+          {t("settings.preferencesTitle")}
         </h1>
       </div>
 
@@ -579,11 +587,11 @@ export function SettingsView() {
         {/* GROUP: Audio & Speech-to-Text */}
         <section>
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Cpu size={16} className="text-muted" /> Audio &amp; Speech-to-Text
+            <Cpu size={16} className="text-muted" /> {t("settings.audioSttGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
           <div className="flex flex-col p-5 border-b border-border last:border-b-0">
-            <Label className="mb-3">Input Microphone</Label>
+            <Label className="mb-3">{t("settings.inputMicrophone")}</Label>
             <Select
               value={selectedDevice || "default"}
               onValueChange={(v) => handleDeviceChange(v ?? "default")}
@@ -593,7 +601,7 @@ export function SettingsView() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">Default System Microphone</SelectItem>
+                <SelectItem value="default">{t("settings.defaultMicrophone")}</SelectItem>
                 {devices.map((device) => (
                   <SelectItem key={device} value={device}>
                     {device}
@@ -604,20 +612,20 @@ export function SettingsView() {
           </div>
 
           <div data-tour="language-select" className="flex flex-col p-5 border-b border-border last:border-b-0">
-            <Label className="mb-3">Transcription Language</Label>
+            <Label className="mb-3">{t("settings.transcriptionLanguage")}</Label>
             <Select
               value={asrLanguage}
               onValueChange={(v) => handleAsrLanguageChange(v ?? "auto")}
-              items={LANGUAGE_LABELS}
+              items={languageLabels}
             >
               <SelectTrigger className="w-full bg-black">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-h-80">
-                <SelectItem value="auto">Auto-detect</SelectItem>
+                <SelectItem value="auto">{t("settings.autoDetect")}</SelectItem>
                 {LANGUAGE_GROUPS.map((group) => (
                   <SelectGroup key={group.label}>
-                    <SelectLabel>{group.label}</SelectLabel>
+                    <SelectLabel>{t(group.labelKey)}</SelectLabel>
                     {group.items.map(([code, label]) => (
                       <SelectItem key={code} value={code}>
                         {label}
@@ -628,18 +636,16 @@ export function SettingsView() {
               </SelectContent>
             </Select>
             <p className="text-[11px] text-muted mt-2">
-              Forces the model to output text in the selected language. Use
-              "Auto-detect" for multilingual support.
+              {t("settings.transcriptionLanguageHelp")}
             </p>
           </div>
 
           {!isMac && (
             <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
               <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">GPU Acceleration</div>
+                <div className="text-fg font-medium mb-1">{t("settings.gpuAcceleration")}</div>
                 <div className="text-xs text-muted leading-snug">
-                  Use GPU (Vulkan on Linux/Windows) for faster transcription.
-                  Falls back to CPU if no compatible GPU is available.
+                  {t("settings.gpuAccelerationDesc")}
                 </div>
               </div>
               <Switch checked={gpuEnabled} onCheckedChange={handleGpuToggle} />
@@ -651,14 +657,14 @@ export function SettingsView() {
         {/* GROUP: Recording & Feedback */}
         <section data-tour="recording-section">
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Mic size={16} className="text-muted" /> Recording &amp; Feedback
+            <Mic size={16} className="text-muted" /> {t("settings.recordingFeedbackGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
               <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">Auto-start</div>
+                <div className="text-fg font-medium mb-1">{t("settings.autoStart")}</div>
                 <div className="text-xs text-muted">
-                  Start Simplevoice automatically when you log in.
+                  {t("settings.autoStartDesc")}
                 </div>
               </div>
               <Switch
@@ -670,10 +676,10 @@ export function SettingsView() {
           <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
             <div className="min-w-0">
               <div className="text-fg font-medium mb-1">
-                Voice Activity Detection (VAD)
+                {t("settings.vad")}
               </div>
               <div className="text-muted text-[13px]">
-                Automatically stop recording when you stop speaking.
+                {t("settings.vadDesc")}
               </div>
             </div>
             <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
@@ -681,9 +687,9 @@ export function SettingsView() {
 
           <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
             <div className="min-w-0">
-              <div className="text-fg font-medium mb-1">Sound Effects</div>
+              <div className="text-fg font-medium mb-1">{t("settings.soundEffects")}</div>
               <div className="text-muted text-[13px]">
-                Play a premium audio cue when starting and stopping recording.
+                {t("settings.soundEffectsDesc")}
               </div>
             </div>
             <Switch checked={soundEnabled} onCheckedChange={handleSoundToggle} />
@@ -691,10 +697,9 @@ export function SettingsView() {
 
           <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
             <div className="min-w-0">
-              <div className="text-fg font-medium mb-1">Pause System Audio</div>
+              <div className="text-fg font-medium mb-1">{t("settings.pauseSystemAudio")}</div>
               <div className="text-muted text-[13px]">
-                Automatically pause music or videos while recording and resume
-                afterwards.
+                {t("settings.pauseSystemAudioDesc")}
               </div>
             </div>
             <Switch
@@ -707,24 +712,24 @@ export function SettingsView() {
             <div className="flex justify-between items-center gap-6 p-5">
               <div className="min-w-0">
                 <div className="text-fg font-medium mb-1">
-                  Recording Overlay Window
+                  {t("settings.recordingOverlayWindow")}
                 </div>
                 <div className="text-muted text-[13px]">
-                  Display a floating wavebar on your screen reacting to voice.
+                  {t("settings.recordingOverlayWindowDesc")}
                 </div>
               </div>
               <Select
                 value={recordingWindowMode}
                 onValueChange={(v) => handleRecordingWindowModeChange(v ?? "always")}
-                items={RECORDING_MODE_LABELS}
+                items={recordingModeLabels}
               >
                 <SelectTrigger className="w-48 bg-black shrink-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="always">Always Show</SelectItem>
-                  <SelectItem value="recording">Show During Recording</SelectItem>
-                  <SelectItem value="never">Do Not Show</SelectItem>
+                  <SelectItem value="always">{t("settings.recordingModeAlways")}</SelectItem>
+                  <SelectItem value="recording">{t("settings.recordingModeRecording")}</SelectItem>
+                  <SelectItem value="never">{t("settings.recordingModeNever")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -735,44 +740,44 @@ export function SettingsView() {
         {/* GROUP: Keyboard Shortcuts */}
         <section data-tour="shortcuts-section">
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Keyboard size={16} className="text-muted" /> Keyboard Shortcuts
+            <Keyboard size={16} className="text-muted" /> {t("settings.keyboardShortcutsGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
 
           <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
             <div className="flex-1 min-w-0">
               <div className="text-fg font-medium mb-1">
-                Start / Stop Recording
+                {t("settings.startStopRecording")}
               </div>
               <div className="text-muted text-[13px]">
-                Global hotkey to toggle voice recording from anywhere.
+                {t("settings.startStopRecordingDesc")}
               </div>
             </div>
             <button
               data-tour="record-shortcut"
               onClick={() => startRecordingShortcut("record")}
               className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none"
-              title="Click to change shortcut"
+              title={t("settings.clickToChangeShortcut")}
             >
-              {formatShortcutDisplay(shortcutText)}
+              {formatShortcutDisplay(shortcutText, t("settings.shortcutNone"))}
             </button>
           </div>
 
           <div className="flex justify-between items-center gap-6 p-5">
             <div className="flex-1 min-w-0">
               <div className="text-fg font-medium mb-1">
-                Copy Last Transcription
+                {t("settings.copyLastTranscription")}
               </div>
               <div className="text-muted text-[13px]">
-                Copy the most recent transcription result to clipboard.
+                {t("settings.copyLastTranscriptionDesc")}
               </div>
             </div>
             <button
               onClick={() => startRecordingShortcut("copy")}
               className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none"
-              title="Click to change shortcut"
+              title={t("settings.clickToChangeShortcut")}
             >
-              {formatShortcutDisplay(copyShortcutText)}
+              {formatShortcutDisplay(copyShortcutText, t("settings.shortcutNone"))}
             </button>
           </div>
 
@@ -782,29 +787,29 @@ export function SettingsView() {
               {["niri", "hyprland", "sway", "i3", "unknown"].includes(desktopEnv) ? (
                 <div className="mt-4 p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
                   <div className="font-semibold flex items-center gap-1.5 text-sm">
-                    <Check size={14} /> Native Global Hotkeys Active
+                    <Check size={14} /> {t("settings.nativeGlobalHotkeysActive")}
                   </div>
                   <p className="text-success/85">
-                    Your shortcuts are captured directly from your keyboard (evdev) and work globally on any
-                    compositor — no configuration files are edited and no external tools are required.
+                    {t("settings.nativeGlobalHotkeysActiveDesc")}
                   </p>
                   <button
                     onClick={() => setShowManualWMInstructions(!showManualWMInstructions)}
                     className="text-left text-[11px] text-warning hover:text-warning/80 underline font-medium mt-1 cursor-pointer select-none transition-colors bg-transparent border-0 p-0"
                   >
-                    {showManualWMInstructions ? "Hide troubleshooting" : "Hotkey not working? Show troubleshooting"}
+                    {showManualWMInstructions ? t("settings.hideTroubleshooting") : t("settings.showTroubleshooting")}
                   </button>
 
                   {showManualWMInstructions && (
                     <div className="mt-3 font-medium border-t border-success/10 pt-3 flex flex-col gap-2 text-muted text-[11px]">
                       <p>
-                        If the hotkey does nothing, your user probably cannot read input devices. Add yourself to
-                        the <strong>input</strong> group and log back in:
+                        <Trans
+                          i18nKey="settings.hotkeyTroubleshootingInput"
+                          components={{ strong: <strong /> }}
+                        />
                       </p>
                       <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-warning/90 overflow-x-auto">sudo usermod -aG input $USER</pre>
                       <p>
-                        The hotkey is observed, not intercepted, so it also reaches the focused app — pick a
-                        dedicated combination (for example one using Super) that nothing else uses.
+                        {t("settings.hotkeyTroubleshootingObserved")}
                       </p>
                     </div>
                   )}
@@ -812,15 +817,20 @@ export function SettingsView() {
               ) : ["gnome", "kde", "xfce", "cinnamon", "mate"].includes(desktopEnv) ? (
                 <div className="mt-4 p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
                   <div className="font-semibold flex items-center gap-1.5 text-sm">
-                    <Check size={14} /> Native Linux Shortcut Integration Active
+                    <Check size={14} /> {t("settings.nativeLinuxShortcutIntegrationActive")}
                   </div>
                   <p className="text-success/85">
-                    Your shortcuts are registered directly in the <strong>{
-                      desktopEnv === "gnome" ? "GNOME" :
-                      desktopEnv === "kde" ? "KDE Plasma" :
-                      desktopEnv === "xfce" ? "XFCE" :
-                      desktopEnv === "cinnamon" ? "Cinnamon" : "MATE"
-                    }</strong> keyboard configuration using built-in settings. They apply immediately!
+                    <Trans
+                      i18nKey="settings.nativeLinuxShortcutIntegrationActiveDesc"
+                      values={{
+                        env:
+                          desktopEnv === "gnome" ? "GNOME" :
+                          desktopEnv === "kde" ? "KDE Plasma" :
+                          desktopEnv === "xfce" ? "XFCE" :
+                          desktopEnv === "cinnamon" ? "Cinnamon" : "MATE",
+                      }}
+                      components={{ strong: <strong /> }}
+                    />
                   </p>
                 </div>
               ) : null}
@@ -832,7 +842,7 @@ export function SettingsView() {
             <div className="p-5 pt-0 border-t border-border">
               <Alert variant="destructive" className="mt-4 border-danger/20 bg-danger/5">
                 <Shield />
-                <AlertTitle>Shortcut Registration Error</AlertTitle>
+                <AlertTitle>{t("settings.shortcutRegistrationError")}</AlertTitle>
                 <AlertDescription>{shortcutError || copyShortcutError}</AlertDescription>
               </Alert>
             </div>
@@ -844,13 +854,13 @@ export function SettingsView() {
         {platform === "macos" && (
           <section data-tour="permissions-section">
             <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-              <Shield size={16} className="text-muted" /> System Permissions
+              <Shield size={16} className="text-muted" /> {t("settings.systemPermissionsGroup")}
             </h2>
             <div className="border border-border rounded-xl overflow-hidden bg-secondary">
               <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
                 <div className="flex-1 min-w-0">
                   <div className="text-fg font-medium mb-1 flex items-center gap-2">
-                    Accessibility
+                    {t("settings.accessibility")}
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
                         accessibilityGranted
@@ -860,11 +870,11 @@ export function SettingsView() {
                     />
                   </div>
                   <div className="text-muted text-[13px]">
-                    Required for auto-paste (keyboard simulation via Cmd+V).
+                    {t("settings.accessibilityDesc")}
                     {!accessibilityGranted && (
                       <span className="text-warning font-medium">
                         {" "}
-                        Not granted — auto-paste will not work.
+                        {t("settings.accessibilityNotGranted")}
                       </span>
                     )}
                   </div>
@@ -882,11 +892,11 @@ export function SettingsView() {
                     }}
                     className="border-warning/30 bg-warning/10 text-warning hover:bg-warning/20 hover:text-warning"
                   >
-                    Grant Access
+                    {t("settings.grantAccess")}
                   </Button>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-2 text-xs font-medium text-success">
-                    <Check size={14} /> Granted
+                    <Check size={14} /> {t("settings.granted")}
                   </span>
                 )}
               </div>
@@ -894,7 +904,7 @@ export function SettingsView() {
               <div className="flex justify-between items-center gap-6 p-5">
                 <div className="flex-1 min-w-0">
                   <div className="text-fg font-medium mb-1 flex items-center gap-2">
-                    Microphone
+                    {t("settings.microphone")}
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
                         microphoneGranted
@@ -904,11 +914,11 @@ export function SettingsView() {
                     />
                   </div>
                   <div className="text-muted text-[13px]">
-                    Required for audio capture.
+                    {t("settings.microphoneDesc")}
                     {!microphoneGranted && (
                       <span className="text-warning font-medium">
                         {" "}
-                        Not granted — recording will not work.
+                        {t("settings.microphoneNotGranted")}
                       </span>
                     )}
                   </div>
@@ -931,11 +941,11 @@ export function SettingsView() {
                     }}
                     className="border-warning/30 bg-warning/10 text-warning hover:bg-warning/20 hover:text-warning"
                   >
-                    Grant Access
+                    {t("settings.grantAccess")}
                   </Button>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-2 text-xs font-medium text-success">
-                    <Check size={14} /> Granted
+                    <Check size={14} /> {t("settings.granted")}
                   </span>
                 )}
               </div>
@@ -946,14 +956,14 @@ export function SettingsView() {
         {/* GROUP: About */}
         <section>
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Info size={16} className="text-muted" /> About
+            <Info size={16} className="text-muted" /> {t("settings.aboutGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             <div className="flex justify-between items-center gap-6 p-5">
               <div className="min-w-0">
                 <div className="text-fg font-medium mb-1">Simplevoice</div>
                 <div className="text-muted text-[13px]">
-                  Version {appVersion || "…"}
+                  {t("settings.version", { version: appVersion || "…" })}
                 </div>
               </div>
               <Button
@@ -966,7 +976,7 @@ export function SettingsView() {
                   size={14}
                   className={checkingUpdate ? "animate-spin" : ""}
                 />
-                {checkingUpdate ? "Checking…" : "Check for updates"}
+                {checkingUpdate ? t("settings.checkingForUpdates") : t("settings.checkForUpdates")}
               </Button>
             </div>
           </div>
@@ -986,13 +996,13 @@ export function SettingsView() {
           <div className="flex flex-col items-center justify-center text-center max-w-sm w-full mx-4">
             <div className="text-muted-dark font-mono text-[10px] uppercase tracking-[0.2em] mb-5 select-none">
               {shortcutTarget === "copy"
-                ? "Copy last transcription"
-                : "Start / stop recording"}
+                ? t("settings.overlayCopyLastTranscription")
+                : t("settings.overlayStartStopRecording")}
             </div>
             <div className="flex items-center justify-center gap-2 h-16 w-full mb-6">
               {activeKeys.length === 0 ? (
                 <div className="text-white/20 font-mono text-[11px] tracking-[0.2em] animate-pulse select-none">
-                  {errorMessage ? "INVALID COMBINATION" : "PRESS KEYS"}
+                  {errorMessage ? t("settings.invalidCombination") : t("settings.pressKeys")}
                 </div>
               ) : (
                 activeKeys.map((key, index) => (
@@ -1019,7 +1029,7 @@ export function SettingsView() {
             <div className="h-10 flex items-center justify-center">
               {isCompleted ? (
                 <span className="text-success font-mono text-[10px] uppercase tracking-[0.25em] animate-in zoom-in-95 duration-200">
-                  Shortcut Saved
+                  {t("settings.shortcutSaved")}
                 </span>
               ) : errorMessage ? (
                 <span className="text-danger/90 font-mono text-[10px] leading-relaxed max-w-[280px] animate-in fade-in duration-200">
@@ -1027,7 +1037,7 @@ export function SettingsView() {
                 </span>
               ) : (
                 <span className="text-white/30 font-mono text-[10px] uppercase tracking-[0.2em] select-none">
-                  Press keys to assign • Esc to cancel
+                  {t("settings.pressKeysToAssign")}
                 </span>
               )}
             </div>

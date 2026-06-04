@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import "./App.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -29,6 +30,9 @@ import {
 type ViewId = "usage" | "models" | "transcriptions" | "settings";
 
 function App() {
+  const { t } = useTranslation();
+  const localizeError = (msg: string) =>
+    msg.startsWith("errors.") ? t(msg, { defaultValue: msg }) : msg;
   const [activeView, setActiveView] = useState<ViewId>("usage");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return localStorage.getItem("sidebar_collapsed") === "true";
@@ -240,7 +244,7 @@ function App() {
       } catch (err: any) {
         console.error("Failed to transcribe recording:", err);
         const msg = typeof err === "string" ? err : err?.message || String(err);
-        setErrorMessage(msg);
+        setErrorMessage(localizeError(msg));
       } finally {
         setIsTranscribing(false);
         invoke("set_transcribing", { active: false }).catch(() => {});
@@ -252,7 +256,7 @@ function App() {
     const unlistenFailed = listen<string>(
       "recording-failed-to-start",
       (event) => {
-        setErrorMessage(event.payload);
+        setErrorMessage(localizeError(event.payload));
         setActiveView("models");
       },
     );
@@ -285,18 +289,18 @@ function App() {
               <AlertDialogMedia className="bg-danger/10 text-danger">
                 <AlertTriangle />
               </AlertDialogMedia>
-              <AlertDialogTitle>Configuration Required</AlertDialogTitle>
+              <AlertDialogTitle>{t("errors.title")}</AlertDialogTitle>
               <AlertDialogDescription>{errorMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Dismiss</AlertDialogCancel>
+              <AlertDialogCancel>{t("common.dismiss")}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => {
                   setActiveView("models");
                   setErrorMessage(null);
                 }}
               >
-                Open Models
+                {t("errors.openModels")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -342,20 +346,20 @@ function App() {
                     </div>
                   </div>
                   <h2 className="text-white text-lg font-medium mb-1 tracking-tight">
-                    Recording
+                    {t("hud.recording")}
                   </h2>
                   <p className="text-muted text-sm leading-normal">
-                    Speak now — press your shortcut or pause to stop.
+                    {t("hud.recordingHint")}
                   </p>
                 </>
               ) : (
                 <>
                   <WaveBar animated className="w-16 text-white mb-6" />
                   <h2 className="text-white text-lg font-medium mb-1 tracking-tight">
-                    Transcribing
+                    {t("hud.transcribing")}
                   </h2>
                   <p className="text-muted text-sm leading-normal">
-                    Turning your voice into text…
+                    {t("hud.transcribingHint")}
                   </p>
                 </>
               )}

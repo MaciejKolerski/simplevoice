@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown, History, Trash2, Copy, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,6 +27,7 @@ interface TranscriptionItem {
 }
 
 export function TranscriptionsView() {
+  const { t } = useTranslation();
   const [history, setHistory] = useState<TranscriptionItem[]>([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -90,13 +92,13 @@ export function TranscriptionsView() {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedId(id);
-      toast.success("Copied to clipboard");
+      toast.success(t("transcriptions.copiedToClipboard"));
       setTimeout(() => {
         setCopiedId(null);
       }, 1500);
     } catch (err) {
       console.error("Failed to copy text:", err);
-      toast.error("Couldn't copy to clipboard");
+      toast.error(t("transcriptions.copyFailed"));
     }
   };
 
@@ -117,10 +119,10 @@ export function TranscriptionsView() {
           detail: { source: "history" },
         }),
       );
-      toast.success("History cleared");
+      toast.success(t("transcriptions.historyCleared"));
     } catch (err) {
       console.error("Failed to clear history:", err);
-      toast.error("Failed to clear history");
+      toast.error(t("transcriptions.clearFailed"));
     }
   };
 
@@ -148,7 +150,7 @@ export function TranscriptionsView() {
       );
     } catch (err) {
       console.error("Failed to delete item:", err);
-      toast.error("Failed to delete transcription");
+      toast.error(t("transcriptions.deleteFailed"));
     } finally {
       setIsDeleting(null);
     }
@@ -170,10 +172,10 @@ export function TranscriptionsView() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6">
         <div>
           <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
-            History
+            {t("transcriptions.title")}
           </h1>
           <p className="text-xs text-muted mt-1 leading-normal">
-            Your locally recorded and transcribed voice notes.
+            {t("transcriptions.subtitle")}
           </p>
         </div>
         {history.length > 0 && (
@@ -184,7 +186,7 @@ export function TranscriptionsView() {
             className="shrink-0 text-danger hover:text-danger hover:border-danger/40 hover:bg-danger/5"
           >
             <Trash2 size={13} />
-            Clear history
+            {t("transcriptions.clearHistory")}
           </Button>
         )}
       </div>
@@ -194,11 +196,11 @@ export function TranscriptionsView() {
           <div className="flex size-14 items-center justify-center rounded-full bg-surface-active text-muted mb-4">
             <History size={26} />
           </div>
-          <h3 className="text-white font-medium mb-2">No transcriptions yet</h3>
+          <h3 className="text-white font-medium mb-2">
+            {t("transcriptions.emptyTitle")}
+          </h3>
           <p className="text-muted text-sm max-w-md mb-2 leading-relaxed">
-            Use your global shortcut to start recording audio. Once finished,
-            the recorded speech will be transcribed and stored here in your
-            history.
+            {t("transcriptions.emptyBody")}
           </p>
         </div>
       ) : (
@@ -228,7 +230,9 @@ export function TranscriptionsView() {
                       </Badge>
                       {item.duration_sec && (
                         <span className="text-[10px] text-muted font-mono">
-                          {item.duration_sec.toFixed(1)}s
+                          {t("transcriptions.durationSeconds", {
+                            seconds: item.duration_sec.toFixed(1),
+                          })}
                         </span>
                       )}
                     </div>
@@ -250,7 +254,7 @@ export function TranscriptionsView() {
                       }}
                       disabled={isDeleting === item.id}
                       className="text-danger hover:text-danger hover:bg-danger/10"
-                      title="Delete"
+                      title={t("transcriptions.delete")}
                     >
                       {isDeleting === item.id ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -272,7 +276,9 @@ export function TranscriptionsView() {
                       }`}
                     >
                       {isCopied ? <Check size={13} /> : <Copy size={13} />}
-                      {isCopied ? "Copied" : "Copy"}
+                      {isCopied
+                        ? t("transcriptions.copied")
+                        : t("transcriptions.copy")}
                     </Button>
                   </div>
                 </div>
@@ -291,7 +297,7 @@ export function TranscriptionsView() {
                     ) : (
                       <div className="text-muted text-sm py-12 text-center border border-dashed border-border rounded-2xl flex items-center justify-center gap-2">
                         <Loader2 size={14} className="animate-spin" />
-                        Loading recording…
+                        {t("transcriptions.loadingRecording")}
                       </div>
                     )}
                   </div>
@@ -309,7 +315,9 @@ export function TranscriptionsView() {
                 className="px-8"
               >
                 {loadingMore && <Loader2 size={13} className="animate-spin" />}
-                {loadingMore ? "Loading…" : "Load older transcriptions"}
+                {loadingMore
+                  ? t("common.loading")
+                  : t("transcriptions.loadOlder")}
               </Button>
             </div>
           )}
@@ -325,19 +333,20 @@ export function TranscriptionsView() {
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete transcription?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("transcriptions.deleteConfirmTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes this transcription and its audio
-              recording from your device. This can't be undone.
+              {t("transcriptions.deleteConfirmBody")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDelete}
               className="bg-danger text-white hover:bg-danger/90"
             >
-              Delete
+              {t("transcriptions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -350,19 +359,20 @@ export function TranscriptionsView() {
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear all history?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("transcriptions.clearConfirmTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes every local audio recording and its
-              transcribed text from your device. This can't be undone.
+              {t("transcriptions.clearConfirmBody")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmClearHistory}
               className="bg-danger text-white hover:bg-danger/90"
             >
-              Clear everything
+              {t("transcriptions.clearEverything")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

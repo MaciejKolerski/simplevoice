@@ -155,7 +155,7 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
     if c.engine == "local" {
         let stt_state = stt.state.lock().unwrap();
         if stt_state.engine.is_none() {
-            return Err("error.no_model_loaded".to_string());
+            return Err("errors.no_model_loaded".to_string());
         }
     } else if c.engine == "openai-cloud" {
         let key_name = format!("api_key_{}", c.provider);
@@ -164,14 +164,14 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
             Ok(ent) => {
                 if let Ok(password) = ent.get_password() {
                     if password.trim().is_empty() {
-                        return Err("error.cloud_not_configured".to_string());
+                        return Err("errors.cloud_not_configured".to_string());
                     }
                 } else {
-                    return Err("error.cloud_not_configured".to_string());
+                    return Err("errors.cloud_not_configured".to_string());
                 }
             }
             Err(_) => {
-                return Err("error.cloud_not_configured".to_string());
+                return Err("errors.cloud_not_configured".to_string());
             }
         }
     }

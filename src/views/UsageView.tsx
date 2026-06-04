@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -10,12 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const TIME_RANGES: Record<string, string> = {
-  "7days": "Last 7 days",
-  "30days": "Last 30 days",
-  all: "All time",
-};
 
 interface ModelStatus {
   active: string | null;
@@ -44,6 +39,7 @@ interface ChartBar {
 }
 
 export function UsageView() {
+  const { t, i18n } = useTranslation();
   const [activeModel, setActiveModel] = useState<string>("None");
   const [loadingModel, setLoadingModel] = useState<string | null>(null);
   const [isRunningLocally, setIsRunningLocally] = useState<boolean>(true);
@@ -130,18 +126,20 @@ export function UsageView() {
     };
   }, []);
 
+  const numberFormat = new Intl.NumberFormat(i18n.language);
+
   const formatDuration = (seconds: number): string => {
-    if (seconds <= 0) return "0s";
+    if (seconds <= 0) return t("usage.durationSeconds", { value: 0 });
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.round(seconds % 60);
     if (h > 0) {
-      return `${h}h ${m}m`;
+      return t("usage.durationHoursMinutes", { hours: h, minutes: m });
     }
     if (m > 0) {
-      return `${m}m ${s}s`;
+      return t("usage.durationMinutesSeconds", { minutes: m, seconds: s });
     }
-    return `${s}s`;
+    return t("usage.durationSeconds", { value: s });
   };
 
   const formatDateString = (d: Date): string => {
@@ -223,8 +221,8 @@ export function UsageView() {
       const d = new Date(startOfToday);
       d.setDate(startOfToday.getDate() - i);
       const dateStr = formatDateString(d);
-      const label = d.toLocaleDateString(undefined, { weekday: "short" });
-      const tooltipLabel = d.toLocaleDateString(undefined, {
+      const label = d.toLocaleDateString(i18n.language, { weekday: "short" });
+      const tooltipLabel = d.toLocaleDateString(i18n.language, {
         weekday: "long",
         day: "numeric",
         month: "short",
@@ -246,7 +244,10 @@ export function UsageView() {
         label: info.label,
         val,
         rawVal: dayDur,
-        tooltip: `${info.tooltipLabel}: ${formatDuration(dayDur)}`,
+        tooltip: t("usage.barTooltip", {
+          label: info.tooltipLabel,
+          duration: formatDuration(dayDur),
+        }),
         today: info.today,
       });
     }
@@ -306,12 +307,12 @@ export function UsageView() {
       // Sparse labels to prevent overlap
       let label = "";
       if (i === 29 || i === 20 || i === 10 || i === 0) {
-        label = d.toLocaleDateString(undefined, {
+        label = d.toLocaleDateString(i18n.language, {
           day: "numeric",
           month: "short",
         });
       }
-      const tooltipLabel = d.toLocaleDateString(undefined, {
+      const tooltipLabel = d.toLocaleDateString(i18n.language, {
         day: "numeric",
         month: "short",
         year: "numeric",
@@ -333,7 +334,10 @@ export function UsageView() {
         label: info.label,
         val,
         rawVal: dayDur,
-        tooltip: `${info.tooltipLabel}: ${formatDuration(dayDur)}`,
+        tooltip: t("usage.barTooltip", {
+          label: info.tooltipLabel,
+          duration: formatDuration(dayDur),
+        }),
         today: info.today,
       });
     }
@@ -357,8 +361,8 @@ export function UsageView() {
       d.setMonth(d.getMonth() - i);
       const year = d.getFullYear();
       const month = d.getMonth();
-      const label = d.toLocaleDateString(undefined, { month: "short" });
-      const tooltipLabel = d.toLocaleDateString(undefined, {
+      const label = d.toLocaleDateString(i18n.language, { month: "short" });
+      const tooltipLabel = d.toLocaleDateString(i18n.language, {
         month: "long",
         year: "numeric",
       });
@@ -390,7 +394,10 @@ export function UsageView() {
         label: info.label,
         val,
         rawVal: mDur,
-        tooltip: `${info.tooltipLabel}: ${formatDuration(mDur)}`,
+        tooltip: t("usage.barTooltip", {
+          label: info.tooltipLabel,
+          duration: formatDuration(mDur),
+        }),
         today: info.today,
       });
     }
@@ -403,63 +410,80 @@ export function UsageView() {
     formatDuration(displayMaxDur),
     formatDuration((displayMaxDur * 2) / 3),
     formatDuration((displayMaxDur * 1) / 3),
-    "0s",
+    formatDuration(0),
   ];
 
   const renderTrend = (value: number) => {
     if (timeRange === "all") {
-      return <span className="text-muted opacity-70">All-time statistics</span>;
+      return (
+        <span className="text-muted opacity-70">
+          {t("usage.allTimeStatistics")}
+        </span>
+      );
     }
 
     if (value > 0) {
       return (
         <>
           <span className="trend up flex items-center gap-0.5 text-success font-semibold whitespace-nowrap shrink-0">
-            <TrendingUp size={12} /> +{value}%
+            <TrendingUp size={12} /> +{numberFormat.format(value)}%
           </span>
-          <span className="truncate opacity-70">vs last period</span>
+          <span className="truncate opacity-70">
+            {t("usage.vsLastPeriod")}
+          </span>
         </>
       );
     } else if (value < 0) {
       return (
         <>
           <span className="trend down flex items-center gap-0.5 text-danger font-semibold whitespace-nowrap shrink-0">
-            <TrendingUp size={12} className="rotate-180" /> {value}%
+            <TrendingUp size={12} className="rotate-180" />{" "}
+            {numberFormat.format(value)}%
           </span>
-          <span className="truncate opacity-70">vs last period</span>
+          <span className="truncate opacity-70">
+            {t("usage.vsLastPeriod")}
+          </span>
         </>
       );
     } else {
       return (
         <>
           <span className="trend flat flex items-center gap-0.5 text-muted font-semibold whitespace-nowrap shrink-0">
-            — 0%
+            — {numberFormat.format(0)}%
           </span>
-          <span className="truncate opacity-70">vs last period</span>
+          <span className="truncate opacity-70">
+            {t("usage.vsLastPeriod")}
+          </span>
         </>
       );
     }
+  };
+
+  const timeRanges: Record<string, string> = {
+    "7days": t("usage.last7Days"),
+    "30days": t("usage.last30Days"),
+    all: t("usage.allTime"),
   };
 
   return (
     <div className="flex flex-col w-full animate-[fadeIn_0.3s_ease-out]">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pr-1">
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
-          Overview
+          {t("usage.overview")}
         </h1>
         <Select
           value={timeRange}
           onValueChange={(v) => setTimeRange(v as typeof timeRange)}
-          items={TIME_RANGES}
+          items={timeRanges}
         >
           <SelectTrigger className="w-full sm:w-[160px] bg-secondary text-xs">
             <Calendar size={13} className="text-muted" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="7days">Last 7 days</SelectItem>
-            <SelectItem value="30days">Last 30 days</SelectItem>
-            <SelectItem value="all">All time</SelectItem>
+            <SelectItem value="7days">{t("usage.last7Days")}</SelectItem>
+            <SelectItem value="30days">{t("usage.last30Days")}</SelectItem>
+            <SelectItem value="all">{t("usage.allTime")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -468,7 +492,7 @@ export function UsageView() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <Card className="p-6 gap-0 min-w-0">
           <div className="label-text flex justify-between items-center mb-3">
-            <span className="truncate">Time Transcribed</span>
+            <span className="truncate">{t("usage.timeTranscribed")}</span>
             <Clock size={14} className="text-muted-dark shrink-0" />
           </div>
           <div className="stat-value mono truncate">
@@ -480,11 +504,11 @@ export function UsageView() {
         </Card>
         <Card className="p-6 gap-0 min-w-0">
           <div className="label-text flex justify-between items-center mb-3">
-            <span className="truncate">Words Generated</span>
+            <span className="truncate">{t("usage.wordsGenerated")}</span>
             <FileText size={14} className="text-muted-dark shrink-0" />
           </div>
           <div className="stat-value mono truncate">
-            {totalWords.toLocaleString()}
+            {numberFormat.format(totalWords)}
           </div>
           <div className="text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
             {renderTrend(wordsTrend)}
@@ -492,11 +516,15 @@ export function UsageView() {
         </Card>
         <Card className="p-6 gap-0 min-w-0 md:col-span-2 lg:col-span-1">
           <div className="label-text flex justify-between items-center mb-3">
-            <span className="truncate">Active Model</span>
+            <span className="truncate">{t("usage.activeModel")}</span>
             <Cpu size={14} className="text-muted-dark shrink-0" />
           </div>
           <div className="text-xl leading-tight pt-1 tracking-tight text-white font-medium truncate">
-            {loadingModel ? loadingModel : activeModel}
+            {loadingModel
+              ? loadingModel
+              : activeModel === "None"
+                ? t("usage.modelNone")
+                : activeModel}
           </div>
           <div className="text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
             <span
@@ -510,12 +538,12 @@ export function UsageView() {
             ></span>
             <span className="truncate opacity-70">
               {loadingModel
-                ? "Initializing engine..."
+                ? t("usage.initializingEngine")
                 : activeModel === "None"
-                  ? "No active model"
+                  ? t("usage.noActiveModel")
                   : isRunningLocally
-                    ? "Running locally"
-                    : "Running in the cloud"}
+                    ? t("usage.runningLocally")
+                    : t("usage.runningInCloud")}
             </span>
           </div>
         </Card>
@@ -525,12 +553,12 @@ export function UsageView() {
       <div className="bg-secondary border border-border rounded-xl p-6 relative min-h-[340px] lg:min-h-[420px] 2xl:min-h-[500px] flex flex-col w-full overflow-hidden">
         <div className="flex justify-between items-center mb-6">
           <h2 className="m-0 text-base text-white font-medium">
-            Activity Details
+            {t("usage.activityDetails")}
           </h2>
           <div className="hidden sm:flex gap-4">
             <div className="flex items-center gap-2 text-xs text-muted font-medium">
               <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.4)]"></div>
-              Time Transcribed
+              {t("usage.timeTranscribed")}
             </div>
           </div>
         </div>

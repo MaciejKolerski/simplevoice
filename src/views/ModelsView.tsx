@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FolderOpen,
   RefreshCw,
@@ -50,7 +51,7 @@ interface RecommendedModel {
   name: string;
   repo_id: string;
   files: string[];
-  description: string;
+  descriptionKey: string;
   format: string;
   size_formatted: string;
 }
@@ -60,7 +61,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Tiny (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-tiny.bin"],
-    description: "Ultra-fast multilingual model by OpenAI. Tiny footprint, great for quick notes.",
+    descriptionKey: "models.desc.whisperTiny",
     format: "ggml_bin",
     size_formatted: "74 MB"
   },
@@ -68,7 +69,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Tiny English (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-tiny.en.bin"],
-    description: "English-only Tiny. Even faster and more accurate when you only dictate in English.",
+    descriptionKey: "models.desc.whisperTinyEn",
     format: "ggml_bin",
     size_formatted: "74 MB"
   },
@@ -76,7 +77,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Base (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-base.bin"],
-    description: "A step up from Tiny: better accuracy while staying light and fast. Multilingual.",
+    descriptionKey: "models.desc.whisperBase",
     format: "ggml_bin",
     size_formatted: "141 MB"
   },
@@ -84,7 +85,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Small (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-small.bin"],
-    description: "Balanced multilingual model. Reliable accuracy for everyday dictation.",
+    descriptionKey: "models.desc.whisperSmall",
     format: "ggml_bin",
     size_formatted: "465 MB"
   },
@@ -92,7 +93,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Small English (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-small.en.bin"],
-    description: "English-only Small. Higher accuracy for English at the same speed.",
+    descriptionKey: "models.desc.whisperSmallEn",
     format: "ggml_bin",
     size_formatted: "465 MB"
   },
@@ -105,7 +106,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
       "joiner.int8.onnx",
       "tokens.txt"
     ],
-    description: "Previous-generation NVIDIA Parakeet (English). Very fast INT8 ASR on CPU.",
+    descriptionKey: "models.desc.parakeetV2",
     format: "onnx",
     size_formatted: "631 MB"
   },
@@ -118,7 +119,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
       "joiner.int8.onnx",
       "tokens.txt"
     ],
-    description: "State-of-the-art multilingual ASR by NVIDIA. INT8 quantized, runs natively on CPU.",
+    descriptionKey: "models.desc.parakeetV3",
     format: "onnx",
     size_formatted: "639 MB"
   },
@@ -126,7 +127,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Medium (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-medium.bin"],
-    description: "Larger multilingual model. Clearly better accuracy; needs more RAM and time.",
+    descriptionKey: "models.desc.whisperMedium",
     format: "ggml_bin",
     size_formatted: "1.4 GB"
   },
@@ -134,7 +135,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Large v3 Turbo (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-large-v3-turbo.bin"],
-    description: "Newest large model tuned for speed. Near large-v3 quality, much faster.",
+    descriptionKey: "models.desc.whisperLargeV3Turbo",
     format: "ggml_bin",
     size_formatted: "1.5 GB"
   },
@@ -142,7 +143,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Large v2 (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-large-v2.bin"],
-    description: "Proven previous flagship. Excellent multilingual accuracy.",
+    descriptionKey: "models.desc.whisperLargeV2",
     format: "ggml_bin",
     size_formatted: "2.9 GB"
   },
@@ -150,7 +151,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     name: "Whisper Large v3 (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-large-v3.bin"],
-    description: "Most accurate multilingual Whisper. Top quality, highest resource use.",
+    descriptionKey: "models.desc.whisperLargeV3",
     format: "ggml_bin",
     size_formatted: "2.9 GB"
   }
@@ -165,14 +166,16 @@ const FORMAT_LABELS: Record<string, string> = {
   nemo: "NeMo",
 };
 
-const PROVIDER_LABELS: Record<string, string> = {
-  openai: "OpenAI",
-  openrouter: "OpenRouter",
-  gemini: "Google Gemini",
-  custom: "Custom…",
-};
-
 export function ModelsView() {
+  const { t } = useTranslation();
+
+  const PROVIDER_LABELS: Record<string, string> = {
+    openai: "OpenAI",
+    openrouter: "OpenRouter",
+    gemini: "Google Gemini",
+    custom: t("models.custom"),
+  };
+
   const [models, setModels] = useState<LocalModel[]>([]);
   const [modelsDir, setModelsDir] = useState<string>("");
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
@@ -294,7 +297,12 @@ export function ModelsView() {
       const { progress, file, current_file_index, total_files } = event.payload;
       setDownloadProgress(progress);
       setDownloadStatus(
-        `Downloading ${current_file_index}/${total_files}: ${file} (${Math.round(progress)}%)`
+        t("models.downloading", {
+          index: current_file_index,
+          total: total_files,
+          file,
+          pct: Math.round(progress),
+        }),
       );
     }).then((fn) => {
       unlistenDownload = fn;
@@ -387,14 +395,14 @@ export function ModelsView() {
 
   const handleConvertModel = async (path: string) => {
     setConvertingPath(path);
-    setConversionStatus("Starting...");
+    setConversionStatus(t("models.starting"));
     setConversionError(null);
     try {
       await invoke("convert_model", { modelPath: path });
       await loadModelsList();
     } catch (err: any) {
       console.error("Failed to convert model:", err);
-      setConversionError({ path, message: err?.toString() || "Unknown error occurred" });
+      setConversionError({ path, message: err?.toString() || t("models.unknownError") });
     } finally {
       setConvertingPath(null);
       setConversionStatus("");
@@ -404,7 +412,7 @@ export function ModelsView() {
   const handleDownloadModel = async (model: RecommendedModel) => {
     setDownloadingRepo(model.repo_id);
     setDownloadProgress(0);
-    setDownloadStatus("Starting download...");
+    setDownloadStatus(t("models.startingDownload"));
     setDownloadError(null);
     try {
       await invoke("download_model", {
@@ -416,7 +424,7 @@ export function ModelsView() {
       console.error("Failed to download model:", err);
       setDownloadError({
         repoId: model.repo_id,
-        message: err?.toString() || "Unknown error occurred",
+        message: err?.toString() || t("models.unknownError"),
       });
     } finally {
       setDownloadingRepo(null);
@@ -490,7 +498,7 @@ export function ModelsView() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
-          Models
+          {t("nav.models")}
         </h1>
         {asrEngine === "local" && (
           <div className="flex items-center gap-2">
@@ -498,17 +506,17 @@ export function ModelsView() {
               variant="outline"
               size="sm"
               onClick={handleOpenFolder}
-              title="Open models folder"
+              title={t("models.openFolderTooltip")}
             >
               <FolderOpen size={13} />
-              <span className="hidden sm:inline">Folder</span>
+              <span className="hidden sm:inline">{t("models.folder")}</span>
             </Button>
             <Button
               variant="outline"
               size="icon-sm"
               onClick={loadModelsList}
               disabled={scanning}
-              title="Rescan models directory"
+              title={t("models.rescanTooltip")}
             >
               <RefreshCw size={13} className={scanning ? "animate-spin" : ""} />
             </Button>
@@ -524,10 +532,10 @@ export function ModelsView() {
       >
         <TabsList variant="line" className="mb-6 border-b border-border w-full justify-start">
           <TabsTrigger value="local" className="flex-none px-4">
-            Local
+            {t("models.tabLocal")}
           </TabsTrigger>
           <TabsTrigger value="openai-cloud" className="flex-none px-4">
-            Cloud (BYOK)
+            {t("models.tabCloud")}
           </TabsTrigger>
         </TabsList>
 
@@ -535,12 +543,12 @@ export function ModelsView() {
         {conversionError && (
           <Alert variant="destructive" className="mb-4 border-danger/20 bg-danger/5">
             <AlertTriangle />
-            <AlertTitle>Conversion failed</AlertTitle>
+            <AlertTitle>{t("models.conversionFailed")}</AlertTitle>
             <AlertDescription>{conversionError.message}</AlertDescription>
             <button
               onClick={() => setConversionError(null)}
               className="absolute top-3 right-3 text-danger/60 hover:text-danger cursor-pointer"
-              aria-label="Dismiss"
+              aria-label={t("common.dismiss")}
             >
               <X size={14} />
             </button>
@@ -549,12 +557,12 @@ export function ModelsView() {
         {downloadError && (
           <Alert variant="destructive" className="mb-4 border-danger/20 bg-danger/5">
             <AlertTriangle />
-            <AlertTitle>Download failed</AlertTitle>
+            <AlertTitle>{t("models.downloadFailed")}</AlertTitle>
             <AlertDescription>{downloadError.message}</AlertDescription>
             <button
               onClick={() => setDownloadError(null)}
               className="absolute top-3 right-3 text-danger/60 hover:text-danger cursor-pointer"
-              aria-label="Dismiss"
+              aria-label={t("common.dismiss")}
             >
               <X size={14} />
             </button>
@@ -567,10 +575,10 @@ export function ModelsView() {
             {models.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
                 <p className="text-muted text-sm mb-4">
-                  No local models installed yet.
+                  {t("models.emptyTitle")}
                 </p>
                 <p className="text-muted-foreground text-xs mb-1">
-                  Download a recommended model below, or place model files in:
+                  {t("models.emptyHint")}
                 </p>
                 {modelsDir && (
                   <button
@@ -593,7 +601,7 @@ export function ModelsView() {
                   if (convertingPath === model.path) {
                     action = (
                       <span className="text-[10px] font-mono text-warning animate-pulse truncate">
-                        {conversionStatus || "Converting..."}
+                        {conversionStatus || t("models.converting")}
                       </span>
                     );
                   } else {
@@ -604,14 +612,14 @@ export function ModelsView() {
                         disabled={convertingPath !== null || loadingModelPath !== null || loadingPath !== null}
                         className="w-full bg-warning text-black hover:bg-warning/90"
                       >
-                        Convert
+                        {t("models.convert")}
                       </Button>
                     );
                   }
                 } else if (isActive) {
                   action = (
                     <Button variant="outline" size="sm" disabled className="w-full opacity-60">
-                      Selected
+                      {t("models.selected")}
                     </Button>
                   );
                 } else {
@@ -622,7 +630,7 @@ export function ModelsView() {
                       disabled={isLoading || loadingModelPath !== null || loadingPath !== null || convertingPath !== null}
                       className="w-full"
                     >
-                      {isLoading ? <Loader2 size={12} className="animate-spin" /> : "Load"}
+                      {isLoading ? <Loader2 size={12} className="animate-spin" /> : t("models.load")}
                     </Button>
                   );
                 }
@@ -645,7 +653,7 @@ export function ModelsView() {
                 {models.length > 0 && (
                   <div className="px-5 py-2.5 bg-black/30 border-y border-border/50">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Available for Download
+                      {t("models.availableForDownload")}
                     </span>
                   </div>
                 )}
@@ -675,7 +683,7 @@ export function ModelsView() {
                         className="w-full"
                       >
                         <Download size={11} />
-                        Get
+                        {t("models.get")}
                       </Button>
                     );
                   }
@@ -686,7 +694,7 @@ export function ModelsView() {
                     FORMAT_LABELS[rec.format] || rec.format.toUpperCase(),
                     rec.size_formatted,
                     action,
-                    <p className="text-[11px] text-muted leading-snug m-0 max-w-md">{rec.description}</p>,
+                    <p className="text-[11px] text-muted leading-snug m-0 max-w-md">{t(rec.descriptionKey)}</p>,
                     idx === arr.length - 1,
                   );
                 })}
@@ -705,14 +713,14 @@ export function ModelsView() {
         {/* BYOK Cloud Configuration */}
         <TabsContent value="openai-cloud" className="flex flex-col">
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Cloud size={16} className="text-muted" /> Cloud Provider
+            <Cloud size={16} className="text-muted" /> {t("models.cloudProvider")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
               <div className="flex-1 min-w-0">
-                <div className="text-fg font-medium mb-1">Provider</div>
+                <div className="text-fg font-medium mb-1">{t("models.providerLabel")}</div>
                 <div className="text-muted text-[13px]">
-                  Choose which cloud service transcribes your audio.
+                  {t("models.providerDesc")}
                 </div>
               </div>
               <Select
@@ -727,16 +735,16 @@ export function ModelsView() {
                   <SelectItem value="openai">OpenAI</SelectItem>
                   <SelectItem value="openrouter">OpenRouter</SelectItem>
                   <SelectItem value="gemini">Google Gemini</SelectItem>
-                  <SelectItem value="custom">Custom…</SelectItem>
+                  <SelectItem value="custom">{t("models.custom")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
               <div className="flex-1 min-w-0">
-                <div className="text-fg font-medium mb-1">API Key</div>
+                <div className="text-fg font-medium mb-1">{t("models.apiKeyLabel")}</div>
                 <div className="text-muted text-[13px]">
-                  Stored securely in your OS keyring — never written to disk.
+                  {t("models.apiKeyDesc")}
                 </div>
               </div>
               <div className="flex gap-2 w-72 shrink-0">
@@ -750,7 +758,9 @@ export function ModelsView() {
                   placeholder={
                     providerKey === "••••••••••••••••"
                       ? ""
-                      : `Enter API key for ${asrProvider.toUpperCase()}…`
+                      : t("models.apiKeyPlaceholder", {
+                          provider: asrProvider.toUpperCase(),
+                        })
                   }
                   className="flex-1 bg-black font-mono"
                 />
@@ -759,7 +769,7 @@ export function ModelsView() {
                   variant="outline"
                   size="icon"
                   onClick={() => setShowApiKey(!showApiKey)}
-                  title={showApiKey ? "Hide key" : "Show key"}
+                  title={showApiKey ? t("models.hideKey") : t("models.showKey")}
                 >
                   {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
                 </Button>
@@ -768,9 +778,9 @@ export function ModelsView() {
 
             <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
               <div className="flex-1 min-w-0">
-                <div className="text-fg font-medium mb-1">Model</div>
+                <div className="text-fg font-medium mb-1">{t("models.modelLabel")}</div>
                 <div className="text-muted text-[13px]">
-                  The transcription model requested from this provider.
+                  {t("models.modelDesc")}
                 </div>
               </div>
               <Select
@@ -779,7 +789,7 @@ export function ModelsView() {
               >
                 <SelectTrigger className="w-72 bg-black shrink-0">
                   <SelectValue>
-                    {(v: string) => (v === "custom" ? "Custom model…" : v)}
+                    {(v: string) => (v === "custom" ? t("models.customModel") : v)}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -815,7 +825,7 @@ export function ModelsView() {
                       </SelectItem>
                     </>
                   )}
-                  <SelectItem value="custom">Custom (type below)…</SelectItem>
+                  <SelectItem value="custom">{t("models.customTypeBelow")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -823,9 +833,9 @@ export function ModelsView() {
             {isCustomModel && (
               <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
                 <div className="flex-1 min-w-0">
-                  <div className="text-fg font-medium mb-1">Custom Model ID</div>
+                  <div className="text-fg font-medium mb-1">{t("models.customModelIdLabel")}</div>
                   <div className="text-muted text-[13px]">
-                    Exact model identifier sent to the API.
+                    {t("models.customModelIdDesc")}
                   </div>
                 </div>
                 <Input
@@ -838,7 +848,7 @@ export function ModelsView() {
                       handleModelChange(e.target.value);
                     }
                   }}
-                  placeholder="e.g. openrouter/owl-alpha"
+                  placeholder={t("models.customModelIdPlaceholder")}
                   className="w-72 shrink-0 bg-black font-mono"
                 />
               </div>
@@ -846,16 +856,16 @@ export function ModelsView() {
 
             <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
               <div className="flex-1 min-w-0">
-                <div className="text-fg font-medium mb-1">Base URL</div>
+                <div className="text-fg font-medium mb-1">{t("models.baseUrlLabel")}</div>
                 <div className="text-muted text-[13px]">
-                  Override the default API endpoint for this provider.
+                  {t("models.baseUrlDesc")}
                 </div>
               </div>
               <Input
                 type="text"
                 value={asrBaseUrl}
                 onChange={(e) => handleBaseUrlChange(e.target.value)}
-                placeholder="e.g. https://api.openai.com/v1"
+                placeholder={t("models.baseUrlPlaceholder")}
                 className="w-72 shrink-0 bg-black font-mono"
               />
             </div>

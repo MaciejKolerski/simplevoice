@@ -8,6 +8,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import i18n from "@/i18n/index";
 import { buildSteps, OnboardingStep, PermissionsStatus } from "./steps";
 
 interface OnboardingContextValue {
@@ -46,7 +47,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         ]);
         const cfg = JSON.parse(cfgStr || "{}");
         if (!cfg.onboarding_completed) {
-          setSteps(buildSteps(status.platform));
+          setSteps(buildSteps(status.platform, i18n.t.bind(i18n)));
           setIndex(0);
           setActive(true);
           // The main window starts hidden (visible: false); reveal it on first

@@ -1,4 +1,6 @@
 import { ReactNode } from "react";
+import { Trans } from "react-i18next";
+import type { TFunction } from "i18next";
 import { invoke } from "@tauri-apps/api/core";
 
 export type ViewId = "usage" | "models" | "transcriptions" | "settings";
@@ -44,21 +46,14 @@ async function permissionsGranted(): Promise<boolean> {
   return s.accessibility && s.microphone;
 }
 
-export function buildSteps(platform: string): OnboardingStep[] {
+export function buildSteps(platform: string, t: TFunction): OnboardingStep[] {
   const steps: OnboardingStep[] = [];
 
   steps.push({
     id: "welcome",
     view: "usage",
-    title: "Welcome to Simplevoice",
-    body: (
-      <>
-        Simplevoice turns your voice into text, fully local and private. The
-        flow is simple: press your shortcut, speak, and the transcription is
-        pasted straight into whatever app you are using. This quick tour gets
-        you set up in a minute.
-      </>
-    ),
+    title: t("onboarding.welcome.title"),
+    body: <Trans i18nKey="onboarding.welcome.body" components={{ s: <strong /> }} />,
   });
 
   if (platform === "macos") {
@@ -66,13 +61,9 @@ export function buildSteps(platform: string): OnboardingStep[] {
       id: "permissions",
       view: "settings",
       target: "permissions-section",
-      title: "Grant system permissions",
+      title: t("onboarding.permissions.title"),
       body: (
-        <>
-          Simplevoice needs the <strong>Microphone</strong> to record and{" "}
-          <strong>Accessibility</strong> to paste text for you. Use the Grant
-          buttons here. The tour continues once both are granted.
-        </>
+        <Trans i18nKey="onboarding.permissions.body" components={{ s: <strong /> }} />
       ),
       gate: permissionsGranted,
       gatePollMs: 2000,
@@ -82,14 +73,12 @@ export function buildSteps(platform: string): OnboardingStep[] {
       id: "permissions",
       view: "settings",
       target: "shortcuts-section",
-      title: "Global hotkeys on Linux",
+      title: t("onboarding.permissionsLinux.title"),
       body: (
-        <>
-          On Linux the global shortcut is captured directly from your keyboard.
-          If it ever does nothing, add your user to the <strong>input</strong>{" "}
-          group and log back in. The status box here tells you whether it is
-          active.
-        </>
+        <Trans
+          i18nKey="onboarding.permissionsLinux.body"
+          components={{ s: <strong /> }}
+        />
       ),
     });
   }
@@ -98,15 +87,8 @@ export function buildSteps(platform: string): OnboardingStep[] {
     id: "model",
     view: "models",
     target: "engine-tabs",
-    title: "Pick how you transcribe",
-    body: (
-      <>
-        Choose <strong>Local</strong> to run a model on your machine: click{" "}
-        <strong>Get</strong> to download one, then <strong>Load</strong> it. Or
-        choose <strong>Cloud (BYOK)</strong> and paste your own API key. The
-        tour continues once a model is ready.
-      </>
-    ),
+    title: t("onboarding.model.title"),
+    body: <Trans i18nKey="onboarding.model.body" components={{ s: <strong /> }} />,
     gate: recordingReady,
     gatePollMs: 1500,
   });
@@ -115,40 +97,28 @@ export function buildSteps(platform: string): OnboardingStep[] {
     id: "shortcut",
     view: "settings",
     target: "record-shortcut",
-    title: "Your recording shortcut",
-    body: (
-      <>
-        This global hotkey starts and stops recording from anywhere. A default
-        is already set, so you can click it any time to record a new
-        combination.
-      </>
-    ),
+    title: t("onboarding.shortcut.title"),
+    body: <Trans i18nKey="onboarding.shortcut.body" components={{ s: <strong /> }} />,
   });
 
   steps.push({
     id: "language",
     view: "settings",
     target: "language-select",
-    title: "Transcription language",
-    body: (
-      <>
-        Leave this on <strong>Auto-detect</strong> for multilingual use, or pick
-        a specific language to force the output and improve accuracy.
-      </>
-    ),
+    title: t("onboarding.language.title"),
+    body: <Trans i18nKey="onboarding.language.body" components={{ s: <strong /> }} />,
   });
 
   steps.push({
     id: "recording-options",
     view: "settings",
     target: "recording-section",
-    title: "Recording options",
+    title: t("onboarding.recordingOptions.title"),
     body: (
-      <>
-        <strong>Voice Activity Detection</strong> stops recording automatically
-        when you go quiet. You can also toggle sound cues and pause system audio
-        while recording. Turn on whatever fits your workflow.
-      </>
+      <Trans
+        i18nKey="onboarding.recordingOptions.body"
+        components={{ s: <strong /> }}
+      />
     ),
   });
 
@@ -156,14 +126,9 @@ export function buildSteps(platform: string): OnboardingStep[] {
     id: "test",
     view: "usage",
     hideMask: true,
-    title: "Try it now",
-    body: (
-      <>
-        Press your recording shortcut and say a sentence. Watch it get
-        transcribed and pasted. This step completes itself once you do.
-      </>
-    ),
-    nextLabel: "I'll do this later",
+    title: t("onboarding.test.title"),
+    body: <Trans i18nKey="onboarding.test.body" components={{ s: <strong /> }} />,
+    nextLabel: t("onboarding.test.nextLabel"),
     awaitWindowEvent: "transcription-added",
   });
 
@@ -171,16 +136,9 @@ export function buildSteps(platform: string): OnboardingStep[] {
     id: "done",
     view: "usage",
     target: "sidebar",
-    title: "You're all set",
-    body: (
-      <>
-        That's it. Use the sidebar to see your <strong>Usage</strong>, manage{" "}
-        <strong>Models</strong>, browse past <strong>Transcriptions</strong>,
-        and fine-tune everything under <strong>Settings</strong>. Enjoy
-        Simplevoice.
-      </>
-    ),
-    nextLabel: "Finish",
+    title: t("onboarding.done.title"),
+    body: <Trans i18nKey="onboarding.done.body" components={{ s: <strong /> }} />,
+    nextLabel: t("common.finish"),
   });
 
   return steps;

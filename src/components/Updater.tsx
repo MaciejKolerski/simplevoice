@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Download, RefreshCw, AlertTriangle, CheckCircle, Info } from "lucide-react";
 import {
   Dialog,
@@ -16,6 +17,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function Updater() {
+  const { t } = useTranslation();
   const [updateInfo, setUpdateInfo] = useState<Update | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState<"idle" | "checking" | "available" | "downloading" | "installing" | "completed" | "error">("idle");
@@ -53,7 +55,7 @@ export function Updater() {
       } else {
         console.log("[Updater] App is up to date.");
         setStatus("idle");
-        if (manual) toast.success("You're on the latest version.");
+        if (manual) toast.success(t("updater.upToDate"));
       }
     } catch (err) {
       if (checkSeqRef.current !== seq) return;
@@ -61,7 +63,7 @@ export function Updater() {
       setStatus("error");
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(msg);
-      if (manual) toast.error(`Update check failed: ${msg}`);
+      if (manual) toast.error(t("updater.checkFailed", { msg }));
     } finally {
       if (manual) window.dispatchEvent(new Event("update-check-complete"));
     }
@@ -126,7 +128,7 @@ export function Updater() {
           await relaunch();
         } catch (relaunchErr) {
           console.error("[Updater] Failed to relaunch application automatically:", relaunchErr);
-          setErrorMsg("Update downloaded. Please restart the app manually.");
+          setErrorMsg(t("updater.relaunchFailed"));
           setStatus("error");
         }
       }, 1500);
@@ -158,10 +160,10 @@ export function Updater() {
             <RefreshCw size={18} className={busy ? "animate-spin" : ""} />
           </div>
           <div className="flex flex-col gap-0.5">
-            <DialogTitle>Update available</DialogTitle>
+            <DialogTitle>{t("updater.title")}</DialogTitle>
             {updateInfo && (
               <DialogDescription className="mono text-xs">
-                Version {updateInfo.version}
+                {t("updater.version", { version: updateInfo.version })}
               </DialogDescription>
             )}
           </div>
@@ -171,7 +173,7 @@ export function Updater() {
           <div className="max-h-48 overflow-y-auto rounded-lg border border-border bg-background/60 p-3">
             <div className="mb-2 flex items-center gap-1.5 border-b border-border pb-1.5 text-[11px] font-medium tracking-wider text-muted uppercase">
               <Info size={12} />
-              <span>What&apos;s new</span>
+              <span>{t("updater.whatsNew")}</span>
             </div>
             <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/80">
               {updateInfo.body}
@@ -183,9 +185,9 @@ export function Updater() {
           <div className="flex flex-col gap-2 py-1">
             <div className="flex justify-between text-[12px] font-medium">
               <span className="text-muted">
-                {status === "downloading" && "Downloading update…"}
-                {status === "installing" && "Installing…"}
-                {status === "completed" && "Done — relaunching…"}
+                {status === "downloading" && t("updater.downloading")}
+                {status === "installing" && t("updater.installing")}
+                {status === "completed" && t("updater.doneRelaunching")}
               </span>
               <span className="mono text-foreground">{progress}%</span>
             </div>
@@ -196,8 +198,8 @@ export function Updater() {
         {status === "error" && (
           <Alert variant="destructive" className="border-danger/20 bg-danger/5">
             <AlertTriangle />
-            <AlertTitle>Update failed</AlertTitle>
-            <AlertDescription>{errorMsg || "An unexpected error occurred."}</AlertDescription>
+            <AlertTitle>{t("updater.failed")}</AlertTitle>
+            <AlertDescription>{errorMsg || t("updater.unexpectedError")}</AlertDescription>
           </Alert>
         )}
 
@@ -205,31 +207,31 @@ export function Updater() {
           {status === "available" && (
             <>
               <Button variant="ghost" onClick={() => setIsOpen(false)}>
-                Skip
+                {t("common.skip")}
               </Button>
               <Button onClick={handleInstall}>
                 <Download size={14} />
-                Update now
+                {t("updater.updateNow")}
               </Button>
             </>
           )}
 
           {status === "error" && (
             <Button variant="outline" onClick={() => setIsOpen(false)}>
-              Close
+              {t("common.close")}
             </Button>
           )}
 
           {busy && (
             <Button variant="ghost" disabled>
-              Updating…
+              {t("updater.updating")}
             </Button>
           )}
 
           {status === "completed" && (
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
               <CheckCircle size={14} />
-              Relaunching…
+              {t("updater.relaunching")}
             </span>
           )}
         </DialogFooter>

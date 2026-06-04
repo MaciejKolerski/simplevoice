@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Menu, Minus, Square, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TitleBarProps {
@@ -9,6 +10,7 @@ interface TitleBarProps {
 }
 
 export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
+  const { t } = useTranslation();
   const [isMac, setIsMac] = useState(false);
   const [isWindows, setIsWindows] = useState(false);
 
@@ -45,7 +47,7 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
             }
           />
           <TooltipContent side="bottom" sideOffset={6}>
-            Toggle sidebar
+            {t("titlebar.toggleSidebar")}
           </TooltipContent>
         </Tooltip>
       </div>
