@@ -1,10 +1,13 @@
 import { useEffect, useState, useRef } from "react";
-import { Cpu, Shield, Keyboard, Check, Mic, Info, RefreshCw } from "lucide-react";
+import { Cpu, Shield, Keyboard, Check, Mic, Info, RefreshCw, Languages } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 import { useConfig } from "../context/ConfigContext";
+import { useTranslation } from "react-i18next";
+import { changeLanguage } from "@/i18n/language";
+import { SUPPORTED_LANGUAGES, Language } from "@/i18n/detect";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -119,6 +122,7 @@ const RECORDING_MODE_LABELS: Record<string, string> = {
 
 export function SettingsView() {
   const { updateConfig } = useConfig();
+  const { t, i18n } = useTranslation();
   const [vadEnabled, setVadEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
@@ -537,6 +541,41 @@ export function SettingsView() {
       </div>
 
       <div className="w-full columns-1 lg:columns-2 2xl:columns-3 gap-6 [&>section]:mb-6 [&>section]:break-inside-avoid">
+        {/* GROUP: Interface */}
+        <section>
+          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
+            <Languages size={16} className="text-muted" /> {t("settings.interfaceLanguageGroup")}
+          </h2>
+          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+            <div className="flex justify-between items-center gap-6 p-5">
+              <div className="min-w-0">
+                <div className="text-fg font-medium mb-1">{t("settings.interfaceLanguage")}</div>
+                <div className="text-xs text-muted leading-snug">
+                  {t("settings.interfaceLanguageDesc")}
+                </div>
+              </div>
+              <Select
+                value={i18n.language}
+                onValueChange={(v) => changeLanguage((v ?? "en") as Language)}
+                items={Object.fromEntries(
+                  SUPPORTED_LANGUAGES.map((l) => [l, t(`languages.${l}`)]),
+                )}
+              >
+                <SelectTrigger className="w-48 bg-black shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPORTED_LANGUAGES.map((l) => (
+                    <SelectItem key={l} value={l}>
+                      {t(`languages.${l}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </section>
+
         {/* GROUP: Audio & Speech-to-Text */}
         <section>
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
