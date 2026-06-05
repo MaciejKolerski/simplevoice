@@ -42,6 +42,8 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // WAV path of the in-flight live session, consumed by the 'transcription-final' handler.
   const liveWavPathRef = useRef<string | null>(null);
+  // Serializes incremental paste calls so typed characters never interleave or reorder.
+  const pasteChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const toggleSidebar = () => {
     const nextVal = !sidebarCollapsed;
@@ -150,6 +152,7 @@ function App() {
     const handleStarted = () => {
       setIsRecording(true);
       setErrorMessage(null);
+      pasteChainRef.current = Promise.resolve();
     };
 
     const handleStopped = async (event: any) => {
@@ -278,15 +281,21 @@ function App() {
       invoke("set_transcribing", { active: false }).catch(() => {});
       if (!text.trim()) return;
 
+      const autopaste = localStorage.getItem("live_autopaste") !== "false";
+
       try {
         await invoke("play_done_sound");
       } catch (e) {
         console.warn("Failed to play sound:", e);
       }
 
-      invoke("paste_text", { text }).catch((err) =>
-        console.error("Paste failed:", err),
-      );
+      if (!autopaste) {
+        // Not live-typing: paste the whole text once at the end. With autopaste
+        // on, the committed deltas were already typed live (handleCommitted).
+        invoke("paste_text", { text }).catch((err) =>
+          console.error("Paste failed:", err),
+        );
+      }
 
       try {
         await invoke("set_last_transcription", { text });
@@ -318,8 +327,25 @@ function App() {
       );
     };
 
+    // Incremental live typing: type each committed delta into the active app, in
+    // order, one paste at a time (so characters never interleave or reorder).
+    const handleCommitted = (event: any) => {
+      const live =
+        localStorage.getItem("live_transcription_enabled") === "true" &&
+        (localStorage.getItem("asr_engine") || "local") === "local";
+      const autopaste = localStorage.getItem("live_autopaste") !== "false";
+      if (!live || !autopaste) return;
+      const delta: string = event?.payload?.delta || "";
+      if (!delta) return;
+      pasteChainRef.current = pasteChainRef.current
+        .catch(() => {})
+        .then(() => invoke("paste_text", { text: delta }).then(() => {}))
+        .catch((err) => console.error("Live paste failed:", err));
+    };
+
     const unlistenStarted = listen("recording-started", handleStarted);
     const unlistenStopped = listen("recording-stopped", handleStopped);
+    const unlistenCommitted = listen("transcription-committed", handleCommitted);
     const unlistenFinal = listen("transcription-final", handleFinal);
     const unlistenFailed = listen<string>(
       "recording-failed-to-start",
@@ -332,6 +358,7 @@ function App() {
     return () => {
       unlistenStarted.then((f) => f());
       unlistenStopped.then((f) => f());
+      unlistenCommitted.then((f) => f());
       unlistenFinal.then((f) => f());
       unlistenFailed.then((f) => f());
     };
