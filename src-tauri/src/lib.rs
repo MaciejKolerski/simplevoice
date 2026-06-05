@@ -245,8 +245,11 @@ fn begin_live_session(app: &tauri::AppHandle) {
         (s.vad_threshold, s.vad_silence_duration_ms)
     };
 
-    let strategy = Box::new(crate::stt::streaming::vad_segmented::VadSegmentedStrategy::new(
-        engine, threshold, silence_ms, None,
+    // LocalAgreement-2: re-decode the growing utterance buffer every ~1s and
+    // commit only stabilized words live (no mid-word splits). Works with any
+    // local batch engine via transcribe() + whitespace split.
+    let strategy = Box::new(crate::stt::streaming::local_agreement::LocalAgreementStrategy::new(
+        engine, threshold, silence_ms, 1000, None,
     ));
     let streaming = app.state::<crate::stt::streaming::StreamingController>();
     let tx = streaming.start(app.clone(), strategy);
