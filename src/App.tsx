@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "./App.css";
 import { invoke } from "@tauri-apps/api/core";
@@ -40,6 +40,8 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // WAV path of the in-flight live session, consumed by the 'transcription-final' handler.
+  const liveWavPathRef = useRef<string | null>(null);
 
   const toggleSidebar = () => {
     const nextVal = !sidebarCollapsed;
@@ -153,6 +155,18 @@ function App() {
     const handleStopped = async (event: any) => {
       const wavPath = event?.payload;
       setIsRecording(false);
+
+      // Live mode: text is streamed to the overlay; the final text arrives via
+      // 'transcription-final' (handled below). Skip the one-shot batch transcribe.
+      const liveActive =
+        localStorage.getItem("live_transcription_enabled") === "true" &&
+        (localStorage.getItem("asr_engine") || "local") === "local";
+      if (liveActive) {
+        liveWavPathRef.current =
+          wavPath && wavPath !== "Recording stopped" ? wavPath : null;
+        return;
+      }
+
       setIsTranscribing(true);
       invoke("set_transcribing", { active: true }).catch(() => {});
 
@@ -251,8 +265,62 @@ function App() {
       }
     };
 
+    // Live mode: the streamed final text arrives here (no batch transcribe ran).
+    // Paste it once and save to history, reusing the stashed WAV path.
+    const handleFinal = async (event: any) => {
+      const liveActive =
+        localStorage.getItem("live_transcription_enabled") === "true" &&
+        (localStorage.getItem("asr_engine") || "local") === "local";
+      if (!liveActive) return;
+
+      const text: string = event?.payload?.text || "";
+      setIsTranscribing(false);
+      invoke("set_transcribing", { active: false }).catch(() => {});
+      if (!text.trim()) return;
+
+      try {
+        await invoke("play_done_sound");
+      } catch (e) {
+        console.warn("Failed to play sound:", e);
+      }
+
+      invoke("paste_text", { text }).catch((err) =>
+        console.error("Paste failed:", err),
+      );
+
+      try {
+        await invoke("set_last_transcription", { text });
+      } catch (e) {
+        console.error("Failed to set last transcription:", e);
+      }
+
+      const wavPath = liveWavPathRef.current;
+      if (wavPath) {
+        let modelName = "Whisper Local";
+        try {
+          const activeModelPath = await invoke<string | null>("get_active_model");
+          if (activeModelPath) {
+            const parts = activeModelPath.split(/[\/\\]/);
+            modelName = parts[parts.length - 1];
+          }
+        } catch (e) {
+          console.warn("Failed to resolve active model name:", e);
+        }
+        try {
+          await invoke("save_transcription_data", { wavPath, text, model: modelName });
+        } catch (saveErr) {
+          console.error("Failed to save live transcription data:", saveErr);
+        }
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("transcription-added", { detail: { source: "recording" } }),
+      );
+    };
+
     const unlistenStarted = listen("recording-started", handleStarted);
     const unlistenStopped = listen("recording-stopped", handleStopped);
+    const unlistenFinal = listen("transcription-final", handleFinal);
     const unlistenFailed = listen<string>(
       "recording-failed-to-start",
       (event) => {
@@ -264,6 +332,7 @@ function App() {
     return () => {
       unlistenStarted.then((f) => f());
       unlistenStopped.then((f) => f());
+      unlistenFinal.then((f) => f());
       unlistenFailed.then((f) => f());
     };
   }, []);
