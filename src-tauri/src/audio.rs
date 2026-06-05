@@ -1,4 +1,5 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use crossbeam_channel::Sender;
 use ringbuf::{storage::Heap, traits::*, SharedRb};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
@@ -23,6 +24,12 @@ pub struct AudioState {
     /// Used to selectively resume only what *we* paused.
     pub paused_media_apps: Vec<String>,
     pub cached_devices: Vec<String>,
+    /// When `Some`, the consumer thread fans out drained chunks to a live
+    /// streaming session. Installed/cleared by the StreamingController wiring.
+    pub stream_tx: Option<Sender<Vec<f32>>>,
+    /// When true, VAD does NOT auto-stop the recording (the live segmenter owns
+    /// utterance boundaries; the session ends on manual stop).
+    pub live_mode_active: bool,
 }
 
 pub struct AudioController {
@@ -82,6 +89,8 @@ impl AudioController {
                 last_samples: Vec::new(),
                 paused_media_apps: Vec::new(),
                 cached_devices: Vec::new(),
+                stream_tx: None,
+                live_mode_active: false,
             })),
         }
     }
@@ -113,6 +122,14 @@ impl AudioController {
     pub fn set_selected_device(&self, device_name: Option<String>) {
         let mut s = self.state.lock().unwrap();
         s.selected_device = device_name;
+    }
+
+    pub fn set_stream_tx(&self, tx: Option<Sender<Vec<f32>>>) {
+        self.state.lock().unwrap().stream_tx = tx;
+    }
+
+    pub fn set_live_mode(&self, active: bool) {
+        self.state.lock().unwrap().live_mode_active = active;
     }
 
     pub fn start_recording(
@@ -179,13 +196,14 @@ impl AudioController {
 
             loop {
                 // Check state at start of loop iteration
-                let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms) = {
+                let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms, live_mode_active) = {
                     let s = state_clone.lock().unwrap();
                     (
                         s.is_recording,
                         s.vad_enabled,
                         s.vad_threshold,
                         s.vad_silence_duration_ms,
+                        s.live_mode_active,
                     )
                 };
 
@@ -213,7 +231,13 @@ impl AudioController {
                     let mut s = state_clone.lock().unwrap();
                     s.buffer.extend_from_slice(&local_buf[..read]);
 
-                    if vad_enabled {
+                    // Live fan-out: hand the chunk to the streaming session. Non-blocking;
+                    // the bounded channel returns Full rather than stalling the audio path.
+                    if let Some(tx) = &s.stream_tx {
+                        let _ = tx.try_send(local_buf[..read].to_vec());
+                    }
+
+                    if vad_enabled && !live_mode_active {
                         if rms >= vad_threshold {
                             has_spoken = true;
                             silence_samples = 0;
