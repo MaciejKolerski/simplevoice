@@ -13,11 +13,10 @@ import {
   Pause,
   Play,
   PlugZap,
-  CircleCheck,
-  CircleX,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -242,7 +241,6 @@ export function ModelsView() {
   const [modelsLoading, setModelsLoading] = useState<boolean>(false);
   const [modelsFetchError, setModelsFetchError] = useState<string | null>(null);
   const [testing, setTesting] = useState<boolean>(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const loadModelsList = async () => {
     setScanning(true);
@@ -373,7 +371,6 @@ export function ModelsView() {
   const handleProviderChange = (
     provider: "openai" | "openrouter" | "anthropic" | "gemini" | "custom",
   ) => {
-    setTestResult(null);
     setModelsFetchError(null);
     setCloudModels([]);
     setAsrProvider(provider);
@@ -456,12 +453,11 @@ export function ModelsView() {
 
   const handleTestConnection = async () => {
     setTesting(true);
-    setTestResult(null);
     try {
       const list = await fetchCloudModels();
-      setTestResult({ ok: true, message: t("models.testOk", { count: list.length }) });
+      toast.success(t("models.testOk", { count: list.length }));
     } catch (err: any) {
-      setTestResult({ ok: false, message: err?.toString() || t("models.testFailed") });
+      toast.error(t("models.testFailed"), { description: err?.toString() });
     } finally {
       setTesting(false);
     }
@@ -903,9 +899,25 @@ export function ModelsView() {
 
         {/* BYOK Cloud Configuration */}
         <TabsContent value="openai-cloud" className="flex flex-col">
-          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Cloud size={16} className="text-muted" /> {t("models.cloudProvider")}
-          </h2>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="m-0 text-base text-white font-medium flex items-center gap-2">
+              <Cloud size={16} className="text-muted" /> {t("models.cloudProvider")}
+            </h2>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleTestConnection}
+              disabled={testing || !providerKey}
+            >
+              {testing ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <PlugZap size={13} />
+              )}
+              {testing ? t("models.testing") : t("models.test")}
+            </Button>
+          </div>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
               <div className="flex-1 min-w-0">
@@ -938,64 +950,32 @@ export function ModelsView() {
                   {t("models.apiKeyDesc")}
                 </div>
               </div>
-              <div className="flex flex-col gap-2 w-72 shrink-0">
-                <div className="flex gap-2">
-                  <Input
-                    type={showApiKey ? "text" : "password"}
-                    value={providerKey}
-                    onChange={(e) => {
-                      setProviderKey(e.target.value);
-                      saveProviderKey(asrProvider, e.target.value);
-                    }}
-                    placeholder={
-                      providerKey === "••••••••••••••••"
-                        ? ""
-                        : t("models.apiKeyPlaceholder", {
-                            provider: asrProvider.toUpperCase(),
-                          })
-                    }
-                    className="flex-1 bg-black font-mono"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    title={showApiKey ? t("models.hideKey") : t("models.showKey")}
-                  >
-                    {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleTestConnection}
-                    disabled={testing || !providerKey}
-                  >
-                    {testing ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <PlugZap size={13} />
-                    )}
-                    {testing ? t("models.testing") : t("models.test")}
-                  </Button>
-                  {testResult && (
-                    <span
-                      className={`flex items-center gap-1 text-[11px] min-w-0 ${
-                        testResult.ok ? "text-success" : "text-danger"
-                      }`}
-                    >
-                      {testResult.ok ? (
-                        <CircleCheck size={13} className="shrink-0" />
-                      ) : (
-                        <CircleX size={13} className="shrink-0" />
-                      )}
-                      <span className="truncate">{testResult.message}</span>
-                    </span>
-                  )}
-                </div>
+              <div className="flex gap-2 w-72 shrink-0">
+                <Input
+                  type={showApiKey ? "text" : "password"}
+                  value={providerKey}
+                  onChange={(e) => {
+                    setProviderKey(e.target.value);
+                    saveProviderKey(asrProvider, e.target.value);
+                  }}
+                  placeholder={
+                    providerKey === "••••••••••••••••"
+                      ? ""
+                      : t("models.apiKeyPlaceholder", {
+                          provider: asrProvider.toUpperCase(),
+                        })
+                  }
+                  className="flex-1 bg-black font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  title={showApiKey ? t("models.hideKey") : t("models.showKey")}
+                >
+                  {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                </Button>
               </div>
             </div>
 
