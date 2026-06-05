@@ -2336,6 +2336,7 @@ pub fn run() {
             entries: Mutex::new(Vec::new()),
         })
         .manage(TrayLabelsState(std::sync::Mutex::new(TrayLabels::default())))
+        .manage(stt::downloader::DownloadRegistry::default())
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -2540,7 +2541,10 @@ pub fn run() {
             is_recording_window_locked_cmd,
             set_recording_window_locked,
             stt::converter::convert_model,
-            stt::downloader::download_model
+            stt::downloader::download_model,
+            stt::downloader::pause_download,
+            stt::downloader::cancel_download,
+            stt::downloader::discard_download
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

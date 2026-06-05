@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   FolderOpen,
@@ -10,6 +10,8 @@ import {
   X,
   AlertTriangle,
   Cloud,
+  Pause,
+  Play,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -166,6 +168,12 @@ const FORMAT_LABELS: Record<string, string> = {
   nemo: "NeMo",
 };
 
+// Unique identifier for a recommended model. repo_id alone is NOT unique —
+// every whisper.cpp GGML model shares "ggerganov/whisper.cpp" — so include the
+// file list to distinguish them.
+const modelKey = (model: RecommendedModel) =>
+  `${model.repo_id}::${model.files.join("|")}`;
+
 export function ModelsView() {
   const { t } = useTranslation();
 
@@ -191,11 +199,20 @@ export function ModelsView() {
   const [conversionStatus, setConversionStatus] = useState<string>("");
   const [conversionError, setConversionError] = useState<{ path: string; message: string } | null>(null);
 
-  // Downloader states
-  const [downloadingRepo, setDownloadingRepo] = useState<string | null>(null);
+  // Downloader states. Keyed by a unique per-model key (modelKey) because
+  // several recommended models share the same repo_id (all whisper.cpp GGML).
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadStatus, setDownloadStatus] = useState<string>("");
-  const [downloadError, setDownloadError] = useState<{ repoId: string; message: string } | null>(null);
+  const [downloadPaused, setDownloadPaused] = useState<boolean>(false);
+  const [downloadError, setDownloadError] = useState<{ key: string; message: string } | null>(null);
+  // Mirror of downloadingKey for the (mount-time, stale-closure-free) progress
+  // listener, so it can ignore events from any download other than the active one.
+  const downloadingKeyRef = useRef<string | null>(null);
+  const setActiveDownloadKey = (key: string | null) => {
+    downloadingKeyRef.current = key;
+    setDownloadingKey(key);
+  };
 
   // BYOK states
   const [asrProvider, setAsrProvider] = useState<
@@ -288,13 +305,17 @@ export function ModelsView() {
 
     let unlistenDownload: (() => void) | null = null;
     listen<{
+      download_id: string;
       repo_id: string;
       file: string;
       progress: number;
       current_file_index: number;
       total_files: number;
     }>("download-progress", (event) => {
-      const { progress, file, current_file_index, total_files } = event.payload;
+      const { download_id, progress, file, current_file_index, total_files } =
+        event.payload;
+      // Ignore stragglers from a download that is no longer the active one.
+      if (download_id !== downloadingKeyRef.current) return;
       setDownloadProgress(progress);
       setDownloadStatus(
         t("models.downloading", {
@@ -409,26 +430,90 @@ export function ModelsView() {
     }
   };
 
-  const handleDownloadModel = async (model: RecommendedModel) => {
-    setDownloadingRepo(model.repo_id);
-    setDownloadProgress(0);
-    setDownloadStatus(t("models.startingDownload"));
+  const runDownload = async (model: RecommendedModel) => {
+    const key = modelKey(model);
+    setActiveDownloadKey(key);
+    setDownloadPaused(false);
     setDownloadError(null);
     try {
-      await invoke("download_model", {
+      const outcome = await invoke<string>("download_model", {
         repoId: model.repo_id,
         files: model.files,
+        downloadId: key,
       });
-      await loadModelsList();
+      if (outcome === "paused") {
+        // Keep the row in its paused state (progress + resume/cancel controls).
+        setDownloadPaused(true);
+        setDownloadStatus(t("models.paused"));
+        return;
+      }
+      // "completed" or "cancelled" -> tear down the active-download UI.
+      setActiveDownloadKey(null);
+      setDownloadPaused(false);
+      setDownloadProgress(0);
+      setDownloadStatus("");
+      if (outcome === "completed") {
+        await loadModelsList();
+      }
     } catch (err: any) {
       console.error("Failed to download model:", err);
       setDownloadError({
-        repoId: model.repo_id,
+        key,
         message: err?.toString() || t("models.unknownError"),
       });
-    } finally {
-      setDownloadingRepo(null);
+      setActiveDownloadKey(null);
+      setDownloadPaused(false);
+      setDownloadProgress(0);
       setDownloadStatus("");
+    }
+  };
+
+  const handleDownloadModel = (model: RecommendedModel) => {
+    setDownloadProgress(0);
+    setDownloadStatus(t("models.startingDownload"));
+    runDownload(model);
+  };
+
+  // Resume keeps the current progress; the backend continues from the partial file.
+  const handleResumeDownload = (model: RecommendedModel) => {
+    setDownloadStatus(t("models.startingDownload"));
+    runDownload(model);
+  };
+
+  const handlePauseDownload = async () => {
+    if (!downloadingKey) return;
+    try {
+      await invoke("pause_download", { downloadId: downloadingKey });
+    } catch (err) {
+      console.error("Failed to pause download:", err);
+    }
+  };
+
+  const handleCancelDownload = async (model: RecommendedModel) => {
+    if (!downloadingKey) return;
+    if (downloadPaused) {
+      // Paused downloads have no running task to signal — remove partial data
+      // directly and tear down the UI ourselves.
+      try {
+        await invoke("discard_download", {
+          repoId: model.repo_id,
+          files: model.files,
+          downloadId: downloadingKey,
+        });
+      } catch (err) {
+        console.error("Failed to discard download:", err);
+      }
+      setActiveDownloadKey(null);
+      setDownloadPaused(false);
+      setDownloadProgress(0);
+      setDownloadStatus("");
+      return;
+    }
+    // Active download: signal the loop, which cleans up and resolves runDownload.
+    try {
+      await invoke("cancel_download", { downloadId: downloadingKey });
+    } catch (err) {
+      console.error("Failed to cancel download:", err);
     }
   };
 
@@ -658,7 +743,7 @@ export function ModelsView() {
                   </div>
                 )}
                 {RECOMMENDED_MODELS.filter(r => !isModelDownloaded(r)).map((rec, idx, arr) => {
-                  const isDownloading = downloadingRepo === rec.repo_id;
+                  const isDownloading = downloadingKey === modelKey(rec);
 
                   let action: React.ReactNode;
                   if (isDownloading) {
@@ -669,8 +754,39 @@ export function ModelsView() {
                         </span>
                         <Progress
                           value={downloadProgress}
-                          className="w-full [&_[data-slot=progress-track]]:h-1 [&_[data-slot=progress-indicator]]:bg-info"
+                          className={`w-full [&_[data-slot=progress-track]]:h-1 [&_[data-slot=progress-indicator]]:bg-info ${
+                            downloadPaused ? "opacity-40" : ""
+                          }`}
                         />
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {downloadPaused ? (
+                            <button
+                              onClick={() => handleResumeDownload(rec)}
+                              title={t("models.resume")}
+                              aria-label={t("models.resume")}
+                              className="text-muted hover:text-info transition-colors cursor-pointer"
+                            >
+                              <Play size={13} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={handlePauseDownload}
+                              title={t("models.pause")}
+                              aria-label={t("models.pause")}
+                              className="text-muted hover:text-info transition-colors cursor-pointer"
+                            >
+                              <Pause size={13} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleCancelDownload(rec)}
+                            title={t("models.cancelDownload")}
+                            aria-label={t("models.cancelDownload")}
+                            className="text-muted hover:text-danger transition-colors cursor-pointer"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
                       </div>
                     );
                   } else {
@@ -679,7 +795,7 @@ export function ModelsView() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleDownloadModel(rec)}
-                        disabled={downloadingRepo !== null || loadingModelPath !== null || loadingPath !== null}
+                        disabled={downloadingKey !== null || loadingModelPath !== null || loadingPath !== null}
                         className="w-full"
                       >
                         <Download size={11} />
@@ -689,7 +805,7 @@ export function ModelsView() {
                   }
 
                   return renderModelRow(
-                    rec.repo_id,
+                    modelKey(rec),
                     rec.name,
                     FORMAT_LABELS[rec.format] || rec.format.toUpperCase(),
                     rec.size_formatted,
@@ -703,7 +819,7 @@ export function ModelsView() {
           </div>
 
           {/* Download status bar */}
-          {downloadingRepo && downloadStatus && (
+          {downloadingKey && downloadStatus && (
             <div className="px-4 py-2 rounded-lg border border-info/15 bg-info/5 text-info text-[11px] font-mono">
               {downloadStatus}
             </div>

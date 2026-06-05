@@ -71,6 +71,22 @@ impl AsrFactory {
             }
         }
         if path.is_dir() {
+            // A directory still holding `.part` files is a download in progress
+            // (or a paused/interrupted one). Treat it as not-yet-a-model so a
+            // half-finished multi-file model is never listed as installed.
+            let has_partial = std::fs::read_dir(path)
+                .map(|entries| {
+                    entries
+                        .filter_map(|e| e.ok())
+                        .any(|e| e.path().extension().is_some_and(|ext| ext == "part"))
+                })
+                .unwrap_or(false);
+            if has_partial {
+                return Err(AppError::Model(format!(
+                    "Incomplete download at: {}",
+                    path.display()
+                )));
+            }
             if path.join("model.safetensors").exists()
                 || path.join("model.safetensors.index.json").exists()
             {
