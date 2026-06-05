@@ -61,6 +61,8 @@
     "vadDesc": "Automatycznie zatrzymuj nagrywanie, gdy przestaniesz mówić.",
     "liveTranscription": "Transkrypcja na żywo",
     "liveTranscriptionDesc": "Pokazuj tekst w nakładce nagrywania w trakcie mówienia, a nie dopiero po zakończeniu.",
+    "liveAutopaste": "Wpisuj transkrypcję na żywo",
+    "liveAutopasteDesc": "Wpisuj zatwierdzone słowa do aktywnej aplikacji w trakcie mówienia. Gdy wyłączone, cały tekst zostaje wklejony raz na końcu.",
     "soundEffects": "Efekty dźwiękowe",
     "soundEffectsDesc": "Odtwarzaj wysokiej jakości sygnał dźwiękowy przy rozpoczęciu i zatrzymaniu nagrywania.",
     "pauseSystemAudio": "Wstrzymaj dźwięk systemowy",

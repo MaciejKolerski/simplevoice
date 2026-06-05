@@ -61,6 +61,8 @@
     "vadDesc": "Automatically stop recording when you stop speaking.",
     "liveTranscription": "Live transcription",
     "liveTranscriptionDesc": "Show text in the recording overlay as you speak, instead of only after you stop.",
+    "liveAutopaste": "Type live transcription",
+    "liveAutopasteDesc": "Type confirmed words into the active app as you speak. When off, the full text is pasted once at the end.",
     "soundEffects": "Sound Effects",
     "soundEffectsDesc": "Play a premium audio cue when starting and stopping recording.",
     "pauseSystemAudio": "Pause System Audio",

@@ -61,6 +61,8 @@
     "vadDesc": "Aufnahme automatisch beenden, wenn du aufhörst zu sprechen.",
     "liveTranscription": "Live-Transkription",
     "liveTranscriptionDesc": "Text während des Sprechens im Aufnahme-Overlay anzeigen, statt erst nach dem Stopp.",
+    "liveAutopaste": "Live-Transkription tippen",
+    "liveAutopasteDesc": "Bestätigte Wörter während des Sprechens in die aktive App tippen. Wenn aus, wird der ganze Text am Ende einmal eingefügt.",
     "soundEffects": "Soundeffekte",
     "soundEffectsDesc": "Beim Starten und Beenden der Aufnahme einen hochwertigen Audiohinweis abspielen.",
     "pauseSystemAudio": "Systemaudio pausieren",
