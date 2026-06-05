@@ -3,6 +3,8 @@ use crate::error::AppError;
 
 pub mod segmenter;
 pub mod vad_segmented;
+pub mod controller;
+pub use controller::StreamingController;
 
 /// Events emitted by a live strategy. Serialized to the frontend in Faza 0b.
 /// `Committed.full` is the authoritative committed text (single source of truth);
