@@ -121,6 +121,7 @@ export function SettingsView() {
   const { updateConfig } = useConfig();
   const { t, i18n } = useTranslation();
   const [vadEnabled, setVadEnabled] = useState(false);
+  const [liveEnabled, setLiveEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
@@ -202,6 +203,12 @@ export function SettingsView() {
     invoke("set_vad_enabled", { enabled: savedVad }).catch((err) => {
       console.error("Failed to set VAD state on mount:", err);
     });
+
+    const savedLive =
+      localStorage.getItem("live_transcription_enabled") === "true";
+    setLiveEnabled(savedLive);
+    // Mirror to config.json so the backend (is_live_transcription_enabled) agrees.
+    updateConfig("live_transcription_enabled", savedLive);
 
     const savedSound =
       localStorage.getItem("sound_feedback_enabled") !== "false";
@@ -465,6 +472,12 @@ export function SettingsView() {
     }
   };
 
+  const handleLiveToggle = (checked: boolean) => {
+    setLiveEnabled(checked);
+    localStorage.setItem("live_transcription_enabled", String(checked));
+    updateConfig("live_transcription_enabled", checked);
+  };
+
   const handleSoundToggle = (checked: boolean) => {
     setSoundEnabled(checked);
     localStorage.setItem("sound_feedback_enabled", String(checked));
@@ -678,6 +691,18 @@ export function SettingsView() {
               </div>
             </div>
             <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
+          </div>
+
+          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+            <div className="min-w-0">
+              <div className="text-fg font-medium mb-1">
+                {t("settings.liveTranscription")}
+              </div>
+              <div className="text-muted text-[13px]">
+                {t("settings.liveTranscriptionDesc")}
+              </div>
+            </div>
+            <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
           </div>
 
           <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
