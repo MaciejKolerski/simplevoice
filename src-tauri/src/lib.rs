@@ -206,6 +206,64 @@ fn is_sound_feedback_enabled(app_handle: &tauri::AppHandle) -> bool {
     true
 }
 
+/// Reads `live_transcription_enabled` from config.json. Defaults to false, so
+/// every live code path is dormant unless the user opts in (Faza 0c UI).
+fn is_live_transcription_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let app_local_data = match app_handle.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return false,
+    };
+    let config_path = app_local_data.join("config.json");
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("live_transcription_enabled").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
+/// Starts a live session if the flag is set and a local engine is loaded.
+/// No-op otherwise (cloud/no-model/flag-off => classic batch behavior).
+fn begin_live_session(app: &tauri::AppHandle) {
+    if !is_live_transcription_enabled(app) {
+        return;
+    }
+    let config = app.state::<AppConfig>();
+    let engine_is_local = config.active.lock().unwrap().engine == "local";
+    if !engine_is_local {
+        return;
+    }
+    let stt = app.state::<SttController>();
+    let engine = { stt.state.lock().unwrap().engine.clone() };
+    let Some(engine) = engine else { return };
+
+    let audio = app.state::<AudioController>();
+    let (threshold, silence_ms) = {
+        let s = audio.state.lock().unwrap();
+        (s.vad_threshold, s.vad_silence_duration_ms)
+    };
+
+    let strategy = Box::new(crate::stt::streaming::vad_segmented::VadSegmentedStrategy::new(
+        engine, threshold, silence_ms, None,
+    ));
+    let streaming = app.state::<crate::stt::streaming::StreamingController>();
+    let tx = streaming.start(app.clone(), strategy);
+    audio.set_stream_tx(Some(tx));
+    audio.set_live_mode(true);
+}
+
+/// Finishes the active live session (emits `transcription-final`) and clears
+/// the audio tap. No-op if no session is active.
+fn end_live_session(app: &tauri::AppHandle) {
+    let audio = app.state::<AudioController>();
+    audio.set_stream_tx(None);
+    audio.set_live_mode(false);
+    let streaming = app.state::<crate::stt::streaming::StreamingController>();
+    streaming.finish();
+}
+
 fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -636,6 +694,7 @@ fn start_recording(
     play_backend_sound(&app_handle, "start");
     let _ = rebuild_tray_menu(&app_handle);
     update_recording_window_visibility(&app_handle);
+    begin_live_session(&app_handle);
     Ok(())
 }
 
@@ -645,6 +704,7 @@ fn stop_recording(
     app_handle: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
     let res = controller.stop_recording(&app_handle);
+    end_live_session(&app_handle);
     if res.is_ok() {
         play_backend_sound(&app_handle, "stop");
         update_recording_window_visibility(&app_handle);
@@ -974,6 +1034,7 @@ fn toggle_recording(app: &tauri::AppHandle) {
             let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
             let _ = app.emit("recording-stopped", payload);
             update_recording_window_visibility(app);
+            end_live_session(app);
         }
     } else {
         let stt = app.state::<SttController>();
@@ -985,6 +1046,7 @@ fn toggle_recording(app: &tauri::AppHandle) {
                     play_backend_sound(app, "start");
                     let _ = app.emit("recording-started", ());
                     update_recording_window_visibility(app);
+                    begin_live_session(app);
                 }
             }
             Err(reason) => {
@@ -2352,6 +2414,7 @@ pub fn run() {
         })
         .manage(TrayLabelsState(std::sync::Mutex::new(TrayLabels::default())))
         .manage(stt::downloader::DownloadRegistry::default())
+        .manage(crate::stt::streaming::StreamingController::new())
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
