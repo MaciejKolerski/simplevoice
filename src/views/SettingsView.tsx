@@ -122,6 +122,7 @@ export function SettingsView() {
   const { t, i18n } = useTranslation();
   const [vadEnabled, setVadEnabled] = useState(false);
   const [liveEnabled, setLiveEnabled] = useState(false);
+  const [liveAutopaste, setLiveAutopaste] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
@@ -209,6 +210,9 @@ export function SettingsView() {
     setLiveEnabled(savedLive);
     // Mirror to config.json so the backend (is_live_transcription_enabled) agrees.
     updateConfig("live_transcription_enabled", savedLive);
+
+    // Frontend-only flag (App.tsx reads it); default on.
+    setLiveAutopaste(localStorage.getItem("live_autopaste") !== "false");
 
     const savedSound =
       localStorage.getItem("sound_feedback_enabled") !== "false";
@@ -478,6 +482,11 @@ export function SettingsView() {
     updateConfig("live_transcription_enabled", checked);
   };
 
+  const handleLiveAutopasteToggle = (checked: boolean) => {
+    setLiveAutopaste(checked);
+    localStorage.setItem("live_autopaste", String(checked));
+  };
+
   const handleSoundToggle = (checked: boolean) => {
     setSoundEnabled(checked);
     localStorage.setItem("sound_feedback_enabled", String(checked));
@@ -704,6 +713,23 @@ export function SettingsView() {
             </div>
             <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
           </div>
+
+          {liveEnabled && (
+            <div className="flex justify-between items-center gap-6 p-5 pl-8 border-b border-border last:border-b-0">
+              <div className="min-w-0">
+                <div className="text-fg font-medium mb-1">
+                  {t("settings.liveAutopaste")}
+                </div>
+                <div className="text-muted text-[13px]">
+                  {t("settings.liveAutopasteDesc")}
+                </div>
+              </div>
+              <Switch
+                checked={liveAutopaste}
+                onCheckedChange={handleLiveAutopasteToggle}
+              />
+            </div>
+          )}
 
           <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
             <div className="min-w-0">
