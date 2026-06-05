@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
 type Status = "idle" | "recording" | "transcribing";
 
@@ -16,6 +17,12 @@ const MULTIPLIERS = [0.2, 0.45, 0.75, 0.95, 1.0, 0.95, 0.75, 0.45, 0.2];
 
 export function RecordingWindowView() {
   const [locked, setLocked] = useState<boolean>(true);
+
+  // Live transcription text (only populated when live mode is on; the backend
+  // never emits these events otherwise, so the panel stays hidden).
+  const [committed, setCommitted] = useState("");
+  const [tentative, setTentative] = useState("");
+  const expandedRef = useRef(false);
 
   // Status and amplitude are read inside the rAF loop, so they live in refs to
   // avoid re-renders (and to avoid relying on CSS transitions, which ghost on
@@ -43,6 +50,8 @@ export function RecordingWindowView() {
 
     const unlistenStarted = listen("recording-started", () => {
       statusRef.current = "recording";
+      setCommitted("");
+      setTentative("");
     });
 
     const unlistenStopped = listen("recording-stopped", () => {
@@ -63,14 +72,45 @@ export function RecordingWindowView() {
       setLocked(event.payload);
     });
 
+    // Live transcription stream (Faza 0b backend). committed = solid, tentative = dimmed.
+    const unlistenCommitted = listen<{ delta: string; full: string }>(
+      "transcription-committed",
+      (event) => setCommitted(event.payload.full),
+    );
+    const unlistenPartial = listen<{ text: string }>(
+      "transcription-partial",
+      (event) => setTentative(event.payload.text),
+    );
+    const unlistenFinal = listen<{ text: string }>(
+      "transcription-final",
+      (event) => {
+        setCommitted(event.payload.text);
+        setTentative("");
+      },
+    );
+
     return () => {
       unlistenStarted.then((f) => f());
       unlistenStopped.then((f) => f());
       unlistenTranscribing.then((f) => f());
       unlistenAmplitude.then((f) => f());
       unlistenLock.then((f) => f());
+      unlistenCommitted.then((f) => f());
+      unlistenPartial.then((f) => f());
+      unlistenFinal.then((f) => f());
     };
   }, []);
+
+  // Grow the overlay window when live text is present, shrink it back when not.
+  // Width stays 200 (preserves the centered position); only height changes.
+  useEffect(() => {
+    const hasText = committed.length > 0 || tentative.length > 0;
+    if (hasText === expandedRef.current) return;
+    expandedRef.current = hasText;
+    getCurrentWindow()
+      .setSize(new LogicalSize(200, hasText ? 170 : 60))
+      .catch(() => {});
+  }, [committed, tentative]);
 
   // Canvas render loop. Drawing on a fixed-size canvas and clearing every frame
   // avoids the partial-repaint ghosting that animated DOM elements suffer from
@@ -160,15 +200,32 @@ export function RecordingWindowView() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  const hasText = committed.length > 0 || tentative.length > 0;
+
   return (
     <div className="w-full h-full flex items-center justify-center select-none pointer-events-none">
-      <div
-        data-tauri-drag-region
-        className={`flex items-center justify-center px-5 h-[36px] rounded-full border bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing ${
-          !locked ? "border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : "border-white/10"
-        }`}
-      >
-        <canvas ref={canvasRef} className="block" />
+      <div className="flex flex-col items-center gap-2">
+        <div
+          data-tauri-drag-region
+          className={`flex items-center justify-center px-5 h-[36px] rounded-full border bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing ${
+            !locked ? "border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : "border-white/10"
+          }`}
+        >
+          <canvas ref={canvasRef} className="block" />
+        </div>
+        {hasText && (
+          <div className="w-[180px] max-h-[110px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+            <p className="text-[12px] leading-snug break-words text-white/95">
+              {committed}
+              {tentative && (
+                <span className="text-white/45 italic">
+                  {committed ? " " : ""}
+                  {tentative}
+                </span>
+              )}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
