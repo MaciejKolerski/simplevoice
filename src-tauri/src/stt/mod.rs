@@ -8,6 +8,7 @@ pub mod onnx_engine;
 pub mod nemo_engine;
 pub mod converter;
 pub mod downloader;
+pub mod streaming;
 
 #[cfg(feature = "candle")]
 pub mod candle;
