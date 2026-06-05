@@ -55,6 +55,12 @@ impl SpeechSegmenter {
         }
     }
 
+    /// Borrow the speech accumulated for the current (not-yet-closed) segment.
+    /// Used by LocalAgreement to re-decode the growing utterance buffer.
+    pub fn pending(&self) -> &[f32] {
+        &self.current
+    }
+
     /// Flush buffered speech (e.g. on manual stop). Returns `None` if empty.
     pub fn flush(&mut self) -> Option<Vec<f32>> {
         self.has_spoken = false;

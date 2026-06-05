@@ -3,6 +3,9 @@ use crate::error::AppError;
 
 pub mod segmenter;
 pub mod vad_segmented;
+pub mod words;
+pub mod stabilizer;
+pub mod local_agreement;
 pub mod controller;
 pub use controller::StreamingController;
 
