@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
 type Status = "idle" | "recording" | "transcribing";
 
@@ -22,7 +21,6 @@ export function RecordingWindowView() {
   // never emits these events otherwise, so the panel stays hidden).
   const [committed, setCommitted] = useState("");
   const [tentative, setTentative] = useState("");
-  const expandedRef = useRef(false);
 
   // Status and amplitude are read inside the rAF loop, so they live in refs to
   // avoid re-renders (and to avoid relying on CSS transitions, which ghost on
@@ -100,17 +98,6 @@ export function RecordingWindowView() {
       unlistenFinal.then((f) => f());
     };
   }, []);
-
-  // Grow the overlay window when live text is present, shrink it back when not.
-  // Width stays 200 (preserves the centered position); only height changes.
-  useEffect(() => {
-    const hasText = committed.length > 0 || tentative.length > 0;
-    if (hasText === expandedRef.current) return;
-    expandedRef.current = hasText;
-    getCurrentWindow()
-      .setSize(new LogicalSize(200, hasText ? 170 : 60))
-      .catch(() => {});
-  }, [committed, tentative]);
 
   // Canvas render loop. Drawing on a fixed-size canvas and clearing every frame
   // avoids the partial-repaint ghosting that animated DOM elements suffer from
@@ -202,31 +189,34 @@ export function RecordingWindowView() {
 
   const hasText = committed.length > 0 || tentative.length > 0;
 
+  // The overlay window is a fixed 200x180 transparent, click-through panel. We
+  // top-anchor the content (pt-3 == the old 12px vertical centering inside the
+  // former 60px window) so the waveform pill sits in exactly the same on-screen
+  // spot as before; the live-text panel renders below it in the (otherwise
+  // transparent) space, so nothing is clipped.
   return (
-    <div className="w-full h-full flex items-center justify-center select-none pointer-events-none">
-      <div className="flex flex-col items-center gap-2">
-        <div
-          data-tauri-drag-region
-          className={`flex items-center justify-center px-5 h-[36px] rounded-full border bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing ${
-            !locked ? "border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : "border-white/10"
-          }`}
-        >
-          <canvas ref={canvasRef} className="block" />
-        </div>
-        {hasText && (
-          <div className="w-[180px] max-h-[110px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
-            <p className="text-[12px] leading-snug break-words text-white/95">
-              {committed}
-              {tentative && (
-                <span className="text-white/45 italic">
-                  {committed ? " " : ""}
-                  {tentative}
-                </span>
-              )}
-            </p>
-          </div>
-        )}
+    <div className="w-full h-full flex flex-col items-center justify-start pt-3 select-none pointer-events-none">
+      <div
+        data-tauri-drag-region
+        className={`flex items-center justify-center px-5 h-[36px] rounded-full border bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing ${
+          !locked ? "border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : "border-white/10"
+        }`}
+      >
+        <canvas ref={canvasRef} className="block" />
       </div>
+      {hasText && (
+        <div className="mt-2 w-[184px] max-h-[120px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <p className="text-[12px] leading-snug break-words text-white/95">
+            {committed}
+            {tentative && (
+              <span className="text-white/45 italic">
+                {committed ? " " : ""}
+                {tentative}
+              </span>
+            )}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

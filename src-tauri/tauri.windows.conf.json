@@ -19,7 +19,7 @@
         "label": "recording_window",
         "title": "Recording Window",
         "width": 200,
-        "height": 60,
+        "height": 180,
         "resizable": false,
         "fullscreen": false,
         "decorations": false,
