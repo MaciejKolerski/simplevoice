@@ -2,6 +2,75 @@ use reqwest::multipart;
 use std::io::Cursor;
 use base64::Engine;
 
+/// Keep model ids that look like speech-to-text models.
+fn asr_model_filter(id: &str) -> bool {
+    let lower = id.to_lowercase();
+    ["whisper", "transcribe", "asr"]
+        .iter()
+        .any(|kw| lower.contains(kw))
+}
+
+/// Apply the ASR keyword filter, but if it removes everything, return the full
+/// list (protects unusual custom/self-hosted servers whose ids don't match).
+fn apply_asr_filter(all: Vec<String>) -> Vec<String> {
+    let filtered: Vec<String> = all.iter().filter(|id| asr_model_filter(id)).cloned().collect();
+    if filtered.is_empty() {
+        all
+    } else {
+        filtered
+    }
+}
+
+fn sort_dedup(mut v: Vec<String>) -> Vec<String> {
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// Parse model ids from an OpenAI-style `{ "data": [ { "id": ... } ] }` body.
+fn parse_openai_models(json: &serde_json::Value) -> Vec<String> {
+    json.get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Parse Gemini models, keeping only those that support `generateContent`
+/// (the method the transcription path uses) and stripping the `models/` prefix.
+fn parse_gemini_models(json: &serde_json::Value) -> Vec<String> {
+    json.get("models")
+        .and_then(|m| m.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|m| {
+                    m.get("supportedGenerationMethods")
+                        .and_then(|v| v.as_array())
+                        .map(|methods| {
+                            methods.iter().any(|x| x.as_str() == Some("generateContent"))
+                        })
+                        .unwrap_or(false)
+                })
+                .filter_map(|m| m.get("name").and_then(|v| v.as_str()))
+                .map(|name| name.strip_prefix("models/").unwrap_or(name).to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Trim and cap an error body so it is safe to surface in the UI.
+fn truncate(s: &str, max: usize) -> String {
+    let s = s.trim();
+    if s.chars().count() > max {
+        s.chars().take(max).collect::<String>() + "…"
+    } else {
+        s.to_string()
+    }
+}
+
 fn pcm_to_wav_bytes(samples: &[f32]) -> Result<Vec<u8>, String> {
     let mut buffer = Cursor::new(Vec::new());
     let spec = hound::WavSpec {
@@ -268,4 +337,169 @@ pub async fn transcribe_cloud(
         .map_err(|e| format!("Failed to parse cloud response: {}", e))?;
 
     Ok(result.text.trim().to_string())
+}
+
+pub async fn list_models(
+    provider: &str,
+    base_url: Option<&str>,
+    api_key: &str,
+) -> Result<Vec<String>, String> {
+    let provider_str = provider.trim().to_lowercase();
+    if provider_str == "anthropic" {
+        return Err("Anthropic does not support model listing. Please select a different provider.".to_string());
+    }
+    let base_trimmed = base_url.unwrap_or("").trim();
+    let client = reqwest::Client::new();
+
+    if provider_str == "gemini" {
+        let base = if base_trimmed.is_empty() {
+            "https://generativelanguage.googleapis.com/v1beta"
+        } else {
+            base_trimmed
+        };
+        let endpoint = format!("{}/models", base.trim_end_matches('/'));
+        let response = client
+            .get(&endpoint)
+            .header("x-goog-api-key", api_key)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to reach Gemini: {}", e))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(format!("{} — {}", status, truncate(&body, 300)));
+        }
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse Gemini models: {}", e))?;
+        return Ok(sort_dedup(parse_gemini_models(&json)));
+    }
+
+    // OpenAI / OpenRouter / custom (OpenAI-compatible)
+    let base = if base_trimmed.is_empty() {
+        match provider_str.as_str() {
+            "openrouter" => "https://openrouter.ai/api/v1",
+            _ => "https://api.openai.com/v1",
+        }
+    } else {
+        base_trimmed
+    };
+    let endpoint = format!("{}/models", base.trim_end_matches('/'));
+    let response = client
+        .get(&endpoint)
+        .bearer_auth(api_key)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to reach provider: {}", e))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("{} — {}", status, truncate(&body, 300)));
+    }
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse models: {}", e))?;
+    Ok(sort_dedup(apply_asr_filter(parse_openai_models(&json))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn asr_filter_matches_keywords() {
+        assert!(asr_model_filter("whisper-1"));
+        assert!(asr_model_filter("gpt-4o-transcribe"));
+        assert!(asr_model_filter("openai/whisper-large-v3"));
+        assert!(asr_model_filter("some-ASR-model"));
+        assert!(!asr_model_filter("gpt-4o"));
+        assert!(!asr_model_filter("text-embedding-3-small"));
+    }
+
+    #[test]
+    fn parses_openai_data_ids() {
+        let j = json!({"data":[{"id":"whisper-1"},{"id":"gpt-4o"}]});
+        assert_eq!(parse_openai_models(&j), vec!["whisper-1", "gpt-4o"]);
+    }
+
+    #[test]
+    fn openai_missing_data_is_empty() {
+        let j = json!({"object":"list"});
+        assert!(parse_openai_models(&j).is_empty());
+    }
+
+    #[test]
+    fn gemini_keeps_generatecontent_and_strips_prefix() {
+        let j = json!({"models":[
+            {"name":"models/gemini-1.5-flash","supportedGenerationMethods":["generateContent","countTokens"]},
+            {"name":"models/embedding-001","supportedGenerationMethods":["embedContent"]}
+        ]});
+        assert_eq!(parse_gemini_models(&j), vec!["gemini-1.5-flash"]);
+    }
+
+    #[test]
+    fn asr_filter_empty_fallback_returns_all() {
+        let all = vec!["model-a".to_string(), "model-b".to_string()];
+        assert_eq!(apply_asr_filter(all.clone()), all);
+    }
+
+    #[test]
+    fn asr_filter_keeps_only_matches_when_present() {
+        let all = vec!["whisper-1".to_string(), "gpt-4o".to_string()];
+        assert_eq!(apply_asr_filter(all), vec!["whisper-1".to_string()]);
+    }
+
+    #[test]
+    fn sort_dedup_orders_and_unifies() {
+        let v = vec!["b".to_string(), "a".to_string(), "a".to_string()];
+        assert_eq!(sort_dedup(v), vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn truncate_short_string_unchanged() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_at_exact_max_unchanged() {
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_long_ascii_appends_ellipsis() {
+        assert_eq!(truncate("hello", 3), "hel…");
+    }
+
+    #[test]
+    fn truncate_trims_whitespace() {
+        assert_eq!(truncate("  hi  ", 10), "hi");
+    }
+
+    #[test]
+    fn truncate_is_unicode_safe() {
+        assert_eq!(truncate("héllo wörld", 4), "héll…");
+    }
+
+    #[test]
+    fn truncate_zero_max_is_just_ellipsis() {
+        assert_eq!(truncate("abc", 0), "…");
+    }
+
+    #[test]
+    fn sort_dedup_handles_non_adjacent_duplicates() {
+        let v = vec!["a".to_string(), "b".to_string(), "a".to_string()];
+        assert_eq!(sort_dedup(v), vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn gemini_skips_missing_name_and_keeps_unprefixed() {
+        let j = json!({"models":[
+            {"supportedGenerationMethods":["generateContent"]},
+            {"name":"gemini-pro","supportedGenerationMethods":["generateContent"]}
+        ]});
+        assert_eq!(parse_gemini_models(&j), vec!["gemini-pro"]);
+    }
 }

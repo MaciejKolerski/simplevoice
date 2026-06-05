@@ -1429,6 +1429,21 @@ fn has_secure_api_key(provider: String) -> Result<bool, String> {
     }
 }
 
+#[tauri::command]
+async fn list_cloud_models(
+    provider: String,
+    base_url: Option<String>,
+) -> Result<Vec<String>, String> {
+    let key = get_secure_api_key(provider.clone())?;
+    if key.trim().is_empty() {
+        return Err(format!(
+            "API key for {} is missing. Set it above first.",
+            provider
+        ));
+    }
+    crate::stt::cloud::list_models(&provider, base_url.as_deref(), &key).await
+}
+
 /// macOS App Nap suppression, held for the lifetime of a transcription.
 ///
 /// SimpleVoice runs as an `Accessory` (menu-bar) app with its main window
@@ -2512,6 +2527,7 @@ pub fn run() {
             get_secure_api_key,
             delete_secure_api_key,
             has_secure_api_key,
+            list_cloud_models,
             minimize_window,
             maximize_window,
             close_window,

@@ -12,9 +12,11 @@ import {
   Cloud,
   Pause,
   Play,
+  PlugZap,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -174,6 +176,15 @@ const FORMAT_LABELS: Record<string, string> = {
 const modelKey = (model: RecommendedModel) =>
   `${model.repo_id}::${model.files.join("|")}`;
 
+// Curated fallback shown when the provider's live model list is unavailable
+// (no key yet, fetch error, or an empty response).
+const FALLBACK_CLOUD_MODELS: Record<string, string[]> = {
+  openai: ["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+  openrouter: ["openai/whisper-large-v3"],
+  gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
+  custom: [],
+};
+
 export function ModelsView() {
   const { t } = useTranslation();
 
@@ -224,6 +235,12 @@ export function ModelsView() {
   const [asrBaseUrl, setAsrBaseUrl] = useState<string>(
     "https://api.openai.com/v1",
   );
+
+  // Cloud model-list + connection-test state
+  const [cloudModels, setCloudModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState<boolean>(false);
+  const [modelsFetchError, setModelsFetchError] = useState<string | null>(null);
+  const [testing, setTesting] = useState<boolean>(false);
 
   const loadModelsList = async () => {
     setScanning(true);
@@ -338,9 +355,24 @@ export function ModelsView() {
     };
   }, []);
 
+  // Auto-fetch the live model list when on the Cloud tab and a key is present.
+  // Debounced so typing a key doesn't fire a request per keystroke.
+  useEffect(() => {
+    if (asrEngine !== "openai-cloud") return;
+    if (!providerKey) return; // no key -> keep the curated fallback
+    if (asrProvider === "anthropic") return; // can't list/transcribe; keep fallback
+    const handle = setTimeout(() => {
+      fetchCloudModels().catch(() => {});
+    }, 600);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asrEngine, asrProvider, asrBaseUrl, providerKey]);
+
   const handleProviderChange = (
     provider: "openai" | "openrouter" | "anthropic" | "gemini" | "custom",
   ) => {
+    setModelsFetchError(null);
+    setCloudModels([]);
     setAsrProvider(provider);
     localStorage.setItem("asr_provider", provider);
 
@@ -398,6 +430,41 @@ export function ModelsView() {
     setAsrEngine(engine);
     localStorage.setItem("asr_engine", engine);
     window.dispatchEvent(new Event("asr-engine-changed"));
+  };
+
+  const fetchCloudModels = async (): Promise<string[]> => {
+    setModelsLoading(true);
+    setModelsFetchError(null);
+    try {
+      const list = await invoke<string[]>("list_cloud_models", {
+        provider: asrProvider,
+        baseUrl: asrBaseUrl,
+      });
+      setCloudModels(list);
+      return list;
+    } catch (err: any) {
+      setCloudModels([]);
+      setModelsFetchError(err?.toString() || t("models.modelsFetchFailed"));
+      throw err;
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    try {
+      const list = await fetchCloudModels();
+      toast.success(t("models.testOk", { count: list.length }));
+    } catch (err: any) {
+      toast.error(t("models.testFailed"), { description: err?.toString() });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleRefreshModels = () => {
+    fetchCloudModels().catch(() => {});
   };
 
   const handleLoadModel = async (path: string) => {
@@ -543,7 +610,11 @@ export function ModelsView() {
     "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229",
     "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp",
   ]);
-  const isCustomModel = asrModel === "custom" || !KNOWN_MODELS.has(asrModel);
+  const modelOptions =
+    cloudModels.length > 0 ? cloudModels : FALLBACK_CLOUD_MODELS[asrProvider] || [];
+  const isCustomModel =
+    asrModel === "custom" ||
+    (!modelOptions.includes(asrModel) && !KNOWN_MODELS.has(asrModel));
 
   // Render a single model row (shared between local and recommended)
   const renderModelRow = (
@@ -828,9 +899,25 @@ export function ModelsView() {
 
         {/* BYOK Cloud Configuration */}
         <TabsContent value="openai-cloud" className="flex flex-col">
-          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Cloud size={16} className="text-muted" /> {t("models.cloudProvider")}
-          </h2>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="m-0 text-base text-white font-medium flex items-center gap-2">
+              <Cloud size={16} className="text-muted" /> {t("models.cloudProvider")}
+            </h2>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleTestConnection}
+              disabled={testing || !providerKey}
+            >
+              {testing ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <PlugZap size={13} />
+              )}
+              {testing ? t("models.testing") : t("models.test")}
+            </Button>
+          </div>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
               <div className="flex-1 min-w-0">
@@ -899,51 +986,67 @@ export function ModelsView() {
                   {t("models.modelDesc")}
                 </div>
               </div>
-              <Select
-                value={asrModel}
-                onValueChange={(v) => handleModelChange(v as string)}
-              >
-                <SelectTrigger className="w-72 bg-black shrink-0">
-                  <SelectValue>
-                    {(v: string) => (v === "custom" ? t("models.customModel") : v)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {asrProvider === "openai" && (
-                    <>
-                      <SelectItem value="whisper-1">whisper-1</SelectItem>
-                      <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
-                      <SelectItem value="gpt-4o">gpt-4o</SelectItem>
-                    </>
-                  )}
-                  {asrProvider === "openrouter" && (
-                    <>
-                      <SelectItem value="openai/whisper-large-v3">
-                        openai/whisper-large-v3
+              <div className="flex flex-col gap-1 w-72 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={asrModel}
+                    onValueChange={(v) => handleModelChange(v as string)}
+                  >
+                    <SelectTrigger className="flex-1 bg-black">
+                      <SelectValue>
+                        {(v: string) =>
+                          v === "custom" ? t("models.customModel") : v
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modelOptions.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {m}
+                        </SelectItem>
+                      ))}
+                      {asrModel &&
+                        asrModel !== "custom" &&
+                        !modelOptions.includes(asrModel) && (
+                          <SelectItem key={asrModel} value={asrModel}>
+                            {asrModel}
+                          </SelectItem>
+                        )}
+                      <SelectItem value="custom">
+                        {t("models.customTypeBelow")}
                       </SelectItem>
-                      <SelectItem value="meta-llama/llama-3.2-11b-vision-instruct:free">
-                        meta-llama/llama-3.2-11b-vision-instruct:free
-                      </SelectItem>
-                      <SelectItem value="deepseek/deepseek-chat">
-                        deepseek/deepseek-chat
-                      </SelectItem>
-                      <SelectItem value="google/gemini-2.0-flash-exp:free">
-                        google/gemini-2.0-flash-exp:free
-                      </SelectItem>
-                    </>
-                  )}
-                  {asrProvider === "gemini" && (
-                    <>
-                      <SelectItem value="gemini-1.5-flash">gemini-1.5-flash</SelectItem>
-                      <SelectItem value="gemini-1.5-pro">gemini-1.5-pro</SelectItem>
-                      <SelectItem value="gemini-2.0-flash-exp">
-                        gemini-2.0-flash-exp
-                      </SelectItem>
-                    </>
-                  )}
-                  <SelectItem value="custom">{t("models.customTypeBelow")}</SelectItem>
-                </SelectContent>
-              </Select>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRefreshModels}
+                    disabled={modelsLoading || !providerKey}
+                    title={t("models.refreshModels")}
+                  >
+                    <RefreshCw
+                      size={14}
+                      className={modelsLoading ? "animate-spin" : ""}
+                    />
+                  </Button>
+                </div>
+                {modelsLoading && (
+                  <span className="text-[11px] text-muted">
+                    {t("models.fetchingModels")}
+                  </span>
+                )}
+                {!modelsLoading && modelsFetchError && (
+                  <span className="text-[11px] text-danger truncate" title={modelsFetchError}>
+                    {modelsFetchError}
+                  </span>
+                )}
+                {!modelsLoading && !modelsFetchError && cloudModels.length === 0 && providerKey && (
+                  <span className="text-[11px] text-muted">
+                    {t("models.usingFallbackModels")}
+                  </span>
+                )}
+              </div>
             </div>
 
             {isCustomModel && (
