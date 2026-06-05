@@ -454,8 +454,8 @@ export function ModelsView() {
   const handleTestConnection = async () => {
     setTesting(true);
     try {
-      const list = await fetchCloudModels();
-      toast.success(t("models.testOk", { count: list.length }));
+      await fetchCloudModels();
+      toast.success(t("models.testOk"));
     } catch (err: any) {
       toast.error(t("models.testFailed"), { description: err?.toString() });
     } finally {
@@ -991,6 +991,7 @@ export function ModelsView() {
                   <Select
                     value={asrModel}
                     onValueChange={(v) => handleModelChange(v as string)}
+                    disabled={modelsLoading}
                   >
                     <SelectTrigger className="flex-1 bg-black">
                       <SelectValue>
@@ -1031,11 +1032,6 @@ export function ModelsView() {
                     />
                   </Button>
                 </div>
-                {modelsLoading && (
-                  <span className="text-[11px] text-muted">
-                    {t("models.fetchingModels")}
-                  </span>
-                )}
                 {!modelsLoading && modelsFetchError && (
                   <span className="text-[11px] text-danger truncate" title={modelsFetchError}>
                     {modelsFetchError}
