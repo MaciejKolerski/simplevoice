@@ -59,6 +59,8 @@
     "autoStartDesc": "Simplevoice automatisch beim Anmelden starten.",
     "vad": "Sprachaktivitätserkennung (VAD)",
     "vadDesc": "Aufnahme automatisch beenden, wenn du aufhörst zu sprechen.",
+    "liveTranscription": "Live-Transkription",
+    "liveTranscriptionDesc": "Text während des Sprechens im Aufnahme-Overlay anzeigen, statt erst nach dem Stopp.",
     "soundEffects": "Soundeffekte",
     "soundEffectsDesc": "Beim Starten und Beenden der Aufnahme einen hochwertigen Audiohinweis abspielen.",
     "pauseSystemAudio": "Systemaudio pausieren",

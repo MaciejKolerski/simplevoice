@@ -59,6 +59,8 @@
     "autoStartDesc": "Uruchamiaj Simplevoice automatycznie po zalogowaniu.",
     "vad": "Wykrywanie aktywności głosowej (VAD)",
     "vadDesc": "Automatycznie zatrzymuj nagrywanie, gdy przestaniesz mówić.",
+    "liveTranscription": "Transkrypcja na żywo",
+    "liveTranscriptionDesc": "Pokazuj tekst w nakładce nagrywania w trakcie mówienia, a nie dopiero po zakończeniu.",
     "soundEffects": "Efekty dźwiękowe",
     "soundEffectsDesc": "Odtwarzaj wysokiej jakości sygnał dźwiękowy przy rozpoczęciu i zatrzymaniu nagrywania.",
     "pauseSystemAudio": "Wstrzymaj dźwięk systemowy",
