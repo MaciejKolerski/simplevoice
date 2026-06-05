@@ -339,6 +339,71 @@ pub async fn transcribe_cloud(
     Ok(result.text.trim().to_string())
 }
 
+pub async fn list_models(
+    provider: &str,
+    base_url: Option<&str>,
+    api_key: &str,
+) -> Result<Vec<String>, String> {
+    let provider_str = provider.trim().to_lowercase();
+    if provider_str == "anthropic" {
+        return Err("Anthropic does not support model listing. Please select a different provider.".to_string());
+    }
+    let base_trimmed = base_url.unwrap_or("").trim();
+    let client = reqwest::Client::new();
+
+    if provider_str == "gemini" {
+        let base = if base_trimmed.is_empty() {
+            "https://generativelanguage.googleapis.com/v1beta"
+        } else {
+            base_trimmed
+        };
+        let endpoint = format!("{}/models", base.trim_end_matches('/'));
+        let response = client
+            .get(&endpoint)
+            .header("x-goog-api-key", api_key)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to reach Gemini: {}", e))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(format!("{} — {}", status, truncate(&body, 300)));
+        }
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse Gemini models: {}", e))?;
+        return Ok(sort_dedup(parse_gemini_models(&json)));
+    }
+
+    // OpenAI / OpenRouter / custom (OpenAI-compatible)
+    let base = if base_trimmed.is_empty() {
+        match provider_str.as_str() {
+            "openrouter" => "https://openrouter.ai/api/v1",
+            _ => "https://api.openai.com/v1",
+        }
+    } else {
+        base_trimmed
+    };
+    let endpoint = format!("{}/models", base.trim_end_matches('/'));
+    let response = client
+        .get(&endpoint)
+        .bearer_auth(api_key)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to reach provider: {}", e))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("{} — {}", status, truncate(&body, 300)));
+    }
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse models: {}", e))?;
+    Ok(sort_dedup(apply_asr_filter(parse_openai_models(&json))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
