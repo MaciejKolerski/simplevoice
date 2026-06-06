@@ -290,10 +290,10 @@ function App() {
       }
 
       if (!autopaste) {
-        // Not live-typing: paste the whole text once at the end. With autopaste
-        // on, the committed deltas were already typed live (handleCommitted).
-        invoke("paste_text", { text }).catch((err) =>
-          console.error("Paste failed:", err),
+        // Not live-typing: type the whole text once at the end. (We use type_text,
+        // not paste_text, because in live mode the clipboard is never populated.)
+        invoke("type_text", { text }).catch((err) =>
+          console.error("Typing failed:", err),
         );
       }
 
@@ -339,8 +339,8 @@ function App() {
       if (!delta) return;
       pasteChainRef.current = pasteChainRef.current
         .catch(() => {})
-        .then(() => invoke("paste_text", { text: delta }).then(() => {}))
-        .catch((err) => console.error("Live paste failed:", err));
+        .then(() => invoke("type_text", { text: delta }).then(() => {}))
+        .catch((err) => console.error("Live typing failed:", err));
     };
 
     const unlistenStarted = listen("recording-started", handleStarted);
