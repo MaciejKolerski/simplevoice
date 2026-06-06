@@ -21,6 +21,11 @@ export function RecordingWindowView() {
   // never emits these events otherwise, so the panel stays hidden).
   const [committed, setCommitted] = useState("");
   const [tentative, setTentative] = useState("");
+  // "full" = whole running text; "recent" = only the last few words. Shared via
+  // localStorage (same origin) at mount, updated live via a Tauri event.
+  const [overlayMode, setOverlayMode] = useState<string>(
+    () => localStorage.getItem("live_overlay_mode") || "full",
+  );
 
   // Status and amplitude are read inside the rAF loop, so they live in refs to
   // avoid re-renders (and to avoid relying on CSS transitions, which ghost on
@@ -87,6 +92,11 @@ export function RecordingWindowView() {
       },
     );
 
+    const unlistenOverlayMode = listen<string>(
+      "live-overlay-mode-changed",
+      (event) => setOverlayMode(event.payload || "full"),
+    );
+
     return () => {
       unlistenStarted.then((f) => f());
       unlistenStopped.then((f) => f());
@@ -96,6 +106,7 @@ export function RecordingWindowView() {
       unlistenCommitted.then((f) => f());
       unlistenPartial.then((f) => f());
       unlistenFinal.then((f) => f());
+      unlistenOverlayMode.then((f) => f());
     };
   }, []);
 
@@ -187,7 +198,20 @@ export function RecordingWindowView() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const hasText = committed.length > 0 || tentative.length > 0;
+  // In "recent" mode show only the last few words (committed + tentative),
+  // preserving styling. "full" shows the whole running text.
+  const RECENT_WORDS = 12;
+  let dispCommitted = committed;
+  let dispTentative = tentative;
+  if (overlayMode === "recent") {
+    const cw = committed ? committed.split(/\s+/).filter(Boolean) : [];
+    const tw = tentative ? tentative.split(/\s+/).filter(Boolean) : [];
+    const tShow = tw.slice(-RECENT_WORDS);
+    const remaining = Math.max(0, RECENT_WORDS - tShow.length);
+    dispTentative = tShow.join(" ");
+    dispCommitted = cw.slice(-remaining).join(" ");
+  }
+  const hasText = dispCommitted.length > 0 || dispTentative.length > 0;
 
   // The overlay window is a fixed 200x180 transparent, click-through panel. We
   // top-anchor the content (pt-3 == the old 12px vertical centering inside the
@@ -205,13 +229,13 @@ export function RecordingWindowView() {
         <canvas ref={canvasRef} className="block" />
       </div>
       {hasText && (
-        <div className="mt-2 w-[184px] max-h-[120px] overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+        <div className="mt-2 flex w-[184px] max-h-[120px] flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
           <p className="text-[12px] leading-snug break-words text-white/95">
-            {committed}
-            {tentative && (
+            {dispCommitted}
+            {dispTentative && (
               <span className="text-white/45 italic">
-                {committed ? " " : ""}
-                {tentative}
+                {dispCommitted ? " " : ""}
+                {dispTentative}
               </span>
             )}
           </p>
