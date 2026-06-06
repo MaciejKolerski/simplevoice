@@ -224,6 +224,22 @@ fn is_live_transcription_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads `live_min_chunk_ms` (live re-decode cadence) from config.json.
+/// Smaller = snappier live text, more CPU. Default 600, clamped to [200, 3000].
+fn live_min_chunk_ms(app_handle: &tauri::AppHandle) -> u32 {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return 600;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return 600;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("live_min_chunk_ms").and_then(|n| n.as_u64()))
+        .map(|n| (n as u32).clamp(200, 3000))
+        .unwrap_or(600)
+}
+
 /// Starts a live session if the flag is set and a local engine is loaded.
 /// No-op otherwise (cloud/no-model/flag-off => classic batch behavior).
 fn begin_live_session(app: &tauri::AppHandle) {
@@ -248,8 +264,9 @@ fn begin_live_session(app: &tauri::AppHandle) {
     // LocalAgreement-2: re-decode the growing utterance buffer every ~1s and
     // commit only stabilized words live (no mid-word splits). Works with any
     // local batch engine via transcribe() + whitespace split.
+    let min_chunk_ms = live_min_chunk_ms(app);
     let strategy = Box::new(crate::stt::streaming::local_agreement::LocalAgreementStrategy::new(
-        engine, threshold, silence_ms, 1000, None,
+        engine, threshold, silence_ms, min_chunk_ms, None,
     ));
     let streaming = app.state::<crate::stt::streaming::StreamingController>();
     let tx = streaming.start(app.clone(), strategy);
@@ -2320,6 +2337,56 @@ fn paste_text(text: String) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Types `text` directly at the cursor (no clipboard), one string at a time.
+/// Used for live incremental dictation: unlike `paste_text` (which simulates
+/// Cmd/Ctrl+V and therefore pastes whatever is on the clipboard), this inserts
+/// the exact characters, so committed deltas appear in the active app live.
+#[tauri::command]
+fn type_text(text: String) -> Result<(), String> {
+    if text.is_empty() {
+        return Ok(());
+    }
+
+    let is_wayland = if cfg!(target_os = "linux") {
+        std::env::var("WAYLAND_DISPLAY").is_ok()
+            || std::env::var("XDG_SESSION_TYPE")
+                .map(|v| v.to_lowercase() == "wayland")
+                .unwrap_or(false)
+    } else {
+        false
+    };
+
+    if is_wayland {
+        #[cfg(target_os = "linux")]
+        {
+            return wayland_type::type_text(&text)
+                .map_err(|e| format!("Native Wayland typing failed: {e}"));
+        }
+    }
+
+    use enigo::{Enigo, Keyboard, Settings};
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| {
+        #[cfg(target_os = "macos")]
+        {
+            format!(
+                "Failed to initialize keyboard simulation. Please grant Accessibility \
+                 permissions in System Settings > Privacy & Security > Accessibility. Error: {}",
+                e
+            )
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            format!("Failed to initialize keyboard simulation: {}", e)
+        }
+    })?;
+
+    enigo
+        .text(&text)
+        .map_err(|e| format!("Keyboard typing failed: {}", e))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -2612,6 +2679,7 @@ pub fn run() {
             get_model_status,
             play_done_sound,
             paste_text,
+            type_text,
             register_copy_shortcut,
             set_last_transcription,
             copy_last_transcription,
