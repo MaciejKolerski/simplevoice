@@ -207,7 +207,7 @@ fn is_sound_feedback_enabled(app_handle: &tauri::AppHandle) -> bool {
 }
 
 /// Reads `live_transcription_enabled` from config.json. Defaults to false, so
-/// every live code path is dormant unless the user opts in (Faza 0c UI).
+/// every live code path is dormant unless the user enables it in settings.
 fn is_live_transcription_enabled(app_handle: &tauri::AppHandle) -> bool {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -270,16 +270,14 @@ fn begin_live_session(app: &tauri::AppHandle) {
     ));
     let streaming = app.state::<crate::stt::streaming::StreamingController>();
     let tx = streaming.start(app.clone(), strategy);
-    audio.set_stream_tx(Some(tx));
-    audio.set_live_mode(true);
+    audio.set_live_session(tx);
 }
 
 /// Finishes the active live session (emits `transcription-final`) and clears
 /// the audio tap. No-op if no session is active.
 fn end_live_session(app: &tauri::AppHandle) {
     let audio = app.state::<AudioController>();
-    audio.set_stream_tx(None);
-    audio.set_live_mode(false);
+    audio.clear_live_session();
     let streaming = app.state::<crate::stt::streaming::StreamingController>();
     streaming.finish();
 }
@@ -2386,9 +2384,10 @@ fn type_text(text: String) -> Result<(), String> {
     // (enigo-rs/enigo#68). Entering ONE character per event works around it and
     // stays layout-independent (it uses the unicode string, not keycodes), so
     // Polish diacritics type correctly.
+    let mut buf = [0u8; 4];
     for ch in text.chars() {
         enigo
-            .text(&ch.to_string())
+            .text(ch.encode_utf8(&mut buf))
             .map_err(|e| format!("Keyboard typing failed: {}", e))?;
     }
     Ok(())

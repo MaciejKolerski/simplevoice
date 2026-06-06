@@ -124,12 +124,20 @@ impl AudioController {
         s.selected_device = device_name;
     }
 
-    pub fn set_stream_tx(&self, tx: Option<Sender<Vec<f32>>>) {
-        self.state.lock().unwrap().stream_tx = tx;
+    /// Atomically arm a live session: set `live_mode_active` and install the
+    /// fan-out sender under a single lock so the consumer never observes one
+    /// without the other.
+    pub fn set_live_session(&self, tx: Sender<Vec<f32>>) {
+        let mut s = self.state.lock().unwrap();
+        s.live_mode_active = true;
+        s.stream_tx = Some(tx);
     }
 
-    pub fn set_live_mode(&self, active: bool) {
-        self.state.lock().unwrap().live_mode_active = active;
+    /// Atomically disarm a live session (single lock), mirroring set_live_session.
+    pub fn clear_live_session(&self) {
+        let mut s = self.state.lock().unwrap();
+        s.live_mode_active = false;
+        s.stream_tx = None;
     }
 
     pub fn start_recording(
@@ -196,14 +204,13 @@ impl AudioController {
 
             loop {
                 // Check state at start of loop iteration
-                let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms, live_mode_active) = {
+                let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms) = {
                     let s = state_clone.lock().unwrap();
                     (
                         s.is_recording,
                         s.vad_enabled,
                         s.vad_threshold,
                         s.vad_silence_duration_ms,
-                        s.live_mode_active,
                     )
                 };
 
@@ -231,13 +238,17 @@ impl AudioController {
                     let mut s = state_clone.lock().unwrap();
                     s.buffer.extend_from_slice(&local_buf[..read]);
 
+                    // Read live state under the same lock as the fan-out so the two stay
+                    // consistent with set_live_session / clear_live_session.
+                    let live_active = s.live_mode_active;
+
                     // Live fan-out: hand the chunk to the streaming session. Non-blocking;
                     // the bounded channel returns Full rather than stalling the audio path.
                     if let Some(tx) = &s.stream_tx {
                         let _ = tx.try_send(local_buf[..read].to_vec());
                     }
 
-                    if vad_enabled && !live_mode_active {
+                    if vad_enabled && !live_active {
                         if rms >= vad_threshold {
                             has_spoken = true;
                             silence_samples = 0;

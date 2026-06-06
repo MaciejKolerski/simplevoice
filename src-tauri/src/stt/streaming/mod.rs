@@ -1,15 +1,14 @@
 use crossbeam_channel::Sender;
 use crate::error::AppError;
 
-pub mod segmenter;
-pub mod vad_segmented;
-pub mod words;
-pub mod stabilizer;
+mod segmenter;
+mod words;
+mod stabilizer;
 pub mod local_agreement;
 pub mod controller;
 pub use controller::StreamingController;
 
-/// Events emitted by a live strategy. Serialized to the frontend in Faza 0b.
+/// Events emitted by a live strategy and forwarded to the frontend.
 /// `Committed.full` is the authoritative committed text (single source of truth);
 /// `Committed.delta` is the append-only chunk safe to auto-paste.
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
@@ -26,7 +25,7 @@ pub enum StreamEvent {
 }
 
 /// Channel the strategy emits events on. The bounded channel is created by the
-/// controller in Faza 0b; the strategy only holds the `Sender`.
+/// controller; the strategy only holds the `Sender`.
 pub type StreamSink = Sender<StreamEvent>;
 
 /// A live transcription strategy. Runs on a dedicated worker thread, so it may
@@ -36,8 +35,6 @@ pub trait StreamingStrategy: Send {
     fn push_audio(&mut self, samples: &[f32], sink: &StreamSink) -> Result<(), AppError>;
     /// End of session: flush buffered speech and emit a `Final`.
     fn finish(&mut self, sink: &StreamSink) -> Result<(), AppError>;
-    /// Reset between utterances (clears committed/tentative state).
-    fn reset(&mut self);
 }
 
 #[cfg(test)]

@@ -115,9 +115,9 @@ impl StreamingStrategy for LocalAgreementStrategy {
                     }
                 } else if self.since_decode >= self.min_chunk_samples {
                     self.since_decode = 0;
-                    let pending = self.segmenter.pending().to_vec();
+                    let pending = self.segmenter.pending();
                     if !pending.is_empty() {
-                        match self.decode(&pending) {
+                        match self.decode(pending) {
                             Ok(hyp) => {
                                 let tentative = self.stab.observe(&hyp);
                                 self.emit_state(sink, &tentative);
@@ -145,14 +145,6 @@ impl StreamingStrategy for LocalAgreementStrategy {
         }
         let _ = sink.send(StreamEvent::Final { text: join_words(&self.session) });
         Ok(())
-    }
-
-    fn reset(&mut self) {
-        self.segmenter.flush();
-        self.stab = Stabilizer::new();
-        self.session.clear();
-        self.last_full.clear();
-        self.since_decode = 0;
     }
 }
 

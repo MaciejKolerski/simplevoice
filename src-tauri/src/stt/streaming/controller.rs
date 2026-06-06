@@ -47,10 +47,6 @@ impl StreamingController {
         Self { session: Mutex::new(None) }
     }
 
-    pub fn is_active(&self) -> bool {
-        self.session.lock().unwrap().is_some()
-    }
-
     /// Start a live session. Returns the `Sender` to install on
     /// `AudioState.stream_tx`. Finalizes any prior session first.
     pub fn start(

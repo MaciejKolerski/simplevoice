@@ -75,7 +75,7 @@ export function RecordingWindowView() {
       setLocked(event.payload);
     });
 
-    // Live transcription stream (Faza 0b backend). committed = solid, tentative = dimmed.
+    // Live transcription stream: committed = solid, tentative = dimmed.
     const unlistenCommitted = listen<{ delta: string; full: string }>(
       "transcription-committed",
       (event) => setCommitted(event.payload.full),

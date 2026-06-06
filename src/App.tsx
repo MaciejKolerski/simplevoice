@@ -153,6 +153,7 @@ function App() {
       setIsRecording(true);
       setErrorMessage(null);
       pasteChainRef.current = Promise.resolve();
+      liveWavPathRef.current = null;
     };
 
     const handleStopped = async (event: any) => {
@@ -276,6 +277,10 @@ function App() {
         (localStorage.getItem("asr_engine") || "local") === "local";
       if (!liveActive) return;
 
+      // Consume the stashed WAV path now so it never leaks into the next session.
+      const wavPath = liveWavPathRef.current;
+      liveWavPathRef.current = null;
+
       const text: string = event?.payload?.text || "";
       setIsTranscribing(false);
       invoke("set_transcribing", { active: false }).catch(() => {});
@@ -303,7 +308,6 @@ function App() {
         console.error("Failed to set last transcription:", e);
       }
 
-      const wavPath = liveWavPathRef.current;
       if (wavPath) {
         let modelName = "Whisper Local";
         try {
