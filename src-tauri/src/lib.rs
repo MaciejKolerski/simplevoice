@@ -2381,9 +2381,16 @@ fn type_text(text: String) -> Result<(), String> {
         }
     })?;
 
-    enigo
-        .text(&text)
-        .map_err(|e| format!("Keyboard typing failed: {}", e))?;
+    // macOS (notably macOS 26) truncates a multi-character CGEvent unicode string
+    // to its FIRST character - a stronger form of enigo's known 20-char truncation
+    // (enigo-rs/enigo#68). Entering ONE character per event works around it and
+    // stays layout-independent (it uses the unicode string, not keycodes), so
+    // Polish diacritics type correctly.
+    for ch in text.chars() {
+        enigo
+            .text(&ch.to_string())
+            .map_err(|e| format!("Keyboard typing failed: {}", e))?;
+    }
     Ok(())
 }
 
