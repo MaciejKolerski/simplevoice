@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { Cpu, Shield, Keyboard, Check, Mic, Info, RefreshCw, Languages } from "lucide-react";
+import { Cpu, Shield, Keyboard, Check, Mic, Info, RefreshCw, Languages, Radio } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 import { useConfig } from "../context/ConfigContext";
@@ -117,12 +117,20 @@ const LANGUAGE_NAMES: Record<string, string> = Object.fromEntries(
   LANGUAGE_GROUPS.flatMap((g) => g.items),
 );
 
+const LIVE_SPEED_MS: Record<string, number> = {
+  fast: 350,
+  balanced: 600,
+  accurate: 1000,
+};
+
 export function SettingsView() {
   const { updateConfig } = useConfig();
   const { t, i18n } = useTranslation();
   const [vadEnabled, setVadEnabled] = useState(false);
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [liveAutopaste, setLiveAutopaste] = useState(true);
+  const [liveOverlayMode, setLiveOverlayMode] = useState("full");
+  const [liveSpeed, setLiveSpeed] = useState("balanced");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
@@ -213,6 +221,15 @@ export function SettingsView() {
 
     // Frontend-only flag (App.tsx reads it); default on.
     setLiveAutopaste(localStorage.getItem("live_autopaste") !== "false");
+
+    const savedOverlayTextMode =
+      localStorage.getItem("live_overlay_mode") || "full";
+    setLiveOverlayMode(savedOverlayTextMode);
+
+    const savedSpeed = localStorage.getItem("live_speed") || "balanced";
+    setLiveSpeed(savedSpeed);
+    // Mirror the chosen cadence (ms) into config.json for the backend.
+    updateConfig("live_min_chunk_ms", LIVE_SPEED_MS[savedSpeed] ?? 600);
 
     const savedSound =
       localStorage.getItem("sound_feedback_enabled") !== "false";
@@ -487,6 +504,19 @@ export function SettingsView() {
     localStorage.setItem("live_autopaste", String(checked));
   };
 
+  const handleOverlayModeChange = (mode: string) => {
+    setLiveOverlayMode(mode);
+    localStorage.setItem("live_overlay_mode", mode);
+    // Notify the (separate) overlay window so it updates live.
+    emit("live-overlay-mode-changed", mode).catch(() => {});
+  };
+
+  const handleSpeedChange = (speed: string) => {
+    setLiveSpeed(speed);
+    localStorage.setItem("live_speed", speed);
+    updateConfig("live_min_chunk_ms", LIVE_SPEED_MS[speed] ?? 600);
+  };
+
   const handleSoundToggle = (checked: boolean) => {
     setSoundEnabled(checked);
     localStorage.setItem("sound_feedback_enabled", String(checked));
@@ -671,6 +701,107 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* GROUP: Live transcription */}
+        <section>
+          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
+            <Radio size={16} className="text-muted" /> {t("settings.liveGroup")}
+          </h2>
+          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+              <div className="min-w-0">
+                <div className="text-fg font-medium mb-1">
+                  {t("settings.liveTranscription")}
+                </div>
+                <div className="text-muted text-[13px]">
+                  {t("settings.liveTranscriptionDesc")}
+                </div>
+              </div>
+              <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
+            </div>
+
+            <div
+              className={
+                liveEnabled ? "" : "opacity-50 pointer-events-none select-none"
+              }
+              aria-disabled={!liveEnabled}
+            >
+              <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
+                <div className="min-w-0">
+                  <div className="text-fg font-medium mb-1">
+                    {t("settings.liveAutopaste")}
+                  </div>
+                  <div className="text-muted text-[13px]">
+                    {t("settings.liveAutopasteDesc")}
+                  </div>
+                </div>
+                <Switch
+                  checked={liveAutopaste}
+                  disabled={!liveEnabled}
+                  onCheckedChange={handleLiveAutopasteToggle}
+                />
+              </div>
+
+              <div className="flex flex-col p-5 border-b border-border last:border-b-0">
+                <Label className="mb-1">{t("settings.liveOverlayText")}</Label>
+                <p className="text-muted text-[13px] mb-3">
+                  {t("settings.liveOverlayTextDesc")}
+                </p>
+                <Select
+                  value={liveOverlayMode}
+                  onValueChange={(v) => handleOverlayModeChange(v ?? "full")}
+                  items={{
+                    full: t("settings.liveOverlayFull"),
+                    recent: t("settings.liveOverlayRecent"),
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-black" disabled={!liveEnabled}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full">
+                      {t("settings.liveOverlayFull")}
+                    </SelectItem>
+                    <SelectItem value="recent">
+                      {t("settings.liveOverlayRecent")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col p-5 border-b border-border last:border-b-0">
+                <Label className="mb-1">{t("settings.liveSpeed")}</Label>
+                <p className="text-muted text-[13px] mb-3">
+                  {t("settings.liveSpeedDesc")}
+                </p>
+                <Select
+                  value={liveSpeed}
+                  onValueChange={(v) => handleSpeedChange(v ?? "balanced")}
+                  items={{
+                    fast: t("settings.liveSpeedFast"),
+                    balanced: t("settings.liveSpeedBalanced"),
+                    accurate: t("settings.liveSpeedAccurate"),
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-black" disabled={!liveEnabled}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fast">
+                      {t("settings.liveSpeedFast")}
+                    </SelectItem>
+                    <SelectItem value="balanced">
+                      {t("settings.liveSpeedBalanced")}
+                    </SelectItem>
+                    <SelectItem value="accurate">
+                      {t("settings.liveSpeedAccurate")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* GROUP: Recording & Feedback */}
         <section data-tour="recording-section">
           <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
@@ -701,35 +832,6 @@ export function SettingsView() {
             </div>
             <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
           </div>
-
-          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-            <div className="min-w-0">
-              <div className="text-fg font-medium mb-1">
-                {t("settings.liveTranscription")}
-              </div>
-              <div className="text-muted text-[13px]">
-                {t("settings.liveTranscriptionDesc")}
-              </div>
-            </div>
-            <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
-          </div>
-
-          {liveEnabled && (
-            <div className="flex justify-between items-center gap-6 p-5 pl-8 border-b border-border last:border-b-0">
-              <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">
-                  {t("settings.liveAutopaste")}
-                </div>
-                <div className="text-muted text-[13px]">
-                  {t("settings.liveAutopasteDesc")}
-                </div>
-              </div>
-              <Switch
-                checked={liveAutopaste}
-                onCheckedChange={handleLiveAutopasteToggle}
-              />
-            </div>
-          )}
 
           <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
             <div className="min-w-0">
