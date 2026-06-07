@@ -13,11 +13,22 @@ import {
   Pause,
   Play,
   PlugZap,
+  Trash2,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -204,6 +215,8 @@ export function ModelsView() {
 
   const [activeModelPath, setActiveModelPath] = useState<string | null>(null);
   const [loadingModelPath, setLoadingModelPath] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ path: string; name: string } | null>(null);
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
   // Conversion states
   const [convertingPath, setConvertingPath] = useState<string | null>(null);
@@ -476,8 +489,33 @@ export function ModelsView() {
       window.dispatchEvent(new Event("asr-engine-changed"));
     } catch (err) {
       console.error("Failed to load model:", err);
+      toast.error(t("models.loadFailed"), { description: err?.toString() });
     } finally {
       setLoadingPath(null);
+    }
+  };
+
+  const requestDeleteModel = (path: string, name: string) => {
+    setDeleteTarget({ path, name });
+  };
+
+  const handleDeleteModel = async () => {
+    if (!deleteTarget) return;
+    const { path } = deleteTarget;
+    setDeletingPath(path);
+    try {
+      await invoke("delete_model", { path });
+      if (localStorage.getItem("active_local_model_path") === path) {
+        localStorage.removeItem("active_local_model_path");
+        window.dispatchEvent(new Event("asr-engine-changed"));
+      }
+      await loadModelsList();
+      toast.success(t("models.deleted"));
+    } catch (err: any) {
+      toast.error(t("models.deleteFailed"), { description: err?.toString() });
+    } finally {
+      setDeletingPath(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -625,6 +663,7 @@ export function ModelsView() {
     action: React.ReactNode,
     subtitle?: React.ReactNode,
     isLast?: boolean,
+    onDelete?: () => void,
   ) => (
     <div
       key={key}
@@ -645,12 +684,52 @@ export function ModelsView() {
         {subtitle && <div className="mt-0.5">{subtitle}</div>}
       </div>
       <span className="text-xs font-mono text-muted shrink-0">{size}</span>
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          disabled={
+            loadingModelPath !== null ||
+            loadingPath !== null ||
+            convertingPath !== null ||
+            deletingPath !== null
+          }
+          className="shrink-0 text-muted hover:text-danger transition-colors cursor-pointer p-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          title={t("models.delete")}
+          aria-label={t("models.delete")}
+        >
+          <Trash2 size={15} />
+        </button>
+      )}
       <div className="shrink-0 w-24 flex justify-end">{action}</div>
     </div>
   );
 
   return (
     <div className="flex flex-col w-full">
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("models.deleteConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("models.deleteConfirmBody", { name: deleteTarget?.name ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteModel}
+              disabled={deletingPath !== null}
+            >
+              {t("models.deleteConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
@@ -799,6 +878,7 @@ export function ModelsView() {
                   action,
                   undefined,
                   idx === models.length - 1 && RECOMMENDED_MODELS.every(r => isModelDownloaded(r)),
+                  () => requestDeleteModel(model.path, model.name),
                 );
               })
             )}

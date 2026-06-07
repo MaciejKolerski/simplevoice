@@ -1453,6 +1453,47 @@ fn get_model_status(
     })
 }
 
+/// Deletes an installed model (file or directory) from the models directory.
+/// Refuses any path outside that directory, and unloads the model first if it
+/// is the currently active one.
+#[tauri::command]
+fn delete_model(
+    path: String,
+    stt_controller: tauri::State<'_, SttController>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let models_dir = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("models");
+    let canon_dir = std::fs::canonicalize(&models_dir).map_err(|e| e.to_string())?;
+    let canon_target = std::fs::canonicalize(&path)
+        .map_err(|e| format!("Model not found: {}", e))?;
+    if !canon_target.starts_with(&canon_dir) {
+        return Err("Refusing to delete a path outside the models directory".to_string());
+    }
+
+    // Unload it first if it is the active model, so the app does not keep using a
+    // model whose file is gone.
+    {
+        let mut s = stt_controller.state.lock().unwrap();
+        if s.active_model_path.as_deref() == Some(path.as_str()) {
+            s.engine = None;
+            s.active_model_path = None;
+        }
+    }
+
+    if canon_target.is_dir() {
+        std::fs::remove_dir_all(&canon_target).map_err(|e| e.to_string())?;
+    } else {
+        std::fs::remove_file(&canon_target).map_err(|e| e.to_string())?;
+    }
+
+    let _ = app_handle.emit("model-status-changed", ());
+    Ok(())
+}
+
 #[tauri::command]
 fn get_models_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
     let app_local_data = app_handle
@@ -2659,6 +2700,7 @@ pub fn run() {
             get_gpu_enabled,
             set_gpu_enabled,
             get_active_model,
+            delete_model,
             get_models_dir,
             transcribe_audio,
             has_last_recording_samples,
