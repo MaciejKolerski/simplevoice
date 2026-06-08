@@ -213,22 +213,13 @@ function App() {
           if (text && text.trim().length > 0) {
             console.log(`[FRONTEND] Transcription successful, text length: ${text.length}`);
 
-            // Clipboard is now set in Rust backend (arboard). Play sound + auto-paste.
-            try {
-              await invoke("play_done_sound");
-            } catch (e) {
-              console.warn("Failed to play sound:", e);
-            }
-
-            try {
-              // Pass text so the backend can type it directly on Wayland (more reliable than Ctrl+V)
-              invoke("paste_text", { text }).catch((err) =>
-                console.error("Paste failed:", err),
-              );
-            } catch (e) {
-              console.error("Paste invocation failed:", e);
-            }
-
+            // Clipboard, auto-paste, the done sound, last-transcription and clearing
+            // the transcribing indicator are all handled inside the Rust
+            // `transcribe_audio` command now. The main window is `visible: false`, so
+            // macOS can defer this command's response to the occluded webview until an
+            // unrelated event wakes it; doing the user-facing work on the backend makes
+            // it independent of that delivery. Only history persistence and the in-app
+            // list refresh stay here (non-critical if they arrive late).
             if (wavPath && wavPath !== "Recording stopped") {
               try {
                 await invoke("save_transcription_data", {
@@ -242,13 +233,6 @@ function App() {
                   saveErr,
                 );
               }
-            }
-
-            // Store the last transcription in the Rust backend for global shortcut access
-            try {
-              await invoke("set_last_transcription", { text });
-            } catch (e) {
-              console.error("Failed to set last transcription:", e);
             }
 
             window.dispatchEvent(

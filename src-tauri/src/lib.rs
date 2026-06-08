@@ -1686,6 +1686,8 @@ async fn transcribe_audio(
     language: Option<String>,
     stt_controller: tauri::State<'_, SttController>,
     audio_controller: tauri::State<'_, AudioController>,
+    last_transcription: tauri::State<'_, LastTranscription>,
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     // Keep the macOS main run loop awake until this command returns, so the
     // result is delivered to the webview immediately instead of being deferred
@@ -1728,14 +1730,51 @@ async fn transcribe_audio(
         }
     };
 
-    // Copy to system clipboard natively via arboard (cross-platform). On Wayland
-    // arboard uses the wlr-data-control backend, which spawns a background server
-    // to keep the selection alive after the Clipboard handle is dropped.
+    eprintln!(
+        "[transcribe_audio] transcription complete (len {}); delivering from backend",
+        text.trim().len()
+    );
+
+    // Deliver the result from the backend. The caller lives in the main window's
+    // WKWebView, which is `visible: false` (menu-bar app); when the app is
+    // backgrounded macOS suspends/throttles that occluded web-content process, so
+    // this command's response can sit undelivered until an unrelated event (the
+    // next recording) wakes it — the "transcription never finishes / nothing
+    // pasted" hang. Anything the user is waiting on therefore happens here, not in
+    // the frontend's post-await code, so it no longer depends on that delivery.
     if !text.trim().is_empty() {
+        // System clipboard (arboard; on Wayland its wlr-data-control backend keeps
+        // a background server alive after the handle drops).
         if let Ok(mut clipboard) = arboard::Clipboard::new() {
             let _ = clipboard.set_text(text.clone());
         }
+        // Last transcription, for the copy-last global shortcut.
+        *last_transcription.text.lock().unwrap_or_else(|e| e.into_inner()) = Some(text.clone());
+        // Auto-paste off the async runtime (enigo/CGEvent is blocking work).
+        let paste_owned = text.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            // Let the just-set clipboard propagate and the previously focused app
+            // settle before simulating the paste keystroke.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Err(e) = paste_text(paste_owned) {
+                eprintln!("[transcribe_audio] backend auto-paste failed: {e}");
+            }
+        })
+        .await;
+        play_backend_sound(&app_handle, "done");
     }
+
+    // Clear the transcribing indicator from the backend too, so it never stays
+    // stuck waiting on the frontend's finally block (which only runs once the
+    // deferred response finally reaches the webview).
+    audio_controller.set_transcribing(false);
+    #[cfg(target_os = "macos")]
+    {
+        *TRANSCRIBE_ACTIVITY.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+    let _ = app_handle.emit("transcribing-status", false);
+    let _ = rebuild_tray_menu(&app_handle);
+    update_recording_window_visibility(&app_handle);
 
     Ok(text)
 }
