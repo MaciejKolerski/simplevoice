@@ -114,8 +114,6 @@ fn action_key(action: &ShortcutAction) -> u8 {
     }
 }
 
-// ─── Device discovery ────────────────────────────────────────────────────────
-
 fn manager_loop() {
     loop {
         scan_and_spawn();
@@ -202,8 +200,6 @@ fn device_loop(path: PathBuf, mut device: Device) {
     }
 }
 
-// ─── Matching & dispatch ─────────────────────────────────────────────────────
-
 fn is_modifier(code: u16) -> bool {
     matches!(
         code,
@@ -287,8 +283,6 @@ fn dispatch(app: &AppHandle, action: &ShortcutAction) {
         }
     }
 }
-
-// ─── Shortcut string parsing (Tauri accelerator format → evdev codes) ────────
 
 fn parse_shortcut(s: &str) -> Result<(u8, u16), String> {
     let mut mods = 0u8;

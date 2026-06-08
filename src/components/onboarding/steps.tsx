@@ -3,7 +3,7 @@ import { Trans } from "react-i18next";
 import type { TFunction } from "i18next";
 import { invoke } from "@tauri-apps/api/core";
 
-export type ViewId = "usage" | "models" | "transcriptions" | "settings";
+type ViewId = "usage" | "models" | "transcriptions" | "settings";
 
 export interface PermissionsStatus {
   accessibility: boolean;
@@ -13,7 +13,7 @@ export interface PermissionsStatus {
   desktop_env: string;
 }
 
-export interface ModelStatus {
+interface ModelStatus {
   active: string | null;
   loading: string | null;
 }

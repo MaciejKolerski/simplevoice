@@ -246,7 +246,6 @@
     "durationSeconds": "{{seconds}}s",
     "delete": "Löschen",
     "copy": "Kopieren",
-    "copied": "Kopiert",
     "loadingRecording": "Aufnahme wird geladen…",
     "loadOlder": "Ältere Transkriptionen laden",
     "deleteConfirmTitle": "Transkription löschen?",

@@ -246,7 +246,6 @@
     "durationSeconds": "{{seconds}}s",
     "delete": "Delete",
     "copy": "Copy",
-    "copied": "Copied",
     "loadingRecording": "Loading recording…",
     "loadOlder": "Load older transcriptions",
     "deleteConfirmTitle": "Delete transcription?",

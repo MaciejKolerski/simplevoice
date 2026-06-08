@@ -5,14 +5,8 @@ pub enum AppError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Audio error: {0}")]
-    Audio(String),
-
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
-
-    #[error("Tauri error: {0}")]
-    Tauri(String),
 
     #[error("Keyring error: {0}")]
     Keyring(#[from] keyring::Error),
@@ -22,9 +16,6 @@ pub enum AppError {
 
     #[error("Model error: {0}")]
     Model(String),
-
-    #[error("Recording error: {0}")]
-    Recording(String),
 }
 
 impl From<AppError> for InvokeError {

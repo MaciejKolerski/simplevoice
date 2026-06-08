@@ -29,10 +29,6 @@ pub fn resume_system_media(paused: &[String]) {
     platform_resume(paused);
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  macOS
-// ═════════════════════════════════════════════════════════════════════════════
-
 #[cfg(target_os = "macos")]
 fn platform_pause() -> Vec<String> {
     // Check if audio is currently playing by checking macOS power assertions
@@ -65,10 +61,6 @@ fn platform_resume(paused_apps: &[String]) {
     }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  Windows
-// ═════════════════════════════════════════════════════════════════════════════
-
 #[cfg(target_os = "windows")]
 fn platform_pause() -> Vec<String> {
     if windows_is_media_playing() {
@@ -90,7 +82,7 @@ fn platform_resume(paused: &[String]) {
 /// to detect if any media is playing. Much faster than previous per-process loop.
 #[cfg(target_os = "windows")]
 fn windows_is_media_playing() -> bool {
-    // ── Primary: WinRT GlobalSystemMediaTransportControls (Windows 10 1903+) ──
+    // Primary: WinRT GlobalSystemMediaTransportControls (Windows 10 1903+)
     let winrt_script = r#"
 try {
     $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media,ContentType=WindowsRuntime]
@@ -133,7 +125,7 @@ Write-Output '0'
         }
     }
 
-    // ── Fallback: single PowerShell call to check multiple known media players ──
+    // Fallback: single PowerShell call to check multiple known media players
     let known_procs = [
         "Spotify", "vlc", "wmplayer", "groove", "msedge", "chrome", "firefox",
         "foobar2000", "winamp", "musicbee", "aimp", "iTunes", "AppleMusic",
@@ -185,13 +177,9 @@ fn windows_send_media_play_pause() {
     }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  Linux
-// ═════════════════════════════════════════════════════════════════════════════
-
 #[cfg(target_os = "linux")]
 fn platform_pause() -> Vec<String> {
-    // ── Primary: MPRIS2 via dbus-send ─────────────────────────────────────────
+    // Primary: MPRIS2 via dbus-send
     // dbus-send ships with every major desktop environment (GNOME, KDE, XFCE,
     // LXQt, MATE, Cinnamon …) and is available on Debian, Ubuntu, Fedora,
     // Arch, openSUSE, Alpine, Void, Gentoo, etc.
@@ -201,7 +189,7 @@ fn platform_pause() -> Vec<String> {
         }
     }
 
-    // ── Fallback: playerctl ───────────────────────────────────────────────────
+    // Fallback: playerctl
     // playerctl is optional but widely packaged. It works as a high-level
     // wrapper around MPRIS2 and covers edge cases dbus-send misses.
     linux_playerctl_pause()
@@ -346,10 +334,6 @@ fn linux_playerctl_pause() -> Vec<String> {
         _ => Vec::new(),
     }
 }
-
-// ═════════════════════════════════════════════════════════════════════════════
-//  Other platforms — no-op
-// ═════════════════════════════════════════════════════════════════════════════
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 fn platform_pause() -> Vec<String> {

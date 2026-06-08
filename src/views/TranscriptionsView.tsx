@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronDown, History, Trash2, Copy, Check, Loader2 } from "lucide-react";
+import { ChevronDown, History, Trash2, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,6 @@ export function TranscriptionsView() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] =
     useState<TranscriptionItem | null>(null);
@@ -88,14 +87,10 @@ export function TranscriptionsView() {
     };
   }, []);
 
-  const handleCopy = async (id: string, text: string) => {
+  const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedId(id);
       toast.success(t("transcriptions.copiedToClipboard"));
-      setTimeout(() => {
-        setCopiedId(null);
-      }, 1500);
     } catch (err) {
       console.error("Failed to copy text:", err);
       toast.error(t("transcriptions.copyFailed"));
@@ -206,7 +201,6 @@ export function TranscriptionsView() {
       ) : (
         <div className="border border-border rounded-xl overflow-hidden bg-secondary">
           {history.map((item) => {
-            const isCopied = copiedId === item.id;
             const isExpanded = expandedId === item.id;
             return (
               <div
@@ -267,18 +261,11 @@ export function TranscriptionsView() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleCopy(item.id, item.text);
+                        handleCopy(item.text);
                       }}
-                      className={`w-[88px] ${
-                        isCopied
-                          ? "border-success/30 text-success"
-                          : ""
-                      }`}
                     >
-                      {isCopied ? <Check size={13} /> : <Copy size={13} />}
-                      {isCopied
-                        ? t("transcriptions.copied")
-                        : t("transcriptions.copy")}
+                      <Copy size={13} />
+                      {t("transcriptions.copy")}
                     </Button>
                   </div>
                 </div>

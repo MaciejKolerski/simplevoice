@@ -476,8 +476,6 @@ pub fn unregister_native_shortcut(action_id: &str) -> Result<(), String> {
     }
 }
 
-// ─── GNOME Registrars ────────────────────────────────────────────────────────
-
 fn register_gnome_shortcut(
     name: &str,
     command_to_run: &str,
@@ -579,8 +577,6 @@ fn unregister_gnome_shortcut(action_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-// ─── Cinnamon Registrars ─────────────────────────────────────────────────────
-
 fn register_cinnamon_shortcut(
     name: &str,
     command_to_run: &str,
@@ -661,8 +657,6 @@ fn unregister_cinnamon_shortcut(action_id: &str) -> Result<(), String> {
 
     Ok(())
 }
-
-// ─── MATE Registrars ─────────────────────────────────────────────────────────
 
 fn register_mate_shortcut(
     name: &str,
@@ -745,8 +739,6 @@ fn unregister_mate_shortcut(action_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-// ─── XFCE Registrars ─────────────────────────────────────────────────────────
-
 fn register_xfce_shortcut(
     command_to_run: &str,
     shortcut_str: &str,
@@ -807,8 +799,6 @@ fn unregister_xfce_shortcuts_for_command(command_substring: &str) {
         }
     }
 }
-
-// ─── KDE Registrars ──────────────────────────────────────────────────────────
 
 fn register_kde_shortcut(
     name: &str,
