@@ -264,11 +264,6 @@ impl AudioController {
                                     let _ = wrapper.0.pause();
                                 }
 
-                                #[cfg(target_os = "macos")]
-                                {
-                                    crate::update_recording_window_visibility(&app_handle_clone);
-                                }
-
                                 // Capture which media apps were paused so we can resume them
                                 let paused_apps_vad: Vec<String> =
                                     s.paused_media_apps.drain(..).collect();
@@ -285,6 +280,14 @@ impl AudioController {
 
                                 // Drop the lock before running disk I/O to write file & rebuilding tray (to avoid deadlocks)
                                 drop(s);
+
+                                // Refresh overlay visibility only AFTER releasing the audio-state
+                                // lock: update_recording_window_visibility re-locks it (is_recording /
+                                // is_saving / is_transcribing), so calling it while `s` was held would
+                                // deadlock the audio thread. is_saving is still true here, so the
+                                // overlay stays up through transcription (keeps App Nap away on macOS).
+                                #[cfg(target_os = "macos")]
+                                crate::update_recording_window_visibility(&app_handle_clone);
 
                                 // Save WAV file and notify frontend / rebuild tray on a separate thread
                                 let state_save_clone = Arc::clone(&state_clone);

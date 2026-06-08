@@ -276,6 +276,17 @@ fn begin_live_session(app: &tauri::AppHandle) {
 /// Finishes the active live session (emits `transcription-final`) and clears
 /// the audio tap. No-op if no session is active.
 fn end_live_session(app: &tauri::AppHandle) {
+    // Keep the macOS run loop awake across finalization. `streaming.finish()`
+    // blocks until the worker has run its final re-decode and emitted
+    // `transcription-final` (deliverable only by evaluating JS on the main
+    // thread). Recording has already stopped, so the app meets every App Nap
+    // criterion; on a long recording the final decode outlasts App Nap's engage
+    // latency, the run loop naps, and the event sits undelivered until the next
+    // wake (the next recording) — the live transcription appears to hang. Mirror
+    // the guard `transcribe_audio` already holds for the batch path.
+    #[cfg(target_os = "macos")]
+    let _app_nap_guard = AppNapGuard::begin("SimpleVoice is finalizing live transcription");
+
     let audio = app.state::<AudioController>();
     audio.clear_live_session();
     let streaming = app.state::<crate::stt::streaming::StreamingController>();
@@ -432,12 +443,19 @@ static WINDOW_INITIALIZED: std::sync::atomic::AtomicBool =
 pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     let mode = get_recording_window_mode(app);
     let controller = app.state::<AudioController>();
-    let is_recording = controller.is_recording();
+    // Keep the overlay up through saving + transcription, not just recording. It
+    // gives "transcribing" feedback and, crucially on macOS, keeps a window on
+    // screen so the process stays ineligible for App Nap while the result is
+    // delivered to the hidden main webview. With no visible window the run loop
+    // naps and a long transcription's result sits undelivered until the next wake
+    // (the next recording) — the reported "processing never finishes" hang.
+    let is_busy =
+        controller.is_recording() || controller.is_saving() || controller.is_transcribing();
 
     if let Some(window) = app.get_webview_window("recording_window") {
         let should_show = match mode.as_str() {
             "always" => true,
-            "recording" => is_recording,
+            "recording" => is_busy,
             "never" | _ => false,
         };
 
@@ -573,12 +591,15 @@ fn reposition_main_traffic_lights<R: tauri::Runtime>(window: &tauri::Window<R>) 
 pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     let mode = get_recording_window_mode(app);
     let controller = app.state::<AudioController>();
-    let is_recording = controller.is_recording();
+    // Keep the overlay visible through saving + transcription for consistent
+    // "transcribing" feedback (mirrors the macOS path).
+    let is_busy =
+        controller.is_recording() || controller.is_saving() || controller.is_transcribing();
 
     if let Some(window) = app.get_webview_window("recording_window") {
         let should_show = match mode.as_str() {
             "always" => true,
-            "recording" => is_recording,
+            "recording" => is_busy,
             "never" | _ => false,
         };
 
@@ -738,6 +759,29 @@ fn set_transcribing(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     controller.set_transcribing(active);
+
+    // Keep the macOS run loop awake across the full transcribe -> deliver -> paste
+    // window, not just the `transcribe_audio` call (whose guard drops before Tauri
+    // marshals the result to the webview). The frontend flips this to `false` only
+    // after it has received the text, so the activity covers result delivery. See
+    // TRANSCRIBE_ACTIVITY.
+    #[cfg(target_os = "macos")]
+    {
+        let mut slot = TRANSCRIBE_ACTIVITY
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *slot = if active {
+            Some(AppNapGuard::begin("SimpleVoice is transcribing audio"))
+        } else {
+            None
+        };
+    }
+
+    // Reflect the transcribing state in the overlay: keep it on screen while busy
+    // (the visible window is what actually keeps App Nap away during delivery) and
+    // let it hide once transcription finishes.
+    update_recording_window_visibility(&app_handle);
+
     let _ = app_handle.emit("transcribing-status", active);
     let _ = rebuild_tray_menu(&app_handle);
     Ok(())
@@ -1617,6 +1661,21 @@ impl Drop for AppNapGuard {
     }
 }
 
+/// App Nap suppression spanning the *whole* transcribing window, opened by
+/// `set_transcribing(true)` and closed by `set_transcribing(false)`.
+///
+/// `transcribe_audio`'s own guard ends the instant the command returns, but
+/// Tauri only hands the result to the webview by evaluating JS on the main
+/// thread *after* that. On a long recording the app has been UI-idle for the
+/// entire inference, so App Nap re-engages in that gap and the result sits
+/// undelivered until the next run-loop wake (the next recording) — the hang the
+/// per-command guard was meant to fix, still reachable for long clips. The
+/// frontend closes this only once it has received the text and pasted, so
+/// holding the activity until then keeps the run loop awake through delivery.
+#[cfg(target_os = "macos")]
+static TRANSCRIBE_ACTIVITY: std::sync::Mutex<Option<AppNapGuard>> =
+    std::sync::Mutex::new(None);
+
 #[tauri::command]
 async fn transcribe_audio(
     samples: Option<Vec<f32>>,
@@ -2141,8 +2200,6 @@ fn play_done_sound(app_handle: tauri::AppHandle) {
     play_backend_sound(&app_handle, "done");
 }
 
-// ─── Cross-Platform Permission Checks ────────────────────────────────────────
-
 /// Returns true if the application has Accessibility permissions on macOS.
 /// On other platforms, always returns true since no equivalent permission is required.
 #[tauri::command]
@@ -2284,8 +2341,6 @@ fn check_permissions_status() -> PermissionsStatus {
         gdk_backend,
     }
 }
-
-// ─── Keyboard Simulation ─────────────────────────────────────────────────────
 
 #[tauri::command]
 fn paste_text(text: String) -> Result<(), String> {
