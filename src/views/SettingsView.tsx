@@ -432,7 +432,10 @@ export function SettingsView() {
         setDevices(list);
 
         const saved = localStorage.getItem("selected_audio_device");
-        if (saved && list.includes(saved)) {
+        // Preserve the explicit choice when present, or when the list came back
+        // empty (transient glitch); only reset to the system default when the
+        // saved device is genuinely missing from a populated list.
+        if (saved && (list.includes(saved) || list.length === 0)) {
           setSelectedDevice(saved);
           await invoke("set_selected_device", { device: saved });
         } else {

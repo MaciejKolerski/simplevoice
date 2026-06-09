@@ -40,6 +40,7 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorActionView, setErrorActionView] = useState<ViewId>("models");
   // WAV path of the in-flight live session, consumed by the 'transcription-final' handler.
   const liveWavPathRef = useRef<string | null>(null);
   // Serializes incremental paste calls so typed characters never interleave or reorder.
@@ -67,7 +68,10 @@ function App() {
         const saved = localStorage.getItem("selected_audio_device");
         if (saved) {
           const list = await invoke<string[]>("list_audio_devices");
-          if (list.includes(saved)) {
+          // Keep the user's explicit choice when present, or when the list came
+          // back empty (a transient enumeration glitch). Only fall back to the
+          // system default when the device is genuinely gone from a populated list.
+          if (list.includes(saved) || list.length === 0) {
             await invoke("set_selected_device", { device: saved });
             return;
           }
@@ -338,8 +342,11 @@ function App() {
     const unlistenFailed = listen<string>(
       "recording-failed-to-start",
       (event) => {
+        const target: ViewId =
+          event.payload === "errors.mic_unavailable" ? "settings" : "models";
         setErrorMessage(localizeError(event.payload));
-        setActiveView("models");
+        setErrorActionView(target);
+        setActiveView(target);
       },
     );
 
@@ -380,11 +387,15 @@ function App() {
               <AlertDialogCancel>{t("common.dismiss")}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => {
-                  setActiveView("models");
+                  setActiveView(errorActionView);
                   setErrorMessage(null);
                 }}
               >
-                {t("errors.openModels")}
+                {t(
+                  errorActionView === "settings"
+                    ? "errors.openSettings"
+                    : "errors.openModels",
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

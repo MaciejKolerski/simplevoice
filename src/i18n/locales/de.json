@@ -34,9 +34,11 @@
   "errors": {
     "title": "Konfiguration erforderlich",
     "openModels": "Modelle öffnen",
+    "openSettings": "Einstellungen öffnen",
     "no_model_loaded": "Kein lokales Modell geladen. Lade eines unter Modelle herunter oder lade es.",
     "cloud_not_configured": "Cloud-Transkription ist nicht konfiguriert. Füge deinen API-Schlüssel unter Modelle hinzu.",
-    "model_load_failed": "Modell konnte nicht geladen werden. Versuche ein anderes Modell unter Modelle."
+    "model_load_failed": "Modell konnte nicht geladen werden. Versuche ein anderes Modell unter Modelle.",
+    "mic_unavailable": "Das ausgewählte Mikrofon ist nicht mehr verfügbar. Wähle in den Einstellungen eine andere Eingabe."
   },
   "settings": {
     "interfaceLanguageGroup": "Oberfläche",

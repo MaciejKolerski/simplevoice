@@ -34,9 +34,11 @@
   "errors": {
     "title": "Configuration Required",
     "openModels": "Open Models",
+    "openSettings": "Open Settings",
     "no_model_loaded": "No local model loaded. Download or load one in Models.",
     "cloud_not_configured": "Cloud transcription is not configured. Add your API key in Models.",
-    "model_load_failed": "Failed to load the model. Try another model in Models."
+    "model_load_failed": "Failed to load the model. Try another model in Models.",
+    "mic_unavailable": "Your selected microphone is no longer available. Choose another input in Settings."
   },
   "settings": {
     "interfaceLanguageGroup": "Interface",

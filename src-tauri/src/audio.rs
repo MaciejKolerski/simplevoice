@@ -150,33 +150,37 @@ impl AudioController {
             return Err("Already recording".to_string());
         }
 
+        let device_name = s.selected_device.clone();
+
+        // Resolve the input device BEFORE pausing media, so an unavailable device
+        // fails cleanly without leaving the user's media paused.
+        //
+        // When the user explicitly picked a device, use exactly that one and never
+        // silently fall back to the system default. On macOS the default input is
+        // often a Bluetooth headset (e.g. AirPods); opening its microphone forces
+        // the A2DP -> HFP profile switch that audibly degrades playback. Honoring
+        // the explicit choice keeps the headset in high-quality output mode.
+        let host = cpal::default_host();
+        let device = match &device_name {
+            Some(name) => host
+                .input_devices()
+                .map_err(|e| e.to_string())?
+                .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
+                .ok_or_else(|| {
+                    eprintln!("Selected microphone '{}' is not available", name);
+                    "errors.mic_unavailable".to_string()
+                })?,
+            None => host
+                .default_input_device()
+                .ok_or_else(|| "No default input device found".to_string())?,
+        };
+
         // Cross-platform media pause (macOS / Windows / Linux)
         if pause_audio {
             s.paused_media_apps = crate::media_control::pause_system_media();
         } else {
             s.paused_media_apps = Vec::new();
         }
-
-        let device_name = s.selected_device.clone();
-
-        // Resolve device
-        let host = cpal::default_host();
-        let device = if let Some(name) = &device_name {
-            let mut devices = host.input_devices().map_err(|e| e.to_string())?;
-            if let Some(d) = devices.find(|d| d.name().map(|n| &n == name).unwrap_or(false)) {
-                d
-            } else {
-                println!(
-                    "Selected device '{}' not found, falling back to default device.",
-                    name
-                );
-                host.default_input_device()
-                    .ok_or_else(|| "No default input device found".to_string())?
-            }
-        } else {
-            host.default_input_device()
-                .ok_or_else(|| "No default input device found".to_string())?
-        };
 
         let config = device.default_input_config().map_err(|e| e.to_string())?;
         let sample_format = config.sample_format();

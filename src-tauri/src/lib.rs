@@ -1104,11 +1104,21 @@ fn toggle_recording(app: &tauri::AppHandle) {
         match is_recording_allowed(&config, &stt) {
             Ok(_) => {
                 let pause_audio = is_pause_audio_enabled(app);
-                if controller.start_recording(app.clone(), pause_audio).is_ok() {
-                    play_backend_sound(app, "start");
-                    let _ = app.emit("recording-started", ());
-                    update_recording_window_visibility(app);
-                    begin_live_session(app);
+                match controller.start_recording(app.clone(), pause_audio) {
+                    Ok(()) => {
+                        play_backend_sound(app, "start");
+                        let _ = app.emit("recording-started", ());
+                        update_recording_window_visibility(app);
+                        begin_live_session(app);
+                    }
+                    Err(reason) => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                        let _ = app.emit("recording-failed-to-start", reason);
+                    }
                 }
             }
             Err(reason) => {

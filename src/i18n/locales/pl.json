@@ -34,9 +34,11 @@
   "errors": {
     "title": "Wymagana konfiguracja",
     "openModels": "Otwórz Modele",
+    "openSettings": "Otwórz Ustawienia",
     "no_model_loaded": "Brak załadowanego modelu lokalnego. Pobierz lub załaduj model w sekcji Modele.",
     "cloud_not_configured": "Transkrypcja w chmurze nie jest skonfigurowana. Dodaj klucz API w sekcji Modele.",
-    "model_load_failed": "Nie udało się załadować modelu. Spróbuj innego modelu w sekcji Modele."
+    "model_load_failed": "Nie udało się załadować modelu. Spróbuj innego modelu w sekcji Modele.",
+    "mic_unavailable": "Wybrany mikrofon nie jest już dostępny. Wybierz inne wejście w Ustawieniach."
   },
   "settings": {
     "interfaceLanguageGroup": "Interfejs",
