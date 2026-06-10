@@ -1,7 +1,12 @@
 //! Cross-platform system media playback control for the "Pause System Audio" feature.
 //!
 //! # Strategy per platform
-//! - **macOS**  — AppleScript via `osascript` to detect and pause/resume individual apps
+//! - **macOS**  — `MRMediaRemoteSendCommand` (private MediaRemote.framework) pauses the
+//!                system-wide "Now Playing" session, which covers any app integrated with
+//!                macOS media controls (music players, browsers, podcast apps). Playback
+//!                detection uses `pmset -g assertions` because since macOS 15.4 the
+//!                MediaRemote *query* APIs return nothing for non-entitled processes,
+//!                while sending commands still works (verified on macOS 26.5).
 //! - **Windows** — WinRT (PowerShell) to detect playback state + Win32 `keybd_event` FFI
 //!                 to send `VK_MEDIA_PLAY_PAUSE` (0xB3)
 //! - **Linux**  — MPRIS2 over D-Bus via `dbus-send` (present on every major desktop),

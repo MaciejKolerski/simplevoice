@@ -124,7 +124,7 @@ const LIVE_SPEED_MS: Record<string, number> = {
 };
 
 export function SettingsView() {
-  const { updateConfig } = useConfig();
+  const { updateConfig, getConfig, config } = useConfig();
   const { t, i18n } = useTranslation();
   const [vadEnabled, setVadEnabled] = useState(false);
   const [liveEnabled, setLiveEnabled] = useState(false);
@@ -213,11 +213,16 @@ export function SettingsView() {
       console.error("Failed to set VAD state on mount:", err);
     });
 
-    const savedLive =
-      localStorage.getItem("live_transcription_enabled") === "true";
-    setLiveEnabled(savedLive);
-    // Mirror to config.json so the backend (is_live_transcription_enabled) agrees.
-    updateConfig("live_transcription_enabled", savedLive);
+    // App.tsx reads this flag from localStorage in its event handlers, so
+    // localStorage stays the frontend store. Mirror it to config.json for the
+    // backend (is_live_transcription_enabled) only when the key actually
+    // exists: a fresh webview storage (dev build, reinstall) must not clobber
+    // a setting some other install already persisted.
+    const storedLive = localStorage.getItem("live_transcription_enabled");
+    setLiveEnabled(storedLive === "true");
+    if (storedLive !== null) {
+      updateConfig("live_transcription_enabled", storedLive === "true");
+    }
 
     // Frontend-only flag (App.tsx reads it); default on.
     setLiveAutopaste(localStorage.getItem("live_autopaste") !== "false");
@@ -225,21 +230,6 @@ export function SettingsView() {
     const savedOverlayTextMode =
       localStorage.getItem("live_overlay_mode") || "full";
     setLiveOverlayMode(savedOverlayTextMode);
-
-    const savedSpeed = localStorage.getItem("live_speed") || "balanced";
-    setLiveSpeed(savedSpeed);
-    // Mirror the chosen cadence (ms) into config.json for the backend.
-    updateConfig("live_min_chunk_ms", LIVE_SPEED_MS[savedSpeed] ?? 600);
-
-    const savedSound =
-      localStorage.getItem("sound_feedback_enabled") !== "false";
-    setSoundEnabled(savedSound);
-    updateConfig("sound_feedback_enabled", savedSound);
-
-    const savedPauseAudio =
-      localStorage.getItem("pause_audio_on_record") === "true";
-    setPauseAudioEnabled(savedPauseAudio);
-    updateConfig("pause_audio_on_record", savedPauseAudio);
 
     const savedLang = localStorage.getItem("asr_language") || "auto";
     setAsrLanguage(savedLang);
@@ -252,6 +242,20 @@ export function SettingsView() {
       console.error("Failed to initialize recording window mode:", err);
     });
   }, []);
+
+  // config.json is the source of truth for settings the backend reads at
+  // runtime. It loads asynchronously, so re-sync the switches whenever it
+  // arrives instead of seeding them from localStorage (which differs between
+  // dev and installed builds and used to silently overwrite the config).
+  useEffect(() => {
+    setSoundEnabled(getConfig("sound_feedback_enabled", true) !== false);
+    setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
+    const chunkMs = getConfig("live_min_chunk_ms", null);
+    const speed = Object.entries(LIVE_SPEED_MS).find(([, ms]) => ms === chunkMs)?.[0];
+    if (speed) {
+      setLiveSpeed(speed);
+    }
+  }, [config]);
 
   useEffect(() => {
     getVersion()
@@ -516,19 +520,16 @@ export function SettingsView() {
 
   const handleSpeedChange = (speed: string) => {
     setLiveSpeed(speed);
-    localStorage.setItem("live_speed", speed);
     updateConfig("live_min_chunk_ms", LIVE_SPEED_MS[speed] ?? 600);
   };
 
   const handleSoundToggle = (checked: boolean) => {
     setSoundEnabled(checked);
-    localStorage.setItem("sound_feedback_enabled", String(checked));
     updateConfig("sound_feedback_enabled", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
     setPauseAudioEnabled(checked);
-    localStorage.setItem("pause_audio_on_record", String(checked));
     updateConfig("pause_audio_on_record", checked);
   };
 
