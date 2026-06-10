@@ -790,6 +790,17 @@ deref coercion handles `&Arc<Vec<f32>>` → `&[f32]`) and the cloud call's
 Run: `cd /Users/woro/Documents/simplevoice/src-tauri && cargo check 2>&1 | tail -5`
 Expected: `Finished` with no errors.
 
+**Review amendment (applied in commit d5b342e):** the save thread must NOT call
+`end_live_session` — at the 90-min cap the WAV save takes seconds and a new
+live session started in that window would be torn down by the stale stopper.
+Instead `auto_stop_recording` takes `live_tx = s.stream_tx.take()` (and clears
+`live_mode_active`) under the held guard, and the save thread ends with
+`crate::finish_live_session_for(&app, &tx)` → `StreamingController::finish_if`,
+which finishes the session only when `session.audio_tx.same_channel(tx)`.
+Additionally, the stop sound and the first tray rebuild run BEFORE
+`save_wav_file` (immediate user feedback); the `recording-stopped` emit and the
+`is_saving`/`is_transcribing` flag flips stay after the save.
+
 - [ ] **Step 3.7: Run the full test suite**
 
 Run: `cd /Users/woro/Documents/simplevoice/src-tauri && cargo test --lib 2>&1 | tail -5`
