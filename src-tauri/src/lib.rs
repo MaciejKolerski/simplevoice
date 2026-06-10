@@ -333,6 +333,36 @@ fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
     false
 }
 
+fn config_ui_language(app_handle: &tauri::AppHandle) -> String {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return String::new();
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return String::new();
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("ui_language").and_then(|l| l.as_str()).map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// Marker appended to a partially transcribed recording when a chunk after
+/// the first one failed (spec: partial text beats losing the whole dictation).
+fn truncation_marker(app_handle: &tauri::AppHandle, secs: f32) -> String {
+    marker_for(&config_ui_language(app_handle), secs)
+}
+
+/// Pure so the locale selection and mm:ss formatting are unit-testable.
+fn marker_for(lang: &str, secs: f32) -> String {
+    let total = secs.max(0.0) as u32;
+    let (mm, ss) = (total / 60, total % 60);
+    match lang {
+        "pl" => format!(" [transkrypcja przerwana na {}:{:02}]", mm, ss),
+        "de" => format!(" [Transkription abgebrochen bei {}:{:02}]", mm, ss),
+        _ => format!(" [transcription stopped at {}:{:02}]", mm, ss),
+    }
+}
+
 pub(crate) fn is_recording_window_locked(app_handle: &tauri::AppHandle) -> bool {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -1735,23 +1765,91 @@ async fn transcribe_audio(
             if key.trim().is_empty() {
                 return Err(format!("ASR API Key for {} is missing or empty. Please set it in models/engines settings.", provider_name));
             }
-            crate::stt::cloud::transcribe_cloud(
-                &final_samples,
-                &key,
-                Some(&provider_name),
-                model.as_deref(),
-                base_url.as_deref(),
-                language.as_deref(),
-            )
-            .await
-            .map_err(|e| e.to_string())?
+            // Same preprocessing + chunking as the local path (per spec): keeps
+            // every upload far below provider size caps (OpenAI: 25 MB), yields
+            // progress events, and puts chunk offsets and the truncation marker
+            // on one timeline with the local engines.
+            let prepared = crate::stt::prepare_samples(&final_samples);
+            let chunks = crate::stt::chunker::split_at_silences(&prepared);
+            let total = chunks.len();
+            let mut parts: Vec<String> = Vec::with_capacity(total);
+            let mut truncated_at: Option<f32> = None;
+            for (i, range) in chunks.iter().enumerate() {
+                match crate::stt::cloud::transcribe_cloud(
+                    &prepared[range.clone()],
+                    &key,
+                    Some(&provider_name),
+                    model.as_deref(),
+                    base_url.as_deref(),
+                    language.as_deref(),
+                )
+                .await
+                {
+                    Ok(part) => {
+                        let part = part.trim().to_string();
+                        if !part.is_empty() {
+                            parts.push(part);
+                        }
+                    }
+                    Err(e) => {
+                        // Same rule as transcribe_with_progress: only return a
+                        // partial result when there is actual text to keep.
+                        if parts.is_empty() {
+                            return Err(e.to_string());
+                        }
+                        eprintln!(
+                            "[transcribe_audio] cloud chunk {}/{} failed: {}",
+                            i + 1,
+                            total,
+                            e
+                        );
+                        truncated_at = Some(range.start as f32 / 16_000.0);
+                        break;
+                    }
+                }
+                if total > 1 {
+                    let _ = app_handle.emit(
+                        "transcription-progress",
+                        serde_json::json!({ "done": i + 1, "total": total }),
+                    );
+                }
+            }
+            let mut joined = parts.join(" ");
+            if let Some(secs) = truncated_at {
+                joined.push_str(&truncation_marker(&app_handle, secs));
+            }
+            joined
         } else {
-            let result: Result<String, String> = tauri::async_runtime::spawn_blocking(move || {
-                controller.transcribe(&final_samples, language.as_deref())
-            })
-            .await
-            .map_err(|e| e.to_string())?;
-            result?
+            let app_for_progress = app_handle.clone();
+            let language_for_engine = language.clone();
+            let samples_for_engine = std::sync::Arc::clone(&final_samples);
+            let result: Result<crate::stt::ChunkedTranscription, String> =
+                tauri::async_runtime::spawn_blocking(move || {
+                    controller.transcribe_with_progress(
+                        &samples_for_engine,
+                        language_for_engine.as_deref(),
+                        &mut |done, total| {
+                            if total > 1 {
+                                let _ = app_for_progress.emit(
+                                    "transcription-progress",
+                                    serde_json::json!({ "done": done, "total": total }),
+                                );
+                            }
+                        },
+                    )
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+            let chunked = result?;
+            let mut joined = chunked.text;
+            if let Some((secs, err)) = chunked.truncated {
+                eprintln!(
+                    "[transcribe_audio] transcription truncated at {:.0}s: {}",
+                    secs, err
+                );
+                joined.push_str(&truncation_marker(&app_handle, secs));
+            }
+            joined
         }
     };
 
@@ -2865,4 +2963,17 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::marker_for;
+
+    #[test]
+    fn truncation_marker_localization_and_format() {
+        assert_eq!(marker_for("pl", 45.0), " [transkrypcja przerwana na 0:45]");
+        assert_eq!(marker_for("de", 305.0), " [Transkription abgebrochen bei 5:05]");
+        assert_eq!(marker_for("en", 3661.0), " [transcription stopped at 61:01]");
+        assert_eq!(marker_for("", -1.0), " [transcription stopped at 0:00]");
+    }
 }
