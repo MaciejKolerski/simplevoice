@@ -39,6 +39,10 @@ function App() {
   });
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionProgress, setTranscriptionProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorActionView, setErrorActionView] = useState<ViewId>("models");
   // WAV path of the in-flight live session, consumed by the 'transcription-final' handler.
@@ -156,6 +160,7 @@ function App() {
     const handleStarted = () => {
       setIsRecording(true);
       setErrorMessage(null);
+      setTranscriptionProgress(null);
       pasteChainRef.current = Promise.resolve();
       liveWavPathRef.current = null;
     };
@@ -253,6 +258,7 @@ function App() {
         setErrorMessage(localizeError(msg));
       } finally {
         setIsTranscribing(false);
+        setTranscriptionProgress(null);
         invoke("set_transcribing", { active: false }).catch(() => {});
       }
     };
@@ -339,6 +345,10 @@ function App() {
     const unlistenStopped = listen("recording-stopped", handleStopped);
     const unlistenCommitted = listen("transcription-committed", handleCommitted);
     const unlistenFinal = listen("transcription-final", handleFinal);
+    const unlistenProgress = listen<{ done: number; total: number }>(
+      "transcription-progress",
+      (event) => setTranscriptionProgress(event.payload),
+    );
     const unlistenFailed = listen<string>(
       "recording-failed-to-start",
       (event) => {
@@ -355,6 +365,7 @@ function App() {
       unlistenStopped.then((f) => f());
       unlistenCommitted.then((f) => f());
       unlistenFinal.then((f) => f());
+      unlistenProgress.then((f) => f());
       unlistenFailed.then((f) => f());
     };
   }, []);
@@ -456,6 +467,21 @@ function App() {
                   <p className="text-muted text-sm leading-normal">
                     {t("hud.transcribingHint")}
                   </p>
+                  {transcriptionProgress && transcriptionProgress.total > 1 && (
+                    <div className="w-full mt-4">
+                      <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-white/80 transition-all duration-300"
+                          style={{
+                            width: `${Math.round((transcriptionProgress.done / transcriptionProgress.total) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <p className="text-muted text-xs mt-2 tabular-nums">
+                        {Math.round((transcriptionProgress.done / transcriptionProgress.total) * 100)}%
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
             </div>
