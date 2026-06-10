@@ -277,6 +277,7 @@ function App() {
 
       const text: string = event?.payload?.text || "";
       setIsTranscribing(false);
+      setTranscriptionProgress(null);
       invoke("set_transcribing", { active: false }).catch(() => {});
       if (!text.trim()) return;
 
