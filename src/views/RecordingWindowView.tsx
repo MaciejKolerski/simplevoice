@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
+import { isSupported } from "../i18n/detect";
 
 type Status = "idle" | "recording" | "transcribing";
 
@@ -41,6 +42,7 @@ export function RecordingWindowView() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [warningSecs, setWarningSecs] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const warningDeadlineRef = useRef<number | null>(null);
   const startedAtRef = useRef<number>(0);
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export function RecordingWindowView() {
     invoke<string>("load_config")
       .then((str) => {
         const lang = JSON.parse(str || "{}").ui_language;
-        if (typeof lang === "string" && i18n.language !== lang) {
+        if (typeof lang === "string" && isSupported(lang) && i18n.language !== lang) {
           i18n.changeLanguage(lang).catch(() => {});
         }
       })
@@ -73,8 +75,9 @@ export function RecordingWindowView() {
 
     // Follow live language switches made in the main window's settings.
     const unlistenLanguage = listen<string>("ui-language-changed", (event) => {
-      if (event.payload && i18n.language !== event.payload) {
-        i18n.changeLanguage(event.payload).catch(() => {});
+      const lang = event.payload;
+      if (typeof lang === "string" && isSupported(lang) && i18n.language !== lang) {
+        i18n.changeLanguage(lang).catch(() => {});
       }
     });
 
@@ -91,11 +94,15 @@ export function RecordingWindowView() {
       setTentative("");
       setProgress(null);
       setWarningSecs(null);
+      warningDeadlineRef.current = null;
       startedAtRef.current = Date.now();
       setElapsed(0);
       stopTimer();
       timerRef.current = setInterval(() => {
         setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
+        if (warningDeadlineRef.current !== null) {
+          setWarningSecs(Math.max(0, Math.round((warningDeadlineRef.current - Date.now()) / 1000)));
+        }
       }, 1000);
     });
 
@@ -105,6 +112,7 @@ export function RecordingWindowView() {
       stopTimer();
       setElapsed(null);
       setWarningSecs(null);
+      warningDeadlineRef.current = null;
     });
 
     const unlistenTranscribing = listen<boolean>("transcribing-status", (event) => {
@@ -151,7 +159,10 @@ export function RecordingWindowView() {
     );
     const unlistenTimeWarning = listen<{ seconds_left: number }>(
       "recording-time-warning",
-      (event) => setWarningSecs(event.payload.seconds_left),
+      (event) => {
+        warningDeadlineRef.current = Date.now() + event.payload.seconds_left * 1000;
+        setWarningSecs(event.payload.seconds_left);
+      },
     );
 
     return () => {
