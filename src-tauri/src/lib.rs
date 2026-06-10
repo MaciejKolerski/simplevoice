@@ -1769,8 +1769,14 @@ async fn transcribe_audio(
             // every upload far below provider size caps (OpenAI: 25 MB), yields
             // progress events, and puts chunk offsets and the truncation marker
             // on one timeline with the local engines.
-            let prepared = crate::stt::prepare_samples(&final_samples);
-            let chunks = crate::stt::chunker::split_at_silences(&prepared);
+            let samples_for_prep = std::sync::Arc::clone(&final_samples);
+            let (prepared, chunks) = tauri::async_runtime::spawn_blocking(move || {
+                let prepared = crate::stt::prepare_samples(&samples_for_prep);
+                let chunks = crate::stt::chunker::split_at_silences(&prepared);
+                (prepared, chunks)
+            })
+            .await
+            .map_err(|e| e.to_string())?;
             let total = chunks.len();
             let mut parts: Vec<String> = Vec::with_capacity(total);
             let mut truncated_at: Option<f32> = None;
@@ -1795,7 +1801,7 @@ async fn transcribe_audio(
                         // Same rule as transcribe_with_progress: only return a
                         // partial result when there is actual text to keep.
                         if parts.is_empty() {
-                            return Err(e.to_string());
+                            return Err(e);
                         }
                         eprintln!(
                             "[transcribe_audio] cloud chunk {}/{} failed: {}",
@@ -1803,7 +1809,7 @@ async fn transcribe_audio(
                             total,
                             e
                         );
-                        truncated_at = Some(range.start as f32 / 16_000.0);
+                        truncated_at = Some(range.start as f32 / crate::stt::chunker::SAMPLE_RATE as f32);
                         break;
                     }
                 }
@@ -1844,8 +1850,8 @@ async fn transcribe_audio(
             let mut joined = chunked.text;
             if let Some((secs, err)) = chunked.truncated {
                 eprintln!(
-                    "[transcribe_audio] transcription truncated at {:.0}s: {}",
-                    secs, err
+                    "[transcribe_audio] transcription truncated at {}s: {}",
+                    secs as u32, err
                 );
                 joined.push_str(&truncation_marker(&app_handle, secs));
             }
