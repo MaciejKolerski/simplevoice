@@ -88,12 +88,31 @@ impl StreamingController {
     /// sender so the worker unblocks, then join.
     pub fn finish(&self) {
         let session = self.session.lock().unwrap().take();
-        if let Some(mut s) = session {
-            s.stop.store(true, Ordering::Relaxed);
-            drop(s.audio_tx);
-            if let Some(h) = s.handle.take() {
-                let _ = h.join();
-            }
+        if let Some(s) = session {
+            Self::finish_session(s);
+        }
+    }
+
+    /// Finishes the active session only when `tx` belongs to it. The cap-stop
+    /// save thread can outlive its session; a newer session must not be torn
+    /// down by a stale stopper.
+    pub fn finish_if(&self, tx: &Sender<Vec<f32>>) {
+        let mut guard = self.session.lock().unwrap();
+        let owned = guard.as_ref().is_some_and(|s| s.audio_tx.same_channel(tx));
+        let session = if owned { guard.take() } else { None };
+        // Drop the mutex guard before joining so the worker thread can make
+        // progress without contending on the session lock.
+        drop(guard);
+        if let Some(s) = session {
+            Self::finish_session(s);
+        }
+    }
+
+    fn finish_session(mut s: Session) {
+        s.stop.store(true, Ordering::Relaxed);
+        drop(s.audio_tx);
+        if let Some(h) = s.handle.take() {
+            let _ = h.join();
         }
     }
 }

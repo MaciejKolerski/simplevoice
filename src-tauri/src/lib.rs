@@ -293,6 +293,18 @@ pub(crate) fn end_live_session(app: &tauri::AppHandle) {
     streaming.finish();
 }
 
+/// Finishes the live session that owns `tx` (emits `transcription-final`).
+/// No-op when a different (newer) session is active.
+pub(crate) fn finish_live_session_for(
+    app: &tauri::AppHandle,
+    tx: &crossbeam_channel::Sender<Vec<f32>>,
+) {
+    #[cfg(target_os = "macos")]
+    let _app_nap_guard = AppNapGuard::begin("SimpleVoice is finalizing live transcription");
+    let streaming = app.state::<crate::stt::streaming::StreamingController>();
+    streaming.finish_if(tx);
+}
+
 fn is_pause_audio_enabled(app_handle: &tauri::AppHandle) -> bool {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,

@@ -81,10 +81,10 @@ pub(crate) fn save_wav_file(
 /// Completes an automatic stop (VAD silence or the max-duration cap) from the
 /// consumer thread. Consumes the held state guard so the lock is released
 /// before any blocking work; WAV save and notifications run on a new thread,
-/// mirroring the manual stop path. The is_recording guard makes it a no-op
-/// when a manual stop won the race in between two consumer iterations —
-/// without it, this would overwrite last_samples (the real recording) with
-/// the ≤1024-sample residue drained after the manual stop.
+/// mirroring the previous VAD auto-stop behavior. The is_recording guard makes
+/// it a no-op when a manual stop won the race in between two consumer
+/// iterations — without it, this would overwrite last_samples (the real
+/// recording) with the ≤1024-sample residue drained after the manual stop.
 fn auto_stop_recording(
     mut s: std::sync::MutexGuard<'_, AudioState>,
     state: &Arc<Mutex<AudioState>>,
@@ -105,6 +105,12 @@ fn auto_stop_recording(
     s.last_samples = Arc::clone(&samples);
     let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
 
+    // Claim the live session's sender under the same lock that arms/disarms it.
+    // The save thread can take seconds; if the user starts a new recording in
+    // that window, the new session must not be torn down by this stale stopper.
+    let live_tx = s.stream_tx.take();
+    s.live_mode_active = false;
+
     // Resume media before dropping the lock
     if !paused_apps.is_empty() {
         crate::media_control::resume_system_media(&paused_apps);
@@ -123,6 +129,10 @@ fn auto_stop_recording(
     let state_save_clone = Arc::clone(state);
     let app_handle_save_clone = app_handle.clone();
     std::thread::spawn(move || {
+        // Give immediate stop feedback before the multi-second WAV write.
+        crate::play_backend_sound(&app_handle_save_clone, "stop");
+        let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
+
         let saved_path = save_wav_file(&app_handle_save_clone, &samples, start_time)
             .ok()
             .flatten();
@@ -133,16 +143,14 @@ fn auto_stop_recording(
             s.is_transcribing = true;
         }
 
-        let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
-        crate::play_backend_sound(&app_handle_save_clone, "stop");
-
         let payload = saved_path.unwrap_or_else(|| "Recording stopped".to_string());
         let _ = app_handle_save_clone.emit("recording-stopped", payload);
 
-        // A max-duration auto-stop can fire while a live session is active;
-        // finish it so `transcription-final` is emitted. No-op when inactive
-        // (the VAD path never runs in live mode).
-        crate::end_live_session(&app_handle_save_clone);
+        // Finish only the live session this recording owned (no-op otherwise);
+        // a newer session started during the WAV save must survive.
+        if let Some(tx) = live_tx {
+            crate::finish_live_session_for(&app_handle_save_clone, &tx);
+        }
     });
 }
 
