@@ -122,7 +122,10 @@ impl SttController {
                 }
                 Err(e) => {
                     let err = format!("Transcription failed: {}", e);
-                    if i == 0 {
+                    // parts.is_empty(), not i == 0: if earlier chunks produced
+                    // only empty text, a "partial" result would paste a lone
+                    // truncation marker into the user's document.
+                    if parts.is_empty() {
                         return Err(err);
                     }
                     truncated = Some((range.start as f32 / chunker::SAMPLE_RATE as f32, err));
@@ -150,14 +153,16 @@ mod tests {
         calls: AtomicUsize,
         /// 1-based call number from which transcribe starts failing.
         fail_from_call: Option<usize>,
+        /// Calls with number <= this return Ok(String::new()) (failure check wins if both apply).
+        empty_until_call: usize,
     }
 
     impl FakeEngine {
         fn ok() -> Self {
-            Self { calls: AtomicUsize::new(0), fail_from_call: None }
+            Self { calls: AtomicUsize::new(0), fail_from_call: None, empty_until_call: 0 }
         }
         fn failing_from(n: usize) -> Self {
-            Self { calls: AtomicUsize::new(0), fail_from_call: Some(n) }
+            Self { calls: AtomicUsize::new(0), fail_from_call: Some(n), empty_until_call: 0 }
         }
     }
 
@@ -168,6 +173,9 @@ mod tests {
                 if call >= n {
                     return Err(AppError::Command("boom".into()));
                 }
+            }
+            if call <= self.empty_until_call {
+                return Ok(String::new());
             }
             Ok(format!("part{}", call))
         }
@@ -254,5 +262,16 @@ mod tests {
         let c = controller_with(FakeEngine::ok());
         let out = c.transcribe(&[], None).unwrap();
         assert_eq!(out, "");
+    }
+
+    #[test]
+    fn empty_first_chunk_then_failure_is_an_error() {
+        let c = controller_with(FakeEngine {
+            calls: AtomicUsize::new(0),
+            fail_from_call: Some(2),
+            empty_until_call: 1,
+        });
+        let err = c.transcribe(&speech(120), None).unwrap_err();
+        assert!(err.contains("Transcription failed"));
     }
 }

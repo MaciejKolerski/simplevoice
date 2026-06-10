@@ -464,7 +464,10 @@ b) Replace the whole `transcribe` method (lines 78-93, including the 90 s guard)
                 }
                 Err(e) => {
                     let err = format!("Transcription failed: {}", e);
-                    if i == 0 {
+                    // parts.is_empty(), not i == 0: if earlier chunks produced
+                    // only empty text, a "partial" result would paste a lone
+                    // truncation marker into the user's document.
+                    if parts.is_empty() {
                         return Err(err);
                     }
                     truncated = Some((range.start as f32 / chunker::SAMPLE_RATE as f32, err));
@@ -899,7 +902,9 @@ Replace lines 1716-1741 (`let text = { ... };`) with:
                         }
                     }
                     Err(e) => {
-                        if i == 0 {
+                        // Same rule as transcribe_with_progress: only return a
+                        // partial result when there is actual text to keep.
+                        if parts.is_empty() {
                             return Err(e.to_string());
                         }
                         eprintln!(
