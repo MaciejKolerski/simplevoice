@@ -46,6 +46,7 @@ Key modules:
   - ONNX (Sherpa-onnx / Parakeet)
   - Nemo
 - `stt/factory.rs` — `AsrFactory::load()` and `detect()`. Must call `load_model()` before local transcription. Contains guard against React StrictMode double-mount.
+- `stt/chunker.rs` — silence-aware splitting of long recordings into 45-90 s chunks; `SttController::transcribe_with_progress` transcribes them sequentially (any engine, cloud included) and emits `transcription-progress`; recording auto-stops at the 90-minute safety cap (`audio.rs::RECORDING_MAX_SECS`).
 - Platform specifics: macOS NSPanel + accessibility for recording window and auto-paste; Linux native shortcuts + `wtype`; Windows tray and enigo fallback.
 
 **Critical rules**:
