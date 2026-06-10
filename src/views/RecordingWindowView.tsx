@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 
 type Status = "idle" | "recording" | "transcribing";
 
@@ -34,6 +36,13 @@ export function RecordingWindowView() {
   const amplitudeRef = useRef<number>(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const { t } = useTranslation();
+  const [elapsed, setElapsed] = useState<number | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [warningSecs, setWarningSecs] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startedAtRef = useRef<number>(0);
+
   useEffect(() => {
     // Override body backgrounds for transparency
     document.body.style.background = "transparent";
@@ -51,20 +60,59 @@ export function RecordingWindowView() {
       .then(setLocked)
       .catch(() => {});
 
+    // This window skips applyPersistedLanguage (it would re-push tray labels),
+    // so sync the overlay strings to the configured UI language directly.
+    invoke<string>("load_config")
+      .then((str) => {
+        const lang = JSON.parse(str || "{}").ui_language;
+        if (typeof lang === "string" && i18n.language !== lang) {
+          i18n.changeLanguage(lang).catch(() => {});
+        }
+      })
+      .catch(() => {});
+
+    // Follow live language switches made in the main window's settings.
+    const unlistenLanguage = listen<string>("ui-language-changed", (event) => {
+      if (event.payload && i18n.language !== event.payload) {
+        i18n.changeLanguage(event.payload).catch(() => {});
+      }
+    });
+
+    const stopTimer = () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+
     const unlistenStarted = listen("recording-started", () => {
       statusRef.current = "recording";
       setCommitted("");
       setTentative("");
+      setProgress(null);
+      setWarningSecs(null);
+      startedAtRef.current = Date.now();
+      setElapsed(0);
+      stopTimer();
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
+      }, 1000);
     });
 
     const unlistenStopped = listen("recording-stopped", () => {
       statusRef.current = "transcribing";
       amplitudeRef.current = 0;
+      stopTimer();
+      setElapsed(null);
+      setWarningSecs(null);
     });
 
     const unlistenTranscribing = listen<boolean>("transcribing-status", (event) => {
       statusRef.current = event.payload ? "transcribing" : "idle";
-      if (!event.payload) amplitudeRef.current = 0;
+      if (!event.payload) {
+        amplitudeRef.current = 0;
+        setProgress(null);
+      }
     });
 
     const unlistenAmplitude = listen<number>("audio-amplitude", (event) => {
@@ -97,6 +145,15 @@ export function RecordingWindowView() {
       (event) => setOverlayMode(event.payload || "full"),
     );
 
+    const unlistenProgress = listen<{ done: number; total: number }>(
+      "transcription-progress",
+      (event) => setProgress(event.payload),
+    );
+    const unlistenTimeWarning = listen<{ seconds_left: number }>(
+      "recording-time-warning",
+      (event) => setWarningSecs(event.payload.seconds_left),
+    );
+
     return () => {
       unlistenStarted.then((f) => f());
       unlistenStopped.then((f) => f());
@@ -107,6 +164,10 @@ export function RecordingWindowView() {
       unlistenPartial.then((f) => f());
       unlistenFinal.then((f) => f());
       unlistenOverlayMode.then((f) => f());
+      unlistenLanguage.then((f) => f());
+      unlistenProgress.then((f) => f());
+      unlistenTimeWarning.then((f) => f());
+      stopTimer();
     };
   }, []);
 
@@ -213,6 +274,15 @@ export function RecordingWindowView() {
   }
   const hasText = dispCommitted.length > 0 || dispTentative.length > 0;
 
+  const formatElapsed = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return h > 0
+      ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      : `${m}:${String(s).padStart(2, "0")}`;
+  };
+
   // The overlay window is a fixed 200x180 transparent, click-through panel. We
   // top-anchor the content (pt-3 == the old 12px vertical centering inside the
   // former 60px window) so the waveform pill sits in exactly the same on-screen
@@ -227,9 +297,38 @@ export function RecordingWindowView() {
         }`}
       >
         <canvas ref={canvasRef} className="block" />
+        {elapsed !== null && (
+          <span className="ml-2 text-[11px] tabular-nums text-white/70">
+            {formatElapsed(elapsed)}
+          </span>
+        )}
       </div>
+      {progress && progress.total > 1 && (
+        <div className="mt-2 w-[184px] rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <p className="text-[11px] leading-snug text-white/85 tabular-nums">
+            {t("overlay.transcribing", {
+              percent: Math.round((progress.done / progress.total) * 100),
+            })}
+          </p>
+          <div className="mt-1.5 h-1 w-full rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-white/80 transition-all duration-300"
+              style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+      {warningSecs !== null && (
+        <div className="mt-2 rounded-2xl border border-amber-500/40 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <p className="text-[11px] leading-snug text-amber-400/95">
+            {t("overlay.timeWarning", { time: formatElapsed(warningSecs) })}
+          </p>
+        </div>
+      )}
       {hasText && (
-        <div className="mt-2 flex w-[184px] max-h-[120px] flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+        <div
+          className={`mt-2 flex w-[184px] ${warningSecs !== null ? "max-h-[76px]" : "max-h-[120px]"} flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]`}
+        >
           <p className="text-[12px] leading-snug break-words text-white/95">
             {dispCommitted}
             {dispTentative && (

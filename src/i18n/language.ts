@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import i18n from "./index";
 import { isSupported, Language } from "./detect";
 import { pushTrayLabels } from "./tray";
@@ -30,4 +31,5 @@ export async function changeLanguage(lang: Language): Promise<void> {
   await i18n.changeLanguage(lang);
   await persistLanguage(lang);
   await pushTrayLabels();
+  emit("ui-language-changed", lang).catch(() => {});
 }

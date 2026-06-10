@@ -128,6 +128,10 @@
     "transcribing": "Transcribing",
     "transcribingHint": "Turning your voice into text…"
   },
+  "overlay": {
+    "transcribing": "Transcribing… {{percent}}%",
+    "timeWarning": "Recording will stop in {{time}}"
+  },
   "titlebar": {
     "toggleSidebar": "Toggle sidebar"
   },
