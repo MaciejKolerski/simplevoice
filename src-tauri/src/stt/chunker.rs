@@ -1,6 +1,6 @@
 //! Splits long 16 kHz mono recordings into transcription-sized chunks.
-//! Cuts are placed in the quietest pause found in a 45–90 s window, so no
-//! word is ever bisected; chunks that contain no speech at all are dropped
+//! Cuts are placed in the quietest pause found in a 45–90 s window, so words
+//! are not bisected when a pause exists; chunks that contain no speech at all are dropped
 //! (this also prevents Whisper hallucinations on silence).
 
 use std::ops::Range;
@@ -51,7 +51,7 @@ fn find_cut(window: &[f32]) -> usize {
             let run_len = i - run_start;
             if run_len >= SILENCE_HOPS_NEEDED {
                 let avg: f32 = hops[run_start..i].iter().sum::<f32>() / run_len as f32;
-                if best.map_or(true, |(b, _)| avg < b) {
+                if best.is_none_or(|(b, _)| avg < b) {
                     best = Some((avg, run_start + run_len / 2));
                 }
             }
@@ -175,5 +175,31 @@ mod tests {
     #[test]
     fn empty_input_yields_no_chunks() {
         assert!(split_at_silences(&[]).is_empty());
+    }
+
+    #[test]
+    fn input_just_above_max_splits_into_two() {
+        let input = tone(CHUNK_MAX_SECS + 1);
+        let ranges = split_at_silences(&input);
+        assert_eq!(ranges.len(), 2);
+        assert_invariants(&ranges, input.len());
+        assert_eq!(ranges[0].start, 0);
+        assert_eq!(ranges[1].end, input.len());
+    }
+
+    #[test]
+    fn mid_recording_silent_chunk_is_dropped() {
+        // 50 s speech, 120 s silence, 50 s speech: the silent middle chunk
+        // disappears, so the surviving ranges are non-contiguous.
+        let mut input = tone(50);
+        input.extend(silence(120));
+        input.extend(tone(50));
+        let ranges = split_at_silences(&input);
+        assert_invariants(&ranges, input.len());
+        assert!(ranges.len() >= 2, "speech on both sides must survive");
+        assert_eq!(ranges[0].start, 0);
+        assert_eq!(ranges.last().unwrap().end, input.len());
+        let covered: usize = ranges.iter().map(|r| r.end - r.start).sum();
+        assert!(covered < input.len(), "the silent middle must be dropped");
     }
 }
