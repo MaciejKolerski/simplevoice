@@ -9,6 +9,7 @@ pub mod nemo_engine;
 pub mod converter;
 pub mod downloader;
 pub mod streaming;
+pub(crate) mod chunker;
 
 #[cfg(feature = "candle")]
 pub mod candle;
