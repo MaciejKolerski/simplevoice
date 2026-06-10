@@ -275,7 +275,7 @@ fn begin_live_session(app: &tauri::AppHandle) {
 
 /// Finishes the active live session (emits `transcription-final`) and clears
 /// the audio tap. No-op if no session is active.
-fn end_live_session(app: &tauri::AppHandle) {
+pub(crate) fn end_live_session(app: &tauri::AppHandle) {
     // Keep the macOS run loop awake across finalization. `streaming.finish()`
     // blocks until the worker has run its final re-decode and emitted
     // `transcription-final` (deliverable only by evaluating JS on the main
@@ -1708,10 +1708,13 @@ async fn transcribe_audio(
 
     let controller = stt_controller.inner().clone();
 
-    let final_samples = samples.unwrap_or_else(|| {
-        let s = audio_controller.state.lock().unwrap();
-        s.last_samples.clone()
-    });
+    let final_samples: std::sync::Arc<Vec<f32>> = match samples {
+        Some(v) => std::sync::Arc::new(v),
+        None => {
+            let s = audio_controller.state.lock().unwrap();
+            std::sync::Arc::clone(&s.last_samples)
+        }
+    };
 
     let text = {
         if engine == "openai-cloud" {

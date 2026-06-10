@@ -4,6 +4,12 @@ use ringbuf::{storage::Heap, traits::*, SharedRb};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 
+/// Safety net for forgotten recordings (the design target is ~1 h sessions).
+/// Checked in the consumer thread regardless of VAD or live mode.
+pub(crate) const RECORDING_MAX_SECS: usize = 5400;
+/// Warn the user this long before the cap (emits `recording-time-warning`).
+pub(crate) const RECORDING_WARNING_SECS: usize = 5100;
+
 pub struct StreamWrapper(pub cpal::Stream);
 unsafe impl Send for StreamWrapper {}
 unsafe impl Sync for StreamWrapper {}
@@ -19,7 +25,7 @@ pub struct AudioState {
     pub vad_enabled: bool,
     pub vad_threshold: f32,
     pub vad_silence_duration_ms: u32,
-    pub last_samples: Vec<f32>,
+    pub last_samples: Arc<Vec<f32>>,
     /// Identifiers of media sessions paused on recording start (cross-platform).
     /// Used to selectively resume only what *we* paused.
     pub paused_media_apps: Vec<String>,
@@ -72,6 +78,74 @@ pub(crate) fn save_wav_file(
     Ok(None)
 }
 
+/// Completes an automatic stop (VAD silence or the max-duration cap) from the
+/// consumer thread. Consumes the held state guard so the lock is released
+/// before any blocking work; WAV save and notifications run on a new thread,
+/// mirroring the manual stop path. The is_recording guard makes it a no-op
+/// when a manual stop won the race in between two consumer iterations —
+/// without it, this would overwrite last_samples (the real recording) with
+/// the ≤1024-sample residue drained after the manual stop.
+fn auto_stop_recording(
+    mut s: std::sync::MutexGuard<'_, AudioState>,
+    state: &Arc<Mutex<AudioState>>,
+    app_handle: &tauri::AppHandle,
+) {
+    if !s.is_recording {
+        return;
+    }
+    s.is_recording = false;
+    s.is_saving = true;
+    if let Some(wrapper) = s.stream.take() {
+        let _ = wrapper.0.pause();
+    }
+
+    let paused_apps: Vec<String> = s.paused_media_apps.drain(..).collect();
+
+    let samples = Arc::new(std::mem::take(&mut s.buffer));
+    s.last_samples = Arc::clone(&samples);
+    let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
+
+    // Resume media before dropping the lock
+    if !paused_apps.is_empty() {
+        crate::media_control::resume_system_media(&paused_apps);
+    }
+
+    drop(s);
+
+    // Refresh overlay visibility only AFTER releasing the audio-state lock:
+    // update_recording_window_visibility re-locks it (is_recording / is_saving /
+    // is_transcribing), so calling it while `s` was held would deadlock the
+    // audio thread. is_saving is still true here, so the overlay stays up
+    // through transcription (keeps App Nap away on macOS).
+    #[cfg(target_os = "macos")]
+    crate::update_recording_window_visibility(app_handle);
+
+    let state_save_clone = Arc::clone(state);
+    let app_handle_save_clone = app_handle.clone();
+    std::thread::spawn(move || {
+        let saved_path = save_wav_file(&app_handle_save_clone, &samples, start_time)
+            .ok()
+            .flatten();
+
+        {
+            let mut s = state_save_clone.lock().unwrap();
+            s.is_saving = false;
+            s.is_transcribing = true;
+        }
+
+        let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
+        crate::play_backend_sound(&app_handle_save_clone, "stop");
+
+        let payload = saved_path.unwrap_or_else(|| "Recording stopped".to_string());
+        let _ = app_handle_save_clone.emit("recording-stopped", payload);
+
+        // A max-duration auto-stop can fire while a live session is active;
+        // finish it so `transcription-final` is emitted. No-op when inactive
+        // (the VAD path never runs in live mode).
+        crate::end_live_session(&app_handle_save_clone);
+    });
+}
+
 impl AudioController {
     pub fn new() -> Self {
         Self {
@@ -86,7 +160,7 @@ impl AudioController {
                 vad_enabled: false,
                 vad_threshold: 0.008,
                 vad_silence_duration_ms: 1500,
-                last_samples: Vec::new(),
+                last_samples: Arc::new(Vec::new()),
                 paused_media_apps: Vec::new(),
                 cached_devices: Vec::new(),
                 stream_tx: None,
@@ -205,6 +279,7 @@ impl AudioController {
             let mut local_buf = vec![0.0; 1024];
             let mut has_spoken = false;
             let mut silence_samples = 0;
+            let mut warned_about_cap = false;
 
             loop {
                 // Check state at start of loop iteration
@@ -239,88 +314,54 @@ impl AudioController {
                     let rms = (sum_sq / read as f32).sqrt();
                     let _ = app_handle_clone.emit("audio-amplitude", rms);
 
-                    let mut s = state_clone.lock().unwrap();
-                    s.buffer.extend_from_slice(&local_buf[..read]);
+                    let mut should_warn = false;
+                    {
+                        let mut s = state_clone.lock().unwrap();
+                        s.buffer.extend_from_slice(&local_buf[..read]);
+                        let buffer_len = s.buffer.len();
 
-                    // Read live state under the same lock as the fan-out so the two stay
-                    // consistent with set_live_session / clear_live_session.
-                    let live_active = s.live_mode_active;
+                        // Read live state under the same lock as the fan-out so the two stay
+                        // consistent with set_live_session / clear_live_session.
+                        let live_active = s.live_mode_active;
 
-                    // Live fan-out: hand the chunk to the streaming session. Non-blocking;
-                    // the bounded channel returns Full rather than stalling the audio path.
-                    if let Some(tx) = &s.stream_tx {
-                        let _ = tx.try_send(local_buf[..read].to_vec());
-                    }
+                        // Live fan-out: hand the chunk to the streaming session. Non-blocking;
+                        // the bounded channel returns Full rather than stalling the audio path.
+                        if let Some(tx) = &s.stream_tx {
+                            let _ = tx.try_send(local_buf[..read].to_vec());
+                        }
 
-                    if vad_enabled && !live_active {
-                        if rms >= vad_threshold {
-                            has_spoken = true;
-                            silence_samples = 0;
-                        } else if has_spoken {
-                            silence_samples += read;
-                            let timeout_samples =
-                                (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
-                            if silence_samples >= timeout_samples {
-                                // Transition recording state to stop
-                                s.is_recording = false;
-                                s.is_saving = true;
-                                if let Some(wrapper) = s.stream.take() {
-                                    let _ = wrapper.0.pause();
+                        if buffer_len >= RECORDING_MAX_SECS * 16_000 {
+                            auto_stop_recording(s, &state_clone, &app_handle_clone);
+                            break;
+                        }
+
+                        if vad_enabled && !live_active {
+                            if rms >= vad_threshold {
+                                has_spoken = true;
+                                silence_samples = 0;
+                            } else if has_spoken {
+                                silence_samples += read;
+                                let timeout_samples =
+                                    (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
+                                if silence_samples >= timeout_samples {
+                                    auto_stop_recording(s, &state_clone, &app_handle_clone);
+                                    break;
                                 }
-
-                                // Capture which media apps were paused so we can resume them
-                                let paused_apps_vad: Vec<String> =
-                                    s.paused_media_apps.drain(..).collect();
-
-                                s.last_samples = s.buffer.clone();
-                                let samples = std::mem::take(&mut s.buffer);
-                                let start_time =
-                                    s.recording_start.take().unwrap_or_else(chrono::Local::now);
-
-                                // Resume media before dropping the lock
-                                if !paused_apps_vad.is_empty() {
-                                    crate::media_control::resume_system_media(&paused_apps_vad);
-                                }
-
-                                // Drop the lock before running disk I/O to write file & rebuilding tray (to avoid deadlocks)
-                                drop(s);
-
-                                // Refresh overlay visibility only AFTER releasing the audio-state
-                                // lock: update_recording_window_visibility re-locks it (is_recording /
-                                // is_saving / is_transcribing), so calling it while `s` was held would
-                                // deadlock the audio thread. is_saving is still true here, so the
-                                // overlay stays up through transcription (keeps App Nap away on macOS).
-                                #[cfg(target_os = "macos")]
-                                crate::update_recording_window_visibility(&app_handle_clone);
-
-                                // Save WAV file and notify frontend / rebuild tray on a separate thread
-                                let state_save_clone = Arc::clone(&state_clone);
-                                let app_handle_save_clone = app_handle_clone.clone();
-                                std::thread::spawn(move || {
-                                     let saved_path = save_wav_file(&app_handle_save_clone, &samples, start_time).ok().flatten();
-
-                                    {
-                                        let mut s = state_save_clone.lock().unwrap();
-                                        s.is_saving = false;
-                                        s.is_transcribing = true;
-                                    }
-
-                                     let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
-
-                                     // Play stop sound on VAD auto-stop
-                                     crate::play_backend_sound(&app_handle_save_clone, "stop");
-
-                                     // Emit recording-stopped event with the path
-                                     let payload = saved_path
-                                         .unwrap_or_else(|| "Recording stopped".to_string());
-                                     let _ =
-                                         app_handle_save_clone.emit("recording-stopped", payload);
-
-                                });
-
-                                break;
                             }
                         }
+
+                        if !warned_about_cap && buffer_len >= RECORDING_WARNING_SECS * 16_000 {
+                            warned_about_cap = true;
+                            should_warn = true;
+                        }
+                    }
+                    if should_warn {
+                        let _ = app_handle_clone.emit(
+                            "recording-time-warning",
+                            serde_json::json!({
+                                "seconds_left": (RECORDING_MAX_SECS - RECORDING_WARNING_SECS) as u32
+                            }),
+                        );
                     }
                 }
 
@@ -409,8 +450,8 @@ impl AudioController {
             drop(s);
 
             let mut s = self.state.lock().unwrap();
-            s.last_samples = s.buffer.clone();
-            let samples = std::mem::take(&mut s.buffer);
+            let samples = Arc::new(std::mem::take(&mut s.buffer));
+            s.last_samples = Arc::clone(&samples);
             let start_time = s.recording_start.take().unwrap_or_else(chrono::Local::now);
             (samples, start_time)
         };
