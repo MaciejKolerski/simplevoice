@@ -1879,13 +1879,16 @@ async fn transcribe_audio(
         }
         // Last transcription, for the copy-last global shortcut.
         *last_transcription.text.lock().unwrap_or_else(|e| e.into_inner()) = Some(text.clone());
-        // Auto-paste off the async runtime (enigo/CGEvent is blocking work).
+        // Auto-paste off the async runtime (the pre-paste settle sleep must not
+        // block it); the enigo keystroke itself is routed through
+        // paste_text_from_backend, which on macOS hops to the main thread.
         let paste_owned = text.clone();
+        let app_for_paste = app_handle.clone();
         let _ = tauri::async_runtime::spawn_blocking(move || {
             // Let the just-set clipboard propagate and the previously focused app
             // settle before simulating the paste keystroke.
             std::thread::sleep(std::time::Duration::from_millis(100));
-            if let Err(e) = paste_text(paste_owned) {
+            if let Err(e) = paste_text_from_backend(&app_for_paste, paste_owned) {
                 eprintln!("[transcribe_audio] backend auto-paste failed: {e}");
             }
         })
@@ -2507,6 +2510,32 @@ fn check_permissions_status() -> PermissionsStatus {
         is_wayland,
         desktop_env,
         gdk_backend,
+    }
+}
+
+/// Backend-side wrapper for [`paste_text`]. On macOS the enigo call must run on
+/// the main thread: mapping `Key::Unicode('v')` to a keycode goes through the
+/// TIS API (`TSMGetInputSourceProperty`), and when HIToolbox has to revalidate
+/// its input-source list it asserts the main dispatch queue — off it, the
+/// process dies with SIGTRAP in `dispatch_assert_queue`. Frontend invocations
+/// of the `paste_text` command are safe (sync commands already run on the main
+/// thread); this wrapper is for backend callers on runtime/blocking threads.
+fn paste_text_from_backend(app_handle: &tauri::AppHandle, text: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        app_handle
+            .run_on_main_thread(move || {
+                let _ = tx.send(paste_text(text));
+            })
+            .map_err(|e| format!("main-thread dispatch failed: {e}"))?;
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| format!("main-thread paste result lost: {e}"))?
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app_handle;
+        paste_text(text)
     }
 }
 
