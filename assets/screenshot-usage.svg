@@ -113,10 +113,10 @@
         <text x="353" y="732">0s</text>
       </g>
       <!-- gridlines -->
-      <line x1="369" y1="460.7" x2="975" y2="460.7" stroke="#ffffff" stroke-opacity="0.10" stroke-width="1" stroke-dasharray="4 3"/>
-      <line x1="369" y1="552.7" x2="975" y2="552.7" stroke="#ffffff" stroke-opacity="0.10" stroke-width="1" stroke-dasharray="4 3"/>
-      <line x1="369" y1="644.7" x2="975" y2="644.7" stroke="#ffffff" stroke-opacity="0.10" stroke-width="1" stroke-dasharray="4 3"/>
-      <line x1="369" y1="736.7" x2="975" y2="736.7" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1"/>
+      <line x1="369" y1="460.7" x2="975" y2="460.7" stroke="#222222" stroke-width="1" stroke-dasharray="4 3"/>
+      <line x1="369" y1="552.7" x2="975" y2="552.7" stroke="#222222" stroke-width="1" stroke-dasharray="4 3"/>
+      <line x1="369" y1="644.7" x2="975" y2="644.7" stroke="#222222" stroke-width="1" stroke-dasharray="4 3"/>
+      <line x1="369" y1="736.7" x2="975" y2="736.7" stroke="#333333" stroke-width="1"/>
 
       <!-- bar tracks -->
       <g fill="#ffffff" fill-opacity="0.03">

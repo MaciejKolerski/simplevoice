@@ -69,6 +69,8 @@ Special macOS-only behavior in `lib.rs` (`update_recording_window_visibility`, `
 
 Linux/Windows use standard Tauri window.
 
+Bar position: `data-tauri-drag-region` on the pill; macOS Cmd-hold toggles click-through (polling thread, also emits `recording-window-lock-status` scoped to the overlay for the amber glow), Linux/Windows use the lock toggle (tray + Settings). `reset_recording_window_position` restores the default top-center placement and clears `recording_window_has_custom_pos`. Settings surfaces all of this in the Recording & Feedback section.
+
 ### Linux-specific
 
 - Global shortcuts implemented via native desktop integration + CLI flags `--toggle` and `--copy-last` on the built binary.
