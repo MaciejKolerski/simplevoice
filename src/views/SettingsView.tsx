@@ -562,12 +562,14 @@ export function SettingsView() {
     }
   };
 
-  const handleBarLockToggle = async (checked: boolean) => {
+  const handleBarUnlockToggle = async (checked: boolean) => {
     setBarUnlocked(checked);
     try {
       await invoke("set_recording_window_locked", { locked: !checked });
     } catch (err) {
       console.error("Failed to toggle recording bar lock:", err);
+      setBarUnlocked(!checked);
+      toast.error(t("settings.barPositionUnlockError"));
     }
   };
 
@@ -895,7 +897,7 @@ export function SettingsView() {
                   title={t("settings.barPositionUnlockTitle")}
                   description={t("settings.barPositionUnlockDesc")}
                 >
-                  <Switch checked={barUnlocked} onCheckedChange={handleBarLockToggle} />
+                  <Switch checked={barUnlocked} onCheckedChange={handleBarUnlockToggle} aria-label={t("settings.barPositionUnlockTitle")} />
                 </SettingRow>
               )}
               <SettingRow

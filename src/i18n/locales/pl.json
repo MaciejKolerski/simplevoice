@@ -125,6 +125,7 @@
     "barPositionMoveDescMac": "Przytrzymaj <kbd>⌘ Cmd</kbd> i przeciągnij pasek w dowolne miejsce ekranu. Pozycja zapisuje się automatycznie.",
     "barPositionUnlockTitle": "Odblokuj pozycję paska",
     "barPositionUnlockDesc": "Po odblokowaniu przeciągnij pasek, aby go przesunąć — bursztynowa poświata oznacza, że można go przesuwać. Zablokuj ponownie, aby kliknięcia przechodziły przez pasek.",
+    "barPositionUnlockError": "Nie udało się zmienić blokady paska",
     "barPositionResetTitle": "Resetuj pozycję paska",
     "barPositionResetDesc": "Przywróć pasek do domyślnego położenia.",
     "barPositionReset": "Resetuj",

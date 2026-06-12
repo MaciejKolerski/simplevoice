@@ -125,6 +125,7 @@
     "barPositionMoveDescMac": "Hold <kbd>⌘ Cmd</kbd> and drag the bar anywhere on screen. Its position is saved automatically.",
     "barPositionUnlockTitle": "Unlock bar position",
     "barPositionUnlockDesc": "When unlocked, drag the bar to move it — the amber glow means it can be moved. Lock it again to let clicks pass through.",
+    "barPositionUnlockError": "Could not change the bar lock",
     "barPositionResetTitle": "Reset bar position",
     "barPositionResetDesc": "Move the bar back to its default spot.",
     "barPositionReset": "Reset",

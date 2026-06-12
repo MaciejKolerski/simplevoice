@@ -125,6 +125,7 @@
     "barPositionMoveDescMac": "Halte <kbd>⌘ Cmd</kbd> gedrückt und ziehe die Leiste an eine beliebige Stelle. Die Position wird automatisch gespeichert.",
     "barPositionUnlockTitle": "Leistenposition entsperren",
     "barPositionUnlockDesc": "Nach dem Entsperren lässt sich die Leiste per Ziehen verschieben — das bernsteinfarbene Leuchten zeigt an, dass sie beweglich ist. Sperre sie wieder, damit Klicks hindurchgehen.",
+    "barPositionUnlockError": "Leistensperre konnte nicht geändert werden",
     "barPositionResetTitle": "Leistenposition zurücksetzen",
     "barPositionResetDesc": "Setzt die Leiste auf ihre Standardposition zurück.",
     "barPositionReset": "Zurücksetzen",
