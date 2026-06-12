@@ -481,6 +481,29 @@ fn get_recording_window_position(app_handle: &tauri::AppHandle) -> Option<(i32, 
 static WINDOW_INITIALIZED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Top-center default placement for the overlay: used on its very first show
+/// and by the reset-position command. macOS sits 36 logical px below the top
+/// edge; Linux/Windows use 5% of the monitor height.
+fn apply_default_recording_window_position(window: &tauri::WebviewWindow) {
+    if let Some(monitor) = window.current_monitor().ok().flatten() {
+        let size = monitor.size();
+        let pos = monitor.position();
+        let scale_factor = monitor.scale_factor();
+
+        let win_w = 200.0;
+        let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
+
+        #[cfg(target_os = "macos")]
+        let y = pos.y + (36.0 * scale_factor) as i32;
+        #[cfg(not(target_os = "macos"))]
+        let y = pos.y + (size.height as f64 * 0.05) as i32;
+
+        let _ = window.set_position(tauri::Position::Physical(
+            tauri::PhysicalPosition::new(x, y),
+        ));
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     let mode = get_recording_window_mode(app);
@@ -513,20 +536,7 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
                 }
 
                 if !positioned {
-                    if let Some(monitor) = window.current_monitor().ok().flatten() {
-                        let size = monitor.size();
-                        let pos = monitor.position();
-                        let scale_factor = monitor.scale_factor();
-
-                        let win_w = 200.0;
-
-                        let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
-                        let y = pos.y + (36.0 * scale_factor) as i32;
-
-                        let _ = window.set_position(tauri::Position::Physical(
-                            tauri::PhysicalPosition::new(x, y),
-                        ));
-                    }
+                    apply_default_recording_window_position(&window);
                 }
                 WINDOW_INITIALIZED.store(true, std::sync::atomic::Ordering::Relaxed);
             }
@@ -656,20 +666,7 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
                 }
 
                 if !positioned {
-                    if let Some(monitor) = window.current_monitor().ok().flatten() {
-                        let size = monitor.size();
-                        let pos = monitor.position();
-                        let scale_factor = monitor.scale_factor();
-
-                        let win_w = 200.0;
-
-                        let x = pos.x + ((size.width as f64 - win_w * scale_factor) / 2.0) as i32;
-                        let y = pos.y + (size.height as f64 * 0.05) as i32;
-
-                        let _ = window.set_position(tauri::Position::Physical(
-                            tauri::PhysicalPosition::new(x, y),
-                        ));
-                    }
+                    apply_default_recording_window_position(&window);
                 }
                 WINDOW_INITIALIZED.store(true, std::sync::atomic::Ordering::Relaxed);
             }
