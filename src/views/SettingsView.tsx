@@ -881,7 +881,7 @@ export function SettingsView() {
 
           {/* Linux Native / Wayland warning block */}
           {platform === "linux" && (
-            <div className="p-5 pt-0 border-t border-border">
+            <div className="p-5 pt-0">
               {["niri", "hyprland", "sway", "i3", "unknown"].includes(desktopEnv) ? (
                 <div className="mt-4 p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
                   <div className="font-semibold flex items-center gap-1.5 text-sm">
@@ -937,7 +937,7 @@ export function SettingsView() {
 
           {/* Fallback generic error warning if registration fails on other platforms */}
           {platform !== "linux" && (shortcutError || copyShortcutError) && (
-            <div className="p-5 pt-0 border-t border-border">
+            <div className="p-5 pt-0">
               <Alert variant="destructive" className="mt-4 border-danger/20 bg-danger/5">
                 <Shield />
                 <AlertTitle>{t("settings.shortcutRegistrationError")}</AlertTitle>
