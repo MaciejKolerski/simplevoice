@@ -72,35 +72,18 @@ async function captureView(browser, { name, navLabel }) {
       await settle(page);
     }
 
-    // Settings: try un-scrolled first; scroll only if Keyboard Shortcuts not visible
+    // Settings: scroll so the Keyboard Shortcuts heading sits cleanly near the top
     if (name === "settings") {
-      const shortcutsVisible = await page.evaluate(() => {
-        const el = document.querySelector('[data-tour="shortcuts-section"]');
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return rect.top >= 0 && rect.bottom <= window.innerHeight;
+      await page.evaluate(() => {
+        const headings = [...document.querySelectorAll("h2, h3")];
+        const target = headings.find((h) => /keyboard shortcuts/i.test(h.textContent || ""));
+        const scroller = document.querySelector(".view.active");
+        if (target && scroller) {
+          const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+          scroller.scrollTop = Math.max(0, top - 24);
+        }
       });
-
-      if (!shortcutsVisible) {
-        // Scroll the active view container so Keyboard Shortcuts section is ~60px from top
-        await page.evaluate(() => {
-          const viewEl = document.querySelector(".view.active");
-          const shortcuts = document.querySelector('[data-tour="shortcuts-section"]');
-          if (viewEl && shortcuts) {
-            let el = shortcuts;
-            let top = 0;
-            while (el && el !== viewEl) {
-              top += el.offsetTop;
-              el = el.offsetParent;
-            }
-            viewEl.scrollTop = Math.max(0, top - 60);
-          }
-        });
-        await page.waitForTimeout(200);
-      }
-      // Log which composition was used
-      const usedScroll = !shortcutsVisible;
-      process.stderr.write(`[settings] shortcuts visible without scroll: ${!usedScroll}; used scroll: ${usedScroll}\n`);
+      await page.waitForTimeout(300);
     }
 
     await page.screenshot({
