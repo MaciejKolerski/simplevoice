@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-react";
+import { BarChart3, Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Card } from "@/components/ui/card";
@@ -562,6 +562,15 @@ export function UsageView() {
             </div>
           </div>
         </div>
+
+        {/* covers entire card when there is no data in the selected range */}
+        {totalDuration === 0 && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center rounded-xl bg-secondary/60 backdrop-blur-[2px]">
+            <BarChart3 size={24} className="text-muted-dark mb-3" />
+            <p className="text-muted text-sm">{t("usage.emptyTitle")}</p>
+            <p className="text-muted-dark text-xs mt-1">{t("usage.emptyHint")}</p>
+          </div>
+        )}
 
         <div className="flex-1 flex relative mt-4 min-w-0">
           <div className="flex flex-col justify-between pr-4 pb-6 text-[11px] font-mono text-muted-dark text-right w-16 select-none shrink-0">
