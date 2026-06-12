@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  html,body{margin:0;padding:0}
+  .stage{width:2400px;height:700px;position:relative;overflow:hidden;border-radius:24px;
+    background:radial-gradient(120% 95% at 50% 20%,#101010,#000 75%)}
+  .notes{position:absolute;left:50%;top:300px;transform:translateX(-50%);width:1280px;
+    background:#060606;border:1px solid #1f1f1f;border-radius:14px;
+    box-shadow:0 40px 80px -30px rgba(0,0,0,.95);text-align:left}
+  .nbar{display:flex;align-items:center;gap:8px;padding:13px 15px;border-bottom:1px solid #141414}
+  .nbar i{width:13px;height:13px;border-radius:50%;background:#2a2a2a}
+  .nbar span{font:12px "JetBrains Mono",monospace;color:#555;margin-left:10px}
+  .nbody{height:240px;padding:22px;font:300 20px/1.6 Inter,system-ui,sans-serif;color:rgba(255,255,255,.95)}
+  .caret{display:inline-block;width:2.5px;height:22px;background:#ededed;vertical-align:-3px}
+  .pill{position:absolute;left:50%;top:120px;transform:translateX(-50%) scale(2.2);transform-origin:top center}
+  #overlay{width:200px;display:block}
+</style></head><body>
+<div class="stage">
+  <div class="notes">
+    <div class="nbar"><i></i><i></i><i></i><span>Notes — Untitled</span></div>
+    <div class="nbody"><span class="caret"></span></div>
+  </div>
+  <div class="pill"><img id="overlay" alt="" /></div>
+</div>
+<script>
+  const u = new URLSearchParams(location.search).get("img");
+  document.getElementById("overlay").src = u;
+</script>
+</body></html>
