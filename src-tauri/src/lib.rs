@@ -2112,6 +2112,46 @@ fn set_recording_window_locked(locked: bool, app_handle: tauri::AppHandle) -> Re
 }
 
 #[tauri::command]
+fn reset_recording_window_position(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("recording_window") {
+        apply_default_recording_window_position(&window);
+    }
+
+    // Clear the custom-position flag so the next first-show recomputes the
+    // default. The Moved event fired by set_position above may re-save the
+    // default coordinates as a "custom" position (exactly like the existing
+    // first-show flow does); either ordering leaves the bar at the default
+    // spot, so the race is benign.
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&app_local_data).map_err(|e| e.to_string())?;
+    let config_path = app_local_data.join("config.json");
+    let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut json = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert(
+            "recording_window_has_custom_pos".to_string(),
+            serde_json::json!(false),
+        );
+    }
+
+    let serialized = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+    std::fs::write(&config_path, serialized).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 fn minimize_window(window: tauri::Window) {
     let _ = window.minimize();
 }
@@ -2987,6 +3027,7 @@ pub fn run() {
             set_recording_window_mode,
             is_recording_window_locked_cmd,
             set_recording_window_locked,
+            reset_recording_window_position,
             stt::converter::convert_model,
             stt::downloader::download_model,
             stt::downloader::pause_download,
