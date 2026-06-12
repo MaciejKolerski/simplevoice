@@ -7,6 +7,7 @@ import { mkdirSync, unlinkSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installTauriMock } from "./mock.mjs";
+import { readFileSync } from "node:fs";
 import { CONFIG, DEVICES, MODELS, PERMISSIONS, transcriptions, usageStats } from "./fixtures.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -15,7 +16,9 @@ const FRAME_HTML = resolve(root, "scripts/readme-shots/frame.html");
 const PORT = 5199;
 const URL = `http://localhost:${PORT}`;
 
+const appVersion = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).version;
 const fixtures = {
+  appVersion,
   config: CONFIG,
   permissions: PERMISSIONS,
   usage: usageStats(),
@@ -116,8 +119,9 @@ async function captureView(browser, { name, navLabel }) {
 
 mkdirSync(OUT, { recursive: true });
 const vite = await startVite();
-const browser = await chromium.launch();
+let browser;
 try {
+  browser = await chromium.launch();
   await captureView(browser, { name: "usage", navLabel: null });
   await captureView(browser, { name: "models", navLabel: "Models" });
   await captureView(browser, { name: "transcriptions", navLabel: "Transcriptions" });
@@ -222,7 +226,7 @@ try {
     try { unlinkSync(overlayRawPath); } catch {}
   }
 } finally {
-  await browser.close();
+  await browser?.close();
   vite.kill("SIGTERM");
 }
 console.log("done");
