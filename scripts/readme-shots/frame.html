@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  html,body{margin:0;padding:0;background:transparent}
+  .pad{padding:40px;display:inline-block}
+  .win{position:relative;border-radius:12px;overflow:hidden;display:block;
+    box-shadow:0 30px 80px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)}
+  .win img{display:block;width:1280px;height:800px}
+  .dots{position:absolute;left:16px;top:14px;display:flex;gap:8px}
+  .dots i{width:12px;height:12px;border-radius:50%}
+</style></head><body>
+<div class="pad"><div class="win">
+  <img id="shot" alt="" />
+  <div class="dots"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+</div></div>
+<script>document.getElementById("shot").src = new URLSearchParams(location.search).get("img");</script>
+</body></html>

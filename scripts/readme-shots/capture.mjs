@@ -1,8 +1,9 @@
 // Self-contained README capture: boots vite, mocks Tauri IPC, screenshots the
 // real UI with window chrome, writes transparent @2x PNGs to assets/readme/.
+// Two-pass: (1) raw 1280x800 viewport capture, (2) frame.html chrome composite.
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, unlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installTauriMock } from "./mock.mjs";
@@ -10,6 +11,7 @@ import { CONFIG, DEVICES, MODELS, PERMISSIONS, transcriptions, usageStats } from
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const OUT = resolve(root, "assets/readme");
+const FRAME_HTML = resolve(root, "scripts/readme-shots/frame.html");
 const PORT = 5199;
 const URL = `http://localhost:${PORT}`;
 
@@ -37,99 +39,113 @@ function startVite() {
   });
 }
 
-const CHROME_CSS = `
-  html, body { background: transparent !important; }
-  body { padding: 40px; }
-  #root {
-    border-radius: 12px; overflow: hidden; position: relative;
-    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06);
-  }
-`;
-
-async function addTrafficDots(page) {
-  await page.evaluate(() => {
-    const bar = document.querySelector(".title-bar");
-    if (!bar) return;
-    const wrap = document.createElement("div");
-    wrap.setAttribute("data-shot-dots", "");
-    wrap.style.cssText = "position:absolute;left:16px;top:50%;transform:translateY(-50%);display:flex;gap:8px;z-index:99";
-    for (const c of ["#ff5f57", "#febc2e", "#28c840"]) {
-      const s = document.createElement("span");
-      s.style.cssText = `width:12px;height:12px;border-radius:50%;background:${c}`;
-      wrap.appendChild(s);
-    }
-    bar.appendChild(wrap);
-  });
-}
-
 async function settle(page) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(600); // view fade-in animation (0.3s) + paint
 }
 
 async function captureView(browser, { name, navLabel }) {
-  const ctx = await browser.newContext({
-    viewport: { width: 1360, height: 880 }, // 1280x800 app + 40px chrome padding
-    deviceScaleFactor: 2,
-  });
-  const page = await ctx.newPage();
+  // --- Pass 1: raw capture at exact app size, no chrome ---
+  const rawPath = resolve(OUT, `_raw-${name}.png`);
+  {
+    const ctx = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      deviceScaleFactor: 2,
+    });
+    const page = await ctx.newPage();
 
-  // Console and error logging for debugging
-  page.on("console", (msg) => {
-    if (msg.type() === "error" || msg.type() === "warn") {
-      process.stderr.write(`[${name}] console.${msg.type()}: ${msg.text()}\n`);
-    }
-  });
-  page.on("pageerror", (err) => {
-    process.stderr.write(`[${name}] pageerror: ${err.message}\n`);
-  });
-
-  await page.addInitScript(installTauriMock, { fixtures, windowLabel: "main" });
-  await page.goto(URL);
-  await page.addStyleTag({ content: CHROME_CSS });
-  await page.evaluate(() => {
-    const r = document.getElementById("root");
-    if (r) { r.style.width = "1280px"; r.style.height = "800px"; }
-  });
-  await settle(page);
-  if (navLabel) {
-    await page.getByRole("button", { name: navLabel }).first().click();
-    await settle(page);
-  }
-  // For settings: scroll only the .view.active container to show Keyboard Shortcuts
-  if (name === "settings") {
-    await page.evaluate(() => {
-      const viewEl = document.querySelector(".view.active");
-      const shortcuts = document.querySelector('[data-tour="shortcuts-section"]');
-      if (viewEl && shortcuts) {
-        // offsetTop is relative to offsetParent — walk up to find offset relative to viewEl
-        let el = shortcuts;
-        let top = 0;
-        while (el && el !== viewEl) {
-          top += el.offsetTop;
-          el = el.offsetParent;
-        }
-        // Scroll so the section heading is ~60px from the top of the view
-        viewEl.scrollTop = Math.max(0, top - 60);
+    page.on("console", (msg) => {
+      if (msg.type() === "error" || msg.type() === "warn") {
+        process.stderr.write(`[${name}] console.${msg.type()}: ${msg.text()}\n`);
       }
     });
-    await page.waitForTimeout(200);
+    page.on("pageerror", (err) => {
+      process.stderr.write(`[${name}] pageerror: ${err.message}\n`);
+    });
+
+    await page.addInitScript(installTauriMock, { fixtures, windowLabel: "main" });
+    await page.goto(URL);
+    await settle(page);
+
+    if (navLabel) {
+      await page.getByRole("button", { name: navLabel }).first().click();
+      await settle(page);
+    }
+
+    // Settings: try un-scrolled first; scroll only if Keyboard Shortcuts not visible
+    if (name === "settings") {
+      const shortcutsVisible = await page.evaluate(() => {
+        const el = document.querySelector('[data-tour="shortcuts-section"]');
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= window.innerHeight;
+      });
+
+      if (!shortcutsVisible) {
+        // Scroll the active view container so Keyboard Shortcuts section is ~60px from top
+        await page.evaluate(() => {
+          const viewEl = document.querySelector(".view.active");
+          const shortcuts = document.querySelector('[data-tour="shortcuts-section"]');
+          if (viewEl && shortcuts) {
+            let el = shortcuts;
+            let top = 0;
+            while (el && el !== viewEl) {
+              top += el.offsetTop;
+              el = el.offsetParent;
+            }
+            viewEl.scrollTop = Math.max(0, top - 60);
+          }
+        });
+        await page.waitForTimeout(200);
+      }
+      // Log which composition was used
+      const usedScroll = !shortcutsVisible;
+      process.stderr.write(`[settings] shortcuts visible without scroll: ${!usedScroll}; used scroll: ${usedScroll}\n`);
+    }
+
+    await page.screenshot({
+      path: rawPath,
+      omitBackground: true,
+      fullPage: false, // viewport-only (1280x800 exact)
+    });
+    console.log(`raw ${name}.png captured`);
+    await ctx.close();
   }
-  await addTrafficDots(page);
-  await page.screenshot({
-    path: resolve(OUT, `${name}.png`),
-    omitBackground: true,
-    clip: { x: 0, y: 0, width: 1360, height: 880 },
-  });
-  console.log(`captured ${name}.png`);
-  await ctx.close();
+
+  // --- Pass 2: chrome composite via frame.html ---
+  {
+    const ctx = await browser.newContext({
+      viewport: { width: 1360, height: 880 },
+      deviceScaleFactor: 2,
+    });
+    const page = await ctx.newPage();
+    const frameUrl = `file://${FRAME_HTML}?img=${encodeURIComponent(`file://${rawPath}`)}`;
+    await page.goto(frameUrl);
+    await page.waitForFunction(
+      () => {
+        const img = document.getElementById("shot");
+        return img && img.complete && img.naturalWidth > 0;
+      },
+      { timeout: 10000 }
+    );
+    await page.screenshot({
+      path: resolve(OUT, `${name}.png`),
+      omitBackground: true,
+      fullPage: true,
+    });
+    console.log(`captured ${name}.png`);
+    await ctx.close();
+  }
+
+  // Clean up intermediate
+  try { unlinkSync(rawPath); } catch {}
 }
 
 mkdirSync(OUT, { recursive: true });
 const vite = await startVite();
 const browser = await chromium.launch();
 try {
-  await captureView(browser, { name: "usage", navLabel: null });           // default view
+  await captureView(browser, { name: "usage", navLabel: null });
   await captureView(browser, { name: "models", navLabel: "Models" });
   await captureView(browser, { name: "transcriptions", navLabel: "Transcriptions" });
   await captureView(browser, { name: "settings", navLabel: "Settings" });
