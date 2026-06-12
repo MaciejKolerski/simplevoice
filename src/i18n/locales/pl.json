@@ -120,7 +120,16 @@
     "pressKeys": "NACIŚNIJ KLAWISZE",
     "invalidCombination": "NIEPRAWIDŁOWA KOMBINACJA",
     "shortcutSaved": "Skrót zapisany",
-    "pressKeysToAssign": "Naciśnij klawisze, aby przypisać • Esc, aby anulować"
+    "pressKeysToAssign": "Naciśnij klawisze, aby przypisać • Esc, aby anulować",
+    "barPositionMoveTitle": "Przesuwanie paska nagrywania",
+    "barPositionMoveDescMac": "Przytrzymaj <kbd>⌘ Cmd</kbd> i przeciągnij pasek w dowolne miejsce ekranu. Pozycja zapisuje się automatycznie.",
+    "barPositionUnlockTitle": "Odblokuj pozycję paska",
+    "barPositionUnlockDesc": "Po odblokowaniu przeciągnij pasek, aby go przesunąć — bursztynowa poświata oznacza, że można go przesuwać. Zablokuj ponownie, aby kliknięcia przechodziły przez pasek.",
+    "barPositionResetTitle": "Resetuj pozycję paska",
+    "barPositionResetDesc": "Przywróć pasek do domyślnego położenia.",
+    "barPositionReset": "Resetuj",
+    "barPositionResetDone": "Pozycja paska została zresetowana",
+    "barPositionResetError": "Nie udało się zresetować pozycji paska"
   },
   "hud": {
     "recording": "Nagrywanie",
@@ -170,7 +179,9 @@
     "barTooltip": "{{label}}: {{duration}}",
     "durationHoursMinutes": "{{hours}} godz. {{minutes}} min",
     "durationMinutesSeconds": "{{minutes}} min {{seconds}} s",
-    "durationSeconds": "{{value}} s"
+    "durationSeconds": "{{value}} s",
+    "emptyTitle": "Brak aktywności",
+    "emptyHint": "Twoje transkrypcje pojawią się tutaj."
   },
   "models": {
     "folder": "Folder",

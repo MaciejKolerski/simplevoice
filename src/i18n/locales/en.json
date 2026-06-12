@@ -120,7 +120,16 @@
     "pressKeys": "PRESS KEYS",
     "invalidCombination": "INVALID COMBINATION",
     "shortcutSaved": "Shortcut Saved",
-    "pressKeysToAssign": "Press keys to assign • Esc to cancel"
+    "pressKeysToAssign": "Press keys to assign • Esc to cancel",
+    "barPositionMoveTitle": "Move the recording bar",
+    "barPositionMoveDescMac": "Hold <kbd>⌘ Cmd</kbd> and drag the bar anywhere on screen. Its position is saved automatically.",
+    "barPositionUnlockTitle": "Unlock bar position",
+    "barPositionUnlockDesc": "When unlocked, drag the bar to move it — the amber glow means it can be moved. Lock it again to let clicks pass through.",
+    "barPositionResetTitle": "Reset bar position",
+    "barPositionResetDesc": "Move the bar back to its default spot.",
+    "barPositionReset": "Reset",
+    "barPositionResetDone": "Bar position has been reset",
+    "barPositionResetError": "Could not reset the bar position"
   },
   "hud": {
     "recording": "Recording",
@@ -170,7 +179,9 @@
     "barTooltip": "{{label}}: {{duration}}",
     "durationHoursMinutes": "{{hours}}h {{minutes}}m",
     "durationMinutesSeconds": "{{minutes}}m {{seconds}}s",
-    "durationSeconds": "{{value}}s"
+    "durationSeconds": "{{value}}s",
+    "emptyTitle": "No activity yet",
+    "emptyHint": "Transcriptions you make will show up here."
   },
   "models": {
     "folder": "Folder",
