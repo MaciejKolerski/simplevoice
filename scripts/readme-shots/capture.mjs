@@ -72,19 +72,9 @@ async function captureView(browser, { name, navLabel }) {
       await settle(page);
     }
 
-    // Settings: scroll so the Keyboard Shortcuts heading sits cleanly near the top
-    if (name === "settings") {
-      await page.evaluate(() => {
-        const headings = [...document.querySelectorAll("h2, h3")];
-        const target = headings.find((h) => /keyboard shortcuts/i.test(h.textContent || ""));
-        const scroller = document.querySelector(".view.active");
-        if (target && scroller) {
-          const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
-          scroller.scrollTop = Math.max(0, top - 24);
-        }
-      });
-      await page.waitForTimeout(300);
-    }
+    // Settings stays UNSCROLLED: the two-column layout means any mid-scroll
+    // position slices a card in the other column. The top of the view is the
+    // only crop with no cut rows; the README caption matches what it shows.
 
     await page.screenshot({
       path: rawPath,
