@@ -8,6 +8,7 @@ import { useConfig } from "../context/ConfigContext";
 import { useTranslation, Trans } from "react-i18next";
 import { changeLanguage } from "@/i18n/language";
 import { SUPPORTED_LANGUAGES, Language } from "@/i18n/detect";
+import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { SettingRow } from "@/components/ui/setting-row";
@@ -139,6 +140,7 @@ export function SettingsView() {
   const [recordingWindowMode, setRecordingWindowMode] = useState("always");
   const [appVersion, setAppVersion] = useState("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [barUnlocked, setBarUnlocked] = useState(false);
 
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
@@ -475,6 +477,18 @@ export function SettingsView() {
     };
   }, []);
 
+  useEffect(() => {
+    invoke<boolean>("is_recording_window_locked_cmd")
+      .then((locked) => setBarUnlocked(!locked))
+      .catch(() => {});
+    const unlisten = listen<boolean>("recording-window-lock-status", (event) => {
+      setBarUnlocked(!event.payload);
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
   const handleDeviceChange = async (val: string) => {
     setSelectedDevice(val);
     try {
@@ -545,6 +559,25 @@ export function SettingsView() {
       await invoke("set_recording_window_mode", { mode: val });
     } catch (err) {
       console.error("Failed to set recording window mode:", err);
+    }
+  };
+
+  const handleBarLockToggle = async (checked: boolean) => {
+    setBarUnlocked(checked);
+    try {
+      await invoke("set_recording_window_locked", { locked: !checked });
+    } catch (err) {
+      console.error("Failed to toggle recording bar lock:", err);
+    }
+  };
+
+  const handleResetBarPosition = async () => {
+    try {
+      await invoke("reset_recording_window_position");
+      toast.success(t("settings.barPositionResetDone"));
+    } catch (err) {
+      console.error("Failed to reset recording bar position:", err);
+      toast.error(t("settings.barPositionResetError"));
     }
   };
 
@@ -822,25 +855,58 @@ export function SettingsView() {
           </SettingRow>
 
           {(isMac || platform === "linux" || platform === "windows") && (
-            <SettingRow
-              title={t("settings.recordingOverlayWindow")}
-              description={t("settings.recordingOverlayWindowDesc")}
-            >
-              <Select
-                value={recordingWindowMode}
-                onValueChange={(v) => handleRecordingWindowModeChange(v ?? "always")}
-                items={recordingModeLabels}
+            <>
+              <SettingRow
+                title={t("settings.recordingOverlayWindow")}
+                description={t("settings.recordingOverlayWindowDesc")}
               >
-                <SelectTrigger className="w-48 bg-black shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="always">{t("settings.recordingModeAlways")}</SelectItem>
-                  <SelectItem value="recording">{t("settings.recordingModeRecording")}</SelectItem>
-                  <SelectItem value="never">{t("settings.recordingModeNever")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </SettingRow>
+                <Select
+                  value={recordingWindowMode}
+                  onValueChange={(v) => handleRecordingWindowModeChange(v ?? "always")}
+                  items={recordingModeLabels}
+                >
+                  <SelectTrigger className="w-48 bg-black shrink-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="always">{t("settings.recordingModeAlways")}</SelectItem>
+                    <SelectItem value="recording">{t("settings.recordingModeRecording")}</SelectItem>
+                    <SelectItem value="never">{t("settings.recordingModeNever")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+              {isMac && (
+                <SettingRow
+                  title={t("settings.barPositionMoveTitle")}
+                  description={
+                    <Trans
+                      i18nKey="settings.barPositionMoveDescMac"
+                      components={{
+                        kbd: (
+                          <kbd className="inline-flex items-center justify-center px-1.5 py-0.5 mx-0.5 rounded-md border border-border bg-surface-active font-mono text-[11px] text-foreground" />
+                        ),
+                      }}
+                    />
+                  }
+                />
+              )}
+              {(platform === "linux" || platform === "windows") && (
+                <SettingRow
+                  title={t("settings.barPositionUnlockTitle")}
+                  description={t("settings.barPositionUnlockDesc")}
+                >
+                  <Switch checked={barUnlocked} onCheckedChange={handleBarLockToggle} />
+                </SettingRow>
+              )}
+              <SettingRow
+                title={t("settings.barPositionResetTitle")}
+                description={t("settings.barPositionResetDesc")}
+              >
+                <Button variant="outline" size="sm" onClick={handleResetBarPosition}>
+                  {t("settings.barPositionReset")}
+                </Button>
+              </SettingRow>
+            </>
           )}
           </div>
         </section>
