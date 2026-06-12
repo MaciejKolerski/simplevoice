@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 type SettingRowProps = {
   title: ReactNode;
@@ -21,13 +22,13 @@ export function SettingRow({
   description,
   layout = "row",
   children,
-  className = "",
+  className,
   ...rest
 }: SettingRowProps) {
   if (layout === "column") {
     return (
       <div
-        className={`flex flex-col p-5 border-b border-border last:border-b-0 ${className}`}
+        className={cn("flex flex-col p-5 border-b border-border last:border-b-0", className)}
         {...rest}
       >
         <Label className={description ? "mb-1" : "mb-3"}>{title}</Label>
@@ -39,7 +40,7 @@ export function SettingRow({
 
   return (
     <div
-      className={`flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0 ${className}`}
+      className={cn("flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0", className)}
       {...rest}
     >
       <div className="flex-1 min-w-0">
