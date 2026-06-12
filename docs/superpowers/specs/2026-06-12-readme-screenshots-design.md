@@ -15,7 +15,7 @@ Screenshots come from the app's actual React components and CSS, rendered by the
 ### Capture tooling
 
 - `scripts/readme-shots/capture.mjs` (Node, ESM) + `scripts/readme-shots/fixtures.mjs`.
-- devDependency: `playwright` (chromium). New package script: `"shots": "node scripts/readme-shots/capture.mjs"` (boots `pnpm dev` itself if the server is not already up, or expects it running — implementation picks one and documents it).
+- devDependency: `playwright` (chromium). New package script: `"shots": "node scripts/readme-shots/capture.mjs"` — the script spawns the Vite dev server itself on a dedicated port (5199), waits for readiness, and kills it when done (self-contained; no prior `pnpm dev` needed).
 - `page.addInitScript` installs:
   - `window.__TAURI_INTERNALS__.invoke(cmd, args)` → fixture switch (inventory of every `invoke()` used by the views is step 1 of implementation; every command must be covered — an unmocked command means a broken section and fails QC).
   - mocked `listen`/event API → no-op unsubscribes; the recording-overlay capture drives `audio-amplitude` events through it to pose the live waveform.
