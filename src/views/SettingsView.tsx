@@ -632,7 +632,7 @@ export function SettingsView() {
   };
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col animate-[fadeIn_0.3s_ease-out]">
       <div className="mb-6">
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
           {t("settings.preferencesTitle")}

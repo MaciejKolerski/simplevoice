@@ -706,7 +706,7 @@ export function ModelsView() {
   );
 
   return (
-    <div className="flex flex-col w-full">
+    <div className="flex flex-col w-full animate-[fadeIn_0.3s_ease-out]">
       <AlertDialog
         open={!!deleteTarget}
         onOpenChange={(open) => {

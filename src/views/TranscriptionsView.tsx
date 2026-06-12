@@ -163,7 +163,7 @@ export function TranscriptionsView() {
   };
 
   return (
-    <div className="flex flex-col w-full">
+    <div className="flex flex-col w-full animate-[fadeIn_0.3s_ease-out]">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6">
         <div>
           <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
@@ -282,7 +282,7 @@ export function TranscriptionsView() {
                 {isExpanded && item.wav_path && (
                   <div className="mt-4 pt-4 border-t border-border/50">
                     {audioCache[item.id] ? (
-                      <div className="bg-surface-active rounded-2xl p-4">
+                      <div className="bg-surface-active rounded-xl p-4">
                         <audio
                           src={`data:audio/wav;base64,${audioCache[item.id]}`}
                           controls
@@ -291,7 +291,7 @@ export function TranscriptionsView() {
                         />
                       </div>
                     ) : (
-                      <div className="text-muted text-sm py-12 text-center border border-dashed border-border rounded-2xl flex items-center justify-center gap-2">
+                      <div className="text-muted text-sm py-12 text-center border border-dashed border-border rounded-xl flex items-center justify-center gap-2">
                         <Loader2 size={14} className="animate-spin" />
                         {t("transcriptions.loadingRecording")}
                       </div>

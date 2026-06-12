@@ -571,10 +571,10 @@ export function UsageView() {
           </div>
 
           <div className="absolute top-1.5 bottom-6 left-16 right-0 flex flex-col justify-between pointer-events-none z-0">
-            <div className="h-px w-full border-t border-dashed border-white/10"></div>
-            <div className="h-px w-full border-t border-dashed border-white/10"></div>
-            <div className="h-px w-full border-t border-dashed border-white/10"></div>
-            <div className="h-px w-full border-t border-white/15"></div>
+            <div className="h-px w-full border-t border-dashed border-border"></div>
+            <div className="h-px w-full border-t border-dashed border-border"></div>
+            <div className="h-px w-full border-t border-dashed border-border"></div>
+            <div className="h-px w-full border-t border-border-hover"></div>
           </div>
 
           <div className="flex-1 flex justify-between items-end pb-6 relative z-10 min-w-0 gap-1.5 sm:gap-2 pl-2">
