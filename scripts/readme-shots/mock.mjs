@@ -48,6 +48,8 @@ export function installTauriMock(payload) {
     },
   };
   window.__TAURI_INTERNALS__ = internals;
+  // @tauri-apps/api v2 event.js calls this synchronously in _unlisten() on unmount.
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
   window.__fireTauriEvent = (event, payloadData) => {
     for (const id of listeners.get(event) ?? []) {
       const fn = window[`_${id}`];
