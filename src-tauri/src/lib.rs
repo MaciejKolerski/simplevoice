@@ -2885,10 +2885,14 @@ pub fn run() {
                                     if command_pressed != last_command_state {
                                         last_command_state = command_pressed;
                                         // Drive the overlay's amber "movable" glow while Cmd is
-                                        // held. Visual signal only: this does not persist
-                                        // recording_window_locked on macOS.
-                                        let _ = app_handle
-                                            .emit("recording-window-lock-status", !command_pressed);
+                                        // held. Scoped to the overlay: this is a transient visual
+                                        // signal and must not reach listeners that mirror the
+                                        // persisted recording_window_locked flag.
+                                        let _ = app_handle.emit_to(
+                                            "recording_window",
+                                            "recording-window-lock-status",
+                                            !command_pressed,
+                                        );
                                         let window_clone = window.clone();
                                         let app_handle_clone = app_handle.clone();
                                         let _ = app_handle.run_on_main_thread(move || {
@@ -2907,6 +2911,15 @@ pub fn run() {
                                         });
                                     }
                                 } else {
+                                    // The hidden webview keeps its React state, so re-lock the
+                                    // glow if the window vanished mid-Cmd-drag.
+                                    if last_command_state {
+                                        let _ = app_handle.emit_to(
+                                            "recording_window",
+                                            "recording-window-lock-status",
+                                            true,
+                                        );
+                                    }
                                     last_command_state = false;
                                 }
                             }
