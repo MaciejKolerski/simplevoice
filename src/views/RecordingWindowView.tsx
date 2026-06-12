@@ -4,8 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { isSupported } from "../i18n/detect";
-
-type Status = "idle" | "recording" | "transcribing";
+import { applyTranscribingStatus, type OverlayStatus as Status } from "@/lib/overlayStatus";
 
 // Bar geometry (logical CSS pixels)
 const BAR_COUNT = 9;
@@ -116,9 +115,13 @@ export function RecordingWindowView() {
     });
 
     const unlistenTranscribing = listen<boolean>("transcribing-status", (event) => {
-      statusRef.current = event.payload ? "transcribing" : "idle";
+      statusRef.current = applyTranscribingStatus(statusRef.current, event.payload);
       if (!event.payload) {
-        amplitudeRef.current = 0;
+        // Clear the finished transcription's progress panel even mid-recording,
+        // but leave the live amplitude alone while a recording is active.
+        if (statusRef.current !== "recording") {
+          amplitudeRef.current = 0;
+        }
         setProgress(null);
       }
     });
