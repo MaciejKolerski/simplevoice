@@ -24,7 +24,8 @@ export function Sidebar({ collapsed, activeView, setActiveView }: SidebarProps) 
     extraClass?: string,
   ) => {
     const item = (
-      <div
+      <button
+        type="button"
         className={clsx(
           "nav-item",
           collapsed && "justify-center",
@@ -32,10 +33,11 @@ export function Sidebar({ collapsed, activeView, setActiveView }: SidebarProps) 
           extraClass,
         )}
         onClick={() => setActiveView(id)}
+        aria-current={activeView === id ? "page" : undefined}
       >
         <Icon size={16} className="shrink-0" />
         {!collapsed && <span className="nav-label">{label}</span>}
-      </div>
+      </button>
     );
 
     if (!collapsed) return item;
