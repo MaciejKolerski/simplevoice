@@ -9,8 +9,8 @@ import { useTranslation, Trans } from "react-i18next";
 import { changeLanguage } from "@/i18n/language";
 import { SUPPORTED_LANGUAGES, Language } from "@/i18n/detect";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { SettingRow } from "@/components/ui/setting-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
@@ -611,8 +611,7 @@ export function SettingsView() {
             <Languages size={16} className="text-muted" /> {t("settings.interfaceLanguageGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-            <div className="flex flex-col p-5 border-b border-border last:border-b-0">
-              <Label className="mb-3">{t("settings.interfaceLanguage")}</Label>
+            <SettingRow layout="column" title={t("settings.interfaceLanguage")}>
               <Select
                 value={i18n.language}
                 onValueChange={(v) => changeLanguage((v ?? "en") as Language)}
@@ -631,7 +630,7 @@ export function SettingsView() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </SettingRow>
           </div>
         </section>
 
@@ -641,8 +640,7 @@ export function SettingsView() {
             <Cpu size={16} className="text-muted" /> {t("settings.audioSttGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-          <div className="flex flex-col p-5 border-b border-border last:border-b-0">
-            <Label className="mb-3">{t("settings.inputMicrophone")}</Label>
+          <SettingRow layout="column" title={t("settings.inputMicrophone")}>
             <Select
               value={selectedDevice || "default"}
               onValueChange={(v) => handleDeviceChange(v ?? "default")}
@@ -660,10 +658,9 @@ export function SettingsView() {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </SettingRow>
 
-          <div data-tour="language-select" className="flex flex-col p-5 border-b border-border last:border-b-0">
-            <Label className="mb-3">{t("settings.transcriptionLanguage")}</Label>
+          <SettingRow layout="column" title={t("settings.transcriptionLanguage")} data-tour="language-select">
             <Select
               value={asrLanguage}
               onValueChange={(v) => handleAsrLanguageChange(v ?? "auto")}
@@ -686,21 +683,18 @@ export function SettingsView() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[11px] text-muted mt-2">
+            <p className="text-muted text-[13px] mt-2">
               {t("settings.transcriptionLanguageHelp")}
             </p>
-          </div>
+          </SettingRow>
 
           {!isMac && (
-            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-              <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">{t("settings.gpuAcceleration")}</div>
-                <div className="text-xs text-muted leading-snug">
-                  {t("settings.gpuAccelerationDesc")}
-                </div>
-              </div>
+            <SettingRow
+              title={t("settings.gpuAcceleration")}
+              description={t("settings.gpuAccelerationDesc")}
+            >
               <Switch checked={gpuEnabled} onCheckedChange={handleGpuToggle} />
-            </div>
+            </SettingRow>
           )}
           </div>
         </section>
@@ -711,17 +705,12 @@ export function SettingsView() {
             <Radio size={16} className="text-muted" /> {t("settings.liveGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-              <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">
-                  {t("settings.liveTranscription")}
-                </div>
-                <div className="text-muted text-[13px]">
-                  {t("settings.liveTranscriptionDesc")}
-                </div>
-              </div>
+            <SettingRow
+              title={t("settings.liveTranscription")}
+              description={t("settings.liveTranscriptionDesc")}
+            >
               <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
-            </div>
+            </SettingRow>
 
             <div
               className={
@@ -729,27 +718,22 @@ export function SettingsView() {
               }
               aria-disabled={!liveEnabled}
             >
-              <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-                <div className="min-w-0">
-                  <div className="text-fg font-medium mb-1">
-                    {t("settings.liveAutopaste")}
-                  </div>
-                  <div className="text-muted text-[13px]">
-                    {t("settings.liveAutopasteDesc")}
-                  </div>
-                </div>
+              <SettingRow
+                title={t("settings.liveAutopaste")}
+                description={t("settings.liveAutopasteDesc")}
+              >
                 <Switch
                   checked={liveAutopaste}
                   disabled={!liveEnabled}
                   onCheckedChange={handleLiveAutopasteToggle}
                 />
-              </div>
+              </SettingRow>
 
-              <div className="flex flex-col p-5 border-b border-border last:border-b-0">
-                <Label className="mb-1">{t("settings.liveOverlayText")}</Label>
-                <p className="text-muted text-[13px] mb-3">
-                  {t("settings.liveOverlayTextDesc")}
-                </p>
+              <SettingRow
+                layout="column"
+                title={t("settings.liveOverlayText")}
+                description={t("settings.liveOverlayTextDesc")}
+              >
                 <Select
                   value={liveOverlayMode}
                   onValueChange={(v) => handleOverlayModeChange(v ?? "full")}
@@ -770,13 +754,13 @@ export function SettingsView() {
                     </SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+              </SettingRow>
 
-              <div className="flex flex-col p-5 border-b border-border last:border-b-0">
-                <Label className="mb-1">{t("settings.liveSpeed")}</Label>
-                <p className="text-muted text-[13px] mb-3">
-                  {t("settings.liveSpeedDesc")}
-                </p>
+              <SettingRow
+                layout="column"
+                title={t("settings.liveSpeed")}
+                description={t("settings.liveSpeedDesc")}
+              >
                 <Select
                   value={liveSpeed}
                   onValueChange={(v) => handleSpeedChange(v ?? "balanced")}
@@ -801,7 +785,7 @@ export function SettingsView() {
                     </SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+              </SettingRow>
             </div>
           </div>
         </section>
@@ -812,64 +796,36 @@ export function SettingsView() {
             <Mic size={16} className="text-muted" /> {t("settings.recordingFeedbackGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-              <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">{t("settings.autoStart")}</div>
-                <div className="text-xs text-muted">
-                  {t("settings.autoStartDesc")}
-                </div>
-              </div>
+            <SettingRow
+              title={t("settings.autoStart")}
+              description={t("settings.autoStartDesc")}
+            >
               <Switch
                 checked={autostartEnabled}
                 onCheckedChange={handleAutostartToggle}
               />
-            </div>
+            </SettingRow>
 
-          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-            <div className="min-w-0">
-              <div className="text-fg font-medium mb-1">
-                {t("settings.vad")}
-              </div>
-              <div className="text-muted text-[13px]">
-                {t("settings.vadDesc")}
-              </div>
-            </div>
+          <SettingRow title={t("settings.vad")} description={t("settings.vadDesc")}>
             <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
-          </div>
+          </SettingRow>
 
-          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-            <div className="min-w-0">
-              <div className="text-fg font-medium mb-1">{t("settings.soundEffects")}</div>
-              <div className="text-muted text-[13px]">
-                {t("settings.soundEffectsDesc")}
-              </div>
-            </div>
+          <SettingRow title={t("settings.soundEffects")} description={t("settings.soundEffectsDesc")}>
             <Switch checked={soundEnabled} onCheckedChange={handleSoundToggle} />
-          </div>
+          </SettingRow>
 
-          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-            <div className="min-w-0">
-              <div className="text-fg font-medium mb-1">{t("settings.pauseSystemAudio")}</div>
-              <div className="text-muted text-[13px]">
-                {t("settings.pauseSystemAudioDesc")}
-              </div>
-            </div>
+          <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>
             <Switch
               checked={pauseAudioEnabled}
               onCheckedChange={handlePauseAudioToggle}
             />
-          </div>
+          </SettingRow>
 
           {(isMac || platform === "linux" || platform === "windows") && (
-            <div className="flex justify-between items-center gap-6 p-5">
-              <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">
-                  {t("settings.recordingOverlayWindow")}
-                </div>
-                <div className="text-muted text-[13px]">
-                  {t("settings.recordingOverlayWindowDesc")}
-                </div>
-              </div>
+            <SettingRow
+              title={t("settings.recordingOverlayWindow")}
+              description={t("settings.recordingOverlayWindowDesc")}
+            >
               <Select
                 value={recordingWindowMode}
                 onValueChange={(v) => handleRecordingWindowModeChange(v ?? "always")}
@@ -884,7 +840,7 @@ export function SettingsView() {
                   <SelectItem value="never">{t("settings.recordingModeNever")}</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </SettingRow>
           )}
           </div>
         </section>
@@ -896,15 +852,10 @@ export function SettingsView() {
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
 
-          <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-            <div className="flex-1 min-w-0">
-              <div className="text-fg font-medium mb-1">
-                {t("settings.startStopRecording")}
-              </div>
-              <div className="text-muted text-[13px]">
-                {t("settings.startStopRecordingDesc")}
-              </div>
-            </div>
+          <SettingRow
+            title={t("settings.startStopRecording")}
+            description={t("settings.startStopRecordingDesc")}
+          >
             <button
               data-tour="record-shortcut"
               onClick={() => startRecordingShortcut("record")}
@@ -913,17 +864,12 @@ export function SettingsView() {
             >
               {formatShortcutDisplay(shortcutText, t("settings.shortcutNone"))}
             </button>
-          </div>
+          </SettingRow>
 
-          <div className="flex justify-between items-center gap-6 p-5">
-            <div className="flex-1 min-w-0">
-              <div className="text-fg font-medium mb-1">
-                {t("settings.copyLastTranscription")}
-              </div>
-              <div className="text-muted text-[13px]">
-                {t("settings.copyLastTranscriptionDesc")}
-              </div>
-            </div>
+          <SettingRow
+            title={t("settings.copyLastTranscription")}
+            description={t("settings.copyLastTranscriptionDesc")}
+          >
             <button
               onClick={() => startRecordingShortcut("copy")}
               className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none"
@@ -931,7 +877,7 @@ export function SettingsView() {
             >
               {formatShortcutDisplay(copyShortcutText, t("settings.shortcutNone"))}
             </button>
-          </div>
+          </SettingRow>
 
           {/* Linux Native / Wayland warning block */}
           {platform === "linux" && (
@@ -1009,9 +955,9 @@ export function SettingsView() {
               <Shield size={16} className="text-muted" /> {t("settings.systemPermissionsGroup")}
             </h2>
             <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-              <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-                <div className="flex-1 min-w-0">
-                  <div className="text-fg font-medium mb-1 flex items-center gap-2">
+              <SettingRow
+                title={
+                  <span className="flex items-center gap-2">
                     {t("settings.accessibility")}
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
@@ -1020,17 +966,17 @@ export function SettingsView() {
                           : "bg-warning shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse"
                       }`}
                     />
-                  </div>
-                  <div className="text-muted text-[13px]">
+                  </span>
+                }
+                description={
+                  <>
                     {t("settings.accessibilityDesc")}
                     {!accessibilityGranted && (
-                      <span className="text-warning font-medium">
-                        {" "}
-                        {t("settings.accessibilityNotGranted")}
-                      </span>
+                      <span className="text-warning font-medium"> {t("settings.accessibilityNotGranted")}</span>
                     )}
-                  </div>
-                </div>
+                  </>
+                }
+              >
                 {!accessibilityGranted ? (
                   <Button
                     variant="outline"
@@ -1051,11 +997,11 @@ export function SettingsView() {
                     <Check size={14} /> {t("settings.granted")}
                   </span>
                 )}
-              </div>
+              </SettingRow>
 
-              <div className="flex justify-between items-center gap-6 p-5">
-                <div className="flex-1 min-w-0">
-                  <div className="text-fg font-medium mb-1 flex items-center gap-2">
+              <SettingRow
+                title={
+                  <span className="flex items-center gap-2">
                     {t("settings.microphone")}
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
@@ -1064,17 +1010,17 @@ export function SettingsView() {
                           : "bg-warning shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse"
                       }`}
                     />
-                  </div>
-                  <div className="text-muted text-[13px]">
+                  </span>
+                }
+                description={
+                  <>
                     {t("settings.microphoneDesc")}
                     {!microphoneGranted && (
-                      <span className="text-warning font-medium">
-                        {" "}
-                        {t("settings.microphoneNotGranted")}
-                      </span>
+                      <span className="text-warning font-medium"> {t("settings.microphoneNotGranted")}</span>
                     )}
-                  </div>
-                </div>
+                  </>
+                }
+              >
                 {!microphoneGranted ? (
                   <Button
                     variant="outline"
@@ -1100,7 +1046,7 @@ export function SettingsView() {
                     <Check size={14} /> {t("settings.granted")}
                   </span>
                 )}
-              </div>
+              </SettingRow>
             </div>
           </section>
         )}
@@ -1111,13 +1057,10 @@ export function SettingsView() {
             <Info size={16} className="text-muted" /> {t("settings.aboutGroup")}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-            <div className="flex justify-between items-center gap-6 p-5">
-              <div className="min-w-0">
-                <div className="text-fg font-medium mb-1">Simplevoice</div>
-                <div className="text-muted text-[13px]">
-                  {t("settings.version", { version: appVersion || "…" })}
-                </div>
-              </div>
+            <SettingRow
+              title="Simplevoice"
+              description={t("settings.version", { version: appVersion || "…" })}
+            >
               <Button
                 variant="outline"
                 size="sm"
@@ -1130,7 +1073,7 @@ export function SettingsView() {
                 />
                 {checkingUpdate ? t("settings.checkingForUpdates") : t("settings.checkForUpdates")}
               </Button>
-            </div>
+            </SettingRow>
           </div>
         </section>
       </div>
