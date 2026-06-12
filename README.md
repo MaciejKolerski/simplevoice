@@ -7,7 +7,7 @@
 **Privacy-first, local & offline Speech-to-Text and voice typing for the desktop.**
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.1.0-1f1f1f?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.1.3-1f1f1f?style=flat-square" alt="version" />
   <img src="https://img.shields.io/badge/license-Apache--2.0-1f1f1f?style=flat-square" alt="license" />
   <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-1f1f1f?style=flat-square" alt="platform" />
   <img src="https://img.shields.io/badge/100%25-offline--first-10b981?style=flat-square" alt="offline first" />
@@ -16,6 +16,7 @@
 
 <p>
   <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
   <a href="#speech-to-text-engines">Engines</a> ·
   <a href="#platform-support">Platforms</a> ·
   <a href="#install">Install</a> ·
@@ -29,12 +30,23 @@
 
 Simplevoice turns what you say into finished text — fast, accurate, and with nothing in the way. It records system audio, runs speech models **completely offline on your device**, and types the result straight into the active app or copies it to your clipboard. Prefer the cloud? Bring your own key. Either way: no accounts, no telemetry, fully open-source.
 
-<div align="center">
-  <br/>
-  <img src="assets/screenshot-usage.svg" width="840" alt="Usage dashboard — an Overview of time transcribed, words generated, and the active local model, above a 7-day activity chart, all stored on-device" />
-  <br/><br/>
-  <img src="assets/screenshot-recording.svg" width="660" alt="The floating recording overlay with a live waveform" />
-</div>
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/readme/usage.png" alt="Usage dashboard" /><br/><sub>Usage dashboard — time transcribed, words generated, active model and 7-day activity</sub></td>
+    <td align="center"><img src="assets/readme/models.png" alt="Model manager" /><br/><sub>Built-in model manager — download, import and switch local models</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/readme/transcriptions.png" alt="Transcription history" /><br/><sub>Full local history — every transcription stored on-device in SQLite</sub></td>
+    <td align="center"><img src="assets/readme/settings.png" alt="Settings" /><br/><sub>Preferences — interface, audio input, live transcription and recording feedback</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/readme/recording.png" alt="Floating recording overlay" /><br/><sub>The floating recording overlay with a live waveform — speak anywhere, text lands in the active app</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -128,6 +140,8 @@ Configure global hotkeys under **Settings → Keyboard Shortcuts**:
 | --- | --- |
 | Toggle recording | `Ctrl/Cmd + Shift + Space` |
 | Copy last transcription | `Ctrl/Cmd + Shift + C` |
+
+The floating recording bar can be repositioned by dragging; its position controls live under **Settings → Recording & Feedback**.
 
 ---
 
