@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SettingRow } from "@/components/ui/setting-row";
 
 interface ModelStatus {
   active: string | null;
@@ -999,38 +1000,35 @@ export function ModelsView() {
             </Button>
           </div>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-              <div className="flex-1 min-w-0">
-                <div className="text-fg font-medium mb-1">{t("models.providerLabel")}</div>
-                <div className="text-muted text-[13px]">
-                  {t("models.providerDesc")}
-                </div>
-              </div>
+            <SettingRow
+              className="flex-wrap"
+              title={t("models.providerLabel")}
+              description={t("models.providerDesc")}
+            >
               <Select
                 value={asrProvider}
                 onValueChange={(v) => handleProviderChange(v as typeof asrProvider)}
                 items={PROVIDER_LABELS}
               >
-                <SelectTrigger className="w-72 bg-black shrink-0">
+                <SelectTrigger className="w-72 max-w-full shrink bg-black">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                  <SelectItem value="openrouter">OpenRouter</SelectItem>
-                  <SelectItem value="gemini">Google Gemini</SelectItem>
-                  <SelectItem value="custom">{t("models.custom")}</SelectItem>
+                  {Object.entries(PROVIDER_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-            </div>
+            </SettingRow>
 
-            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-              <div className="flex-1 min-w-0">
-                <div className="text-fg font-medium mb-1">{t("models.apiKeyLabel")}</div>
-                <div className="text-muted text-[13px]">
-                  {t("models.apiKeyDesc")}
-                </div>
-              </div>
-              <div className="flex gap-2 w-72 shrink-0">
+            <SettingRow
+              className="flex-wrap"
+              title={t("models.apiKeyLabel")}
+              description={t("models.apiKeyDesc")}
+            >
+              <div className="flex gap-2 w-72 max-w-full shrink">
                 <Input
                   type={showApiKey ? "text" : "password"}
                   value={providerKey}
@@ -1057,16 +1055,14 @@ export function ModelsView() {
                   {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
                 </Button>
               </div>
-            </div>
+            </SettingRow>
 
-            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-              <div className="flex-1 min-w-0">
-                <div className="text-fg font-medium mb-1">{t("models.modelLabel")}</div>
-                <div className="text-muted text-[13px]">
-                  {t("models.modelDesc")}
-                </div>
-              </div>
-              <div className="flex flex-col gap-1 w-72 shrink-0">
+            <SettingRow
+              className="flex-wrap"
+              title={t("models.modelLabel")}
+              description={t("models.modelDesc")}
+            >
+              <div className="flex flex-col gap-1 w-72 max-w-full shrink">
                 <div className="flex items-center gap-2">
                   <Select
                     value={asrModel}
@@ -1123,16 +1119,14 @@ export function ModelsView() {
                   </span>
                 )}
               </div>
-            </div>
+            </SettingRow>
 
             {isCustomModel && (
-              <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-                <div className="flex-1 min-w-0">
-                  <div className="text-fg font-medium mb-1">{t("models.customModelIdLabel")}</div>
-                  <div className="text-muted text-[13px]">
-                    {t("models.customModelIdDesc")}
-                  </div>
-                </div>
+              <SettingRow
+                className="flex-wrap"
+                title={t("models.customModelIdLabel")}
+                description={t("models.customModelIdDesc")}
+              >
                 <Input
                   type="text"
                   value={asrModel === "custom" ? asrCustomModel : asrModel}
@@ -1144,26 +1138,24 @@ export function ModelsView() {
                     }
                   }}
                   placeholder={t("models.customModelIdPlaceholder")}
-                  className="w-72 shrink-0 bg-black font-mono"
+                  className="w-72 max-w-full shrink bg-black font-mono"
                 />
-              </div>
+              </SettingRow>
             )}
 
-            <div className="flex justify-between items-center gap-6 p-5 border-b border-border last:border-b-0">
-              <div className="flex-1 min-w-0">
-                <div className="text-fg font-medium mb-1">{t("models.baseUrlLabel")}</div>
-                <div className="text-muted text-[13px]">
-                  {t("models.baseUrlDesc")}
-                </div>
-              </div>
+            <SettingRow
+              className="flex-wrap"
+              title={t("models.baseUrlLabel")}
+              description={t("models.baseUrlDesc")}
+            >
               <Input
                 type="text"
                 value={asrBaseUrl}
                 onChange={(e) => handleBaseUrlChange(e.target.value)}
                 placeholder={t("models.baseUrlPlaceholder")}
-                className="w-72 shrink-0 bg-black font-mono"
+                className="w-72 max-w-full shrink bg-black font-mono"
               />
-            </div>
+            </SettingRow>
           </div>
         </TabsContent>
       </Tabs>
