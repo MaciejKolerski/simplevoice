@@ -694,7 +694,7 @@ export function ModelsView() {
             convertingPath !== null ||
             deletingPath !== null
           }
-          className="shrink-0 text-muted hover:text-danger transition-colors cursor-pointer p-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="shrink-0 text-muted hover:text-danger transition-colors cursor-pointer p-1 disabled:opacity-40 disabled:cursor-not-allowed rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
           title={t("models.delete")}
           aria-label={t("models.delete")}
         >

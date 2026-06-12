@@ -205,10 +205,19 @@ export function TranscriptionsView() {
             return (
               <div
                 key={item.id}
-                className={`group flex flex-col p-5 transition-colors hover:bg-surface-hover border-b border-border last:border-b-0 cursor-pointer ${
+                className={`group flex flex-col p-5 transition-colors hover:bg-surface-hover border-b border-border last:border-b-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60 ${
                   isExpanded ? "bg-surface-hover" : ""
                 }`}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
                 onClick={() => toggleExpanded(item.id)}
+                onKeyDown={(e) => {
+                  if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    toggleExpanded(item.id);
+                  }
+                }}
               >
                 <div className="flex items-start gap-6">
                   <div className="flex-1 min-w-0">

@@ -748,10 +748,8 @@ export function SettingsView() {
             </SettingRow>
 
             <div
-              className={
-                liveEnabled ? "" : "opacity-50 pointer-events-none select-none"
-              }
-              aria-disabled={!liveEnabled}
+              className={liveEnabled ? "" : "opacity-50 select-none"}
+              inert={!liveEnabled || undefined}
             >
               <SettingRow
                 title={t("settings.liveAutopaste")}
@@ -927,7 +925,7 @@ export function SettingsView() {
             <button
               data-tour="record-shortcut"
               onClick={() => startRecordingShortcut("record")}
-              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none"
+              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
               title={t("settings.clickToChangeShortcut")}
             >
               {formatShortcutDisplay(shortcutText, t("settings.shortcutNone"))}
@@ -940,7 +938,7 @@ export function SettingsView() {
           >
             <button
               onClick={() => startRecordingShortcut("copy")}
-              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none"
+              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
               title={t("settings.clickToChangeShortcut")}
             >
               {formatShortcutDisplay(copyShortcutText, t("settings.shortcutNone"))}
