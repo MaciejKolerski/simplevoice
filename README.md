@@ -7,7 +7,7 @@
 **Privacy-first, local & offline Speech-to-Text and voice typing for the desktop.**
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.1.3-1f1f1f?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.1.4-1f1f1f?style=flat-square" alt="version" />
   <img src="https://img.shields.io/badge/license-Apache--2.0-1f1f1f?style=flat-square" alt="license" />
   <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-1f1f1f?style=flat-square" alt="platform" />
   <img src="https://img.shields.io/badge/100%25-offline--first-10b981?style=flat-square" alt="offline first" />

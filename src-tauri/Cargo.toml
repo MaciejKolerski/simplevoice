@@ -1,6 +1,6 @@
 [package]
 name = "simplevoice"
-version = "0.1.3"
+version = "0.1.4"
 description = "Privacy-first, local & offline Speech-to-Text and voice typing for the desktop."
 authors = ["WoroWoro"]
 edition = "2021"
