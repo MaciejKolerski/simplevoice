@@ -38,7 +38,18 @@
     "no_model_loaded": "Brak załadowanego modelu lokalnego. Pobierz lub załaduj model w sekcji Modele.",
     "cloud_not_configured": "Transkrypcja w chmurze nie jest skonfigurowana. Dodaj klucz API w sekcji Modele.",
     "model_load_failed": "Nie udało się załadować modelu. Spróbuj innego modelu w sekcji Modele.",
-    "mic_unavailable": "Wybrany mikrofon nie jest już dostępny. Wybierz inne wejście w Ustawieniach."
+    "mic_unavailable": "Wybrany mikrofon nie jest już dostępny. Wybierz inne wejście w Ustawieniach.",
+    "api_key_missing": "Brak klucza API dla {{detail}}. Dodaj go w ustawieniach sekcji Modele.",
+    "keyring_access": "Nie udało się uzyskać dostępu do pęku kluczy systemu: {{detail}}",
+    "model_path_outside_dir": "Nie można usunąć pliku spoza folderu modeli.",
+    "model_not_found": "Nie znaleziono pliku modelu: {{detail}}",
+    "provider_no_transcription": "{{detail}} nie obsługuje transkrypcji audio. Wybierz innego dostawcę.",
+    "provider_no_model_listing": "{{detail}} nie obsługuje wyświetlania listy modeli. Wybierz innego dostawcę.",
+    "cloud_request_failed": "Nie udało się połączyć z usługą transkrypcji: {{detail}}",
+    "cloud_api_error": "Usługa transkrypcji zwróciła błąd: {{detail}}",
+    "cloud_response_parse": "Nie udało się odczytać odpowiedzi usługi transkrypcji: {{detail}}",
+    "cloud_extract_text": "Nie udało się wyodrębnić transkrypcji z odpowiedzi usługi. Sprawdź, czy klucz API i model są poprawne.",
+    "audio_encode_failed": "Nie udało się przygotować dźwięku do wysłania: {{detail}}"
   },
   "settings": {
     "interfaceLanguageGroup": "Interfejs",

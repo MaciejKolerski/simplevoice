@@ -38,7 +38,18 @@
     "no_model_loaded": "Kein lokales Modell geladen. Lade eines unter Modelle herunter oder lade es.",
     "cloud_not_configured": "Cloud-Transkription ist nicht konfiguriert. Füge deinen API-Schlüssel unter Modelle hinzu.",
     "model_load_failed": "Modell konnte nicht geladen werden. Versuche ein anderes Modell unter Modelle.",
-    "mic_unavailable": "Das ausgewählte Mikrofon ist nicht mehr verfügbar. Wähle in den Einstellungen eine andere Eingabe."
+    "mic_unavailable": "Das ausgewählte Mikrofon ist nicht mehr verfügbar. Wähle in den Einstellungen eine andere Eingabe.",
+    "api_key_missing": "Der API-Schlüssel für {{detail}} fehlt. Füge ihn in den Modelle-Einstellungen hinzu.",
+    "keyring_access": "Zugriff auf den System-Schlüsselbund fehlgeschlagen: {{detail}}",
+    "model_path_outside_dir": "Eine Datei außerhalb des Modelle-Ordners kann nicht gelöscht werden.",
+    "model_not_found": "Modelldatei nicht gefunden: {{detail}}",
+    "provider_no_transcription": "{{detail}} unterstützt keine Audio-Transkription. Bitte wähle einen anderen Anbieter.",
+    "provider_no_model_listing": "{{detail}} unterstützt keine Modellauflistung. Bitte wähle einen anderen Anbieter.",
+    "cloud_request_failed": "Der Transkriptionsdienst konnte nicht erreicht werden: {{detail}}",
+    "cloud_api_error": "Der Transkriptionsdienst hat einen Fehler zurückgegeben: {{detail}}",
+    "cloud_response_parse": "Die Antwort des Transkriptionsdienstes konnte nicht gelesen werden: {{detail}}",
+    "cloud_extract_text": "Die Transkription konnte nicht aus der Antwort des Dienstes extrahiert werden. Prüfe, ob dein API-Schlüssel und Modell korrekt sind.",
+    "audio_encode_failed": "Die Audiodaten konnten nicht für den Upload vorbereitet werden: {{detail}}"
   },
   "settings": {
     "interfaceLanguageGroup": "Oberfläche",

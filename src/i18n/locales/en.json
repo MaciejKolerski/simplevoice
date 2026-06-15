@@ -38,7 +38,18 @@
     "no_model_loaded": "No local model loaded. Download or load one in Models.",
     "cloud_not_configured": "Cloud transcription is not configured. Add your API key in Models.",
     "model_load_failed": "Failed to load the model. Try another model in Models.",
-    "mic_unavailable": "Your selected microphone is no longer available. Choose another input in Settings."
+    "mic_unavailable": "Your selected microphone is no longer available. Choose another input in Settings.",
+    "api_key_missing": "The API key for {{detail}} is missing. Add it in Models settings.",
+    "keyring_access": "Could not access the system keychain: {{detail}}",
+    "model_path_outside_dir": "Can't delete a file outside the models folder.",
+    "model_not_found": "Model file not found: {{detail}}",
+    "provider_no_transcription": "{{detail}} does not support audio transcription. Please choose a different provider.",
+    "provider_no_model_listing": "{{detail}} does not support listing models. Please choose a different provider.",
+    "cloud_request_failed": "Could not reach the transcription service: {{detail}}",
+    "cloud_api_error": "The transcription service returned an error: {{detail}}",
+    "cloud_response_parse": "Could not read the transcription service's response: {{detail}}",
+    "cloud_extract_text": "Could not extract the transcription from the service response. Check that your API key and model are correct.",
+    "audio_encode_failed": "Could not prepare the audio for upload: {{detail}}"
   },
   "settings": {
     "interfaceLanguageGroup": "Interface",

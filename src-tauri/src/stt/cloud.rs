@@ -81,16 +81,16 @@ fn pcm_to_wav_bytes(samples: &[f32]) -> Result<Vec<u8>, String> {
     };
     {
         let mut writer = hound::WavWriter::new(&mut buffer, spec)
-            .map_err(|e| format!("Failed to initialize WAV writer: {}", e))?;
+            .map_err(|e| format!("errors.audio_encode_failed::{}", e))?;
         for &sample in samples {
             let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
             writer
                 .write_sample(sample_i16)
-                .map_err(|e| format!("Failed to write WAV sample: {}", e))?;
+                .map_err(|e| format!("errors.audio_encode_failed::{}", e))?;
         }
         writer
             .finalize()
-            .map_err(|e| format!("Failed to finalize WAV: {}", e))?;
+            .map_err(|e| format!("errors.audio_encode_failed::{}", e))?;
     }
     Ok(buffer.into_inner())
 }
@@ -108,7 +108,7 @@ pub async fn transcribe_cloud(
     let provider_str = provider.unwrap_or("").trim().to_lowercase();
 
     if provider_str == "anthropic" {
-        return Err("Anthropic Claude does not support audio transcription. Please select a different provider.".to_string());
+        return Err("errors.provider_no_transcription::Anthropic Claude".to_string());
     }
 
     // Google Gemini preset handling
@@ -166,14 +166,14 @@ pub async fn transcribe_cloud(
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Failed to send request to Gemini ASR: {}", e))?;
+            .map_err(|e| format!("errors.cloud_request_failed::{}", e))?;
 
         if !response.status().is_success() {
             let err_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(format!("Gemini API returned error: {}", err_text));
+            return Err(format!("errors.cloud_api_error::{}", err_text));
         }
 
         #[derive(serde::Deserialize)]
@@ -196,7 +196,7 @@ pub async fn transcribe_cloud(
         let result = response
             .json::<GeminiResponse>()
             .await
-            .map_err(|e| format!("Failed to parse Gemini response: {}", e))?;
+            .map_err(|e| format!("errors.cloud_response_parse::{}", e))?;
 
         let transcribed_text = result
             .candidates
@@ -206,7 +206,7 @@ pub async fn transcribe_cloud(
             .and_then(|c| c.parts.as_ref())
             .and_then(|p| p.first())
             .and_then(|p| p.text.as_deref())
-            .ok_or_else(|| "Failed to extract transcription text from Gemini response. Make sure the API key is valid and the model is correct.".to_string())?;
+            .ok_or_else(|| "errors.cloud_extract_text".to_string())?;
 
         return Ok(transcribed_text.trim().to_string());
     }
@@ -254,14 +254,14 @@ pub async fn transcribe_cloud(
             .json(&payload)
             .send()
             .await
-            .map_err(|e| format!("Failed to send request to OpenRouter ASR: {}", e))?;
+            .map_err(|e| format!("errors.cloud_request_failed::{}", e))?;
 
         if !response.status().is_success() {
             let err_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(format!("OpenRouter ASR API returned error: {}", err_text));
+            return Err(format!("errors.cloud_api_error::{}", err_text));
         }
 
         #[derive(serde::Deserialize)]
@@ -272,7 +272,7 @@ pub async fn transcribe_cloud(
         let result = response
             .json::<ApiResponse>()
             .await
-            .map_err(|e| format!("Failed to parse OpenRouter response: {}", e))?;
+            .map_err(|e| format!("errors.cloud_response_parse::{}", e))?;
 
         return Ok(result.text.trim().to_string());
     }
@@ -281,7 +281,7 @@ pub async fn transcribe_cloud(
     let part = multipart::Part::bytes(wav_bytes)
         .file_name("audio.wav")
         .mime_str("audio/wav")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("errors.audio_encode_failed::{}", e))?;
 
     let model_name = model.unwrap_or("").trim();
     let model_str = if model_name.is_empty() {
@@ -316,14 +316,14 @@ pub async fn transcribe_cloud(
         .multipart(form)
         .send()
         .await
-        .map_err(|e| format!("Failed to send request to cloud ASR: {}", e))?;
+        .map_err(|e| format!("errors.cloud_request_failed::{}", e))?;
 
     if !response.status().is_success() {
         let err_text = response
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("Cloud ASR API returned error: {}", err_text));
+        return Err(format!("errors.cloud_api_error::{}", err_text));
     }
 
     #[derive(serde::Deserialize)]
@@ -334,7 +334,7 @@ pub async fn transcribe_cloud(
     let result = response
         .json::<ApiResponse>()
         .await
-        .map_err(|e| format!("Failed to parse cloud response: {}", e))?;
+        .map_err(|e| format!("errors.cloud_response_parse::{}", e))?;
 
     Ok(result.text.trim().to_string())
 }
@@ -346,7 +346,7 @@ pub async fn list_models(
 ) -> Result<Vec<String>, String> {
     let provider_str = provider.trim().to_lowercase();
     if provider_str == "anthropic" {
-        return Err("Anthropic does not support model listing. Please select a different provider.".to_string());
+        return Err("errors.provider_no_model_listing::Anthropic".to_string());
     }
     let base_trimmed = base_url.unwrap_or("").trim();
     let client = reqwest::Client::new();
@@ -363,16 +363,16 @@ pub async fn list_models(
             .header("x-goog-api-key", api_key)
             .send()
             .await
-            .map_err(|e| format!("Failed to reach Gemini: {}", e))?;
+            .map_err(|e| format!("errors.cloud_request_failed::{}", e))?;
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(format!("{} — {}", status, truncate(&body, 300)));
+            return Err(format!("errors.cloud_api_error::{} — {}", status, truncate(&body, 300)));
         }
         let json: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse Gemini models: {}", e))?;
+            .map_err(|e| format!("errors.cloud_response_parse::{}", e))?;
         return Ok(sort_dedup(parse_gemini_models(&json)));
     }
 
@@ -391,16 +391,16 @@ pub async fn list_models(
         .bearer_auth(api_key)
         .send()
         .await
-        .map_err(|e| format!("Failed to reach provider: {}", e))?;
+        .map_err(|e| format!("errors.cloud_request_failed::{}", e))?;
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("{} — {}", status, truncate(&body, 300)));
+        return Err(format!("errors.cloud_api_error::{} — {}", status, truncate(&body, 300)));
     }
     let json: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse models: {}", e))?;
+        .map_err(|e| format!("errors.cloud_response_parse::{}", e))?;
     Ok(sort_dedup(apply_asr_filter(parse_openai_models(&json))))
 }
 

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import "./App.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { localizeError as localizeBackendError } from "@/lib/localizeError";
 
 import { AlertTriangle } from "lucide-react";
 
@@ -31,8 +32,16 @@ type ViewId = "usage" | "models" | "transcriptions" | "settings";
 
 function App() {
   const { t } = useTranslation();
-  const localizeError = (msg: string) =>
-    msg.startsWith("errors.") ? t(msg, { defaultValue: msg }) : msg;
+  // The recording/transcription event handlers below are registered once in a
+  // []-deps effect, so they capture this render's localizeError. Route it
+  // through a ref to the latest `t` (react-i18next rebinds `t` per language) so
+  // backend error keys are localized in the *current* UI language, not whatever
+  // language was active when the listeners were first attached.
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+  const localizeError = (msg: string) => localizeBackendError(tRef.current, msg);
   const [activeView, setActiveView] = useState<ViewId>("usage");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return localStorage.getItem("sidebar_collapsed") === "true";

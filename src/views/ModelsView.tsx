@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { localizeError as localizeBackendError } from "@/lib/localizeError";
 import {
   FolderOpen,
   RefreshCw,
@@ -234,6 +235,17 @@ export function ModelsView() {
   // Mirror of downloadingKey for the (mount-time, stale-closure-free) progress
   // listener, so it can ignore events from any download other than the active one.
   const downloadingKeyRef = useRef<string | null>(null);
+  // The download-progress listener below is registered once at mount; `t` from
+  // react-i18next is bound to the render that created it, so reading it directly
+  // there would freeze the status text at the startup language. Mirror the
+  // latest `t` into a ref, the same way downloadingKey is mirrored above.
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+  // Backend errors arrive as errors.* keys; localize them in the current UI
+  // language (tRef stays current even for long-lived handlers).
+  const localizeError = (err: unknown) => localizeBackendError(tRef.current, err);
   const setActiveDownloadKey = (key: string | null) => {
     downloadingKeyRef.current = key;
     setDownloadingKey(key);
@@ -349,7 +361,7 @@ export function ModelsView() {
       if (download_id !== downloadingKeyRef.current) return;
       setDownloadProgress(progress);
       setDownloadStatus(
-        t("models.downloading", {
+        tRef.current("models.downloading", {
           index: current_file_index,
           total: total_files,
           file,
@@ -458,7 +470,7 @@ export function ModelsView() {
       return list;
     } catch (err: any) {
       setCloudModels([]);
-      setModelsFetchError(err?.toString() || t("models.modelsFetchFailed"));
+      setModelsFetchError(localizeError(err) || t("models.modelsFetchFailed"));
       throw err;
     } finally {
       setModelsLoading(false);
@@ -471,7 +483,7 @@ export function ModelsView() {
       await fetchCloudModels();
       toast.success(t("models.testOk"));
     } catch (err: any) {
-      toast.error(t("models.testFailed"), { description: err?.toString() });
+      toast.error(t("models.testFailed"), { description: localizeError(err) });
     } finally {
       setTesting(false);
     }
@@ -490,7 +502,7 @@ export function ModelsView() {
       window.dispatchEvent(new Event("asr-engine-changed"));
     } catch (err) {
       console.error("Failed to load model:", err);
-      toast.error(t("models.loadFailed"), { description: err?.toString() });
+      toast.error(t("models.loadFailed"), { description: localizeError(err) });
     } finally {
       setLoadingPath(null);
     }
@@ -513,7 +525,7 @@ export function ModelsView() {
       await loadModelsList();
       toast.success(t("models.deleted"));
     } catch (err: any) {
-      toast.error(t("models.deleteFailed"), { description: err?.toString() });
+      toast.error(t("models.deleteFailed"), { description: localizeError(err) });
     } finally {
       setDeletingPath(null);
       setDeleteTarget(null);
@@ -529,7 +541,7 @@ export function ModelsView() {
       await loadModelsList();
     } catch (err: any) {
       console.error("Failed to convert model:", err);
-      setConversionError({ path, message: err?.toString() || t("models.unknownError") });
+      setConversionError({ path, message: localizeError(err) || t("models.unknownError") });
     } finally {
       setConvertingPath(null);
       setConversionStatus("");
@@ -565,7 +577,7 @@ export function ModelsView() {
       console.error("Failed to download model:", err);
       setDownloadError({
         key,
-        message: err?.toString() || t("models.unknownError"),
+        message: localizeError(err) || t("models.unknownError"),
       });
       setActiveDownloadKey(null);
       setDownloadPaused(false);

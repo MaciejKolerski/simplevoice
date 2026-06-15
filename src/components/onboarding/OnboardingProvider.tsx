@@ -32,6 +32,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState(false);
   const [gateReady, setGateReady] = useState(true);
   const startedRef = useRef(false);
+  // Remembered so the steps can be rebuilt (re-translated) on a language change.
+  const platformRef = useRef<string | null>(null);
 
   const step = active && steps[index] ? steps[index] : null;
 
@@ -47,6 +49,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         ]);
         const cfg = JSON.parse(cfgStr || "{}");
         if (!cfg.onboarding_completed) {
+          platformRef.current = status.platform;
           setSteps(buildSteps(status.platform, i18n.t.bind(i18n)));
           setIndex(0);
           setActive(true);
@@ -65,6 +68,22 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       }
     };
     detect();
+  }, []);
+
+  // buildSteps eagerly translates step titles/nextLabels into state, so they
+  // don't refresh on their own when the UI language changes — and the tour even
+  // has a step that invites the user to switch languages. Rebuild the steps in
+  // the new language whenever it changes so the whole card stays consistent.
+  useEffect(() => {
+    const rebuild = () => {
+      if (platformRef.current !== null) {
+        setSteps(buildSteps(platformRef.current, i18n.t.bind(i18n)));
+      }
+    };
+    i18n.on("languageChanged", rebuild);
+    return () => {
+      i18n.off("languageChanged", rebuild);
+    };
   }, []);
 
   const finish = () => {

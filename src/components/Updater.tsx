@@ -30,6 +30,16 @@ export function Updater() {
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
+  // react-i18next binds `t` to the language of the render that produced it.
+  // runCheck is memoized with [] deps (so it doesn't re-arm the startup timer or
+  // the manual-trigger listener), which would otherwise freeze `t` at the first
+  // render's language — the OS-detected language, before applyPersistedLanguage()
+  // swaps in the saved UI language. Read the latest `t` through a ref so the
+  // up-to-date / failure toasts always match the currently selected language.
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
   // Discards a stale check's result if a newer check superseded it mid-flight.
   const checkSeqRef = useRef(0);
 
@@ -55,7 +65,7 @@ export function Updater() {
       } else {
         console.log("[Updater] App is up to date.");
         setStatus("idle");
-        if (manual) toast.success(t("updater.upToDate"));
+        if (manual) toast.success(tRef.current("updater.upToDate"));
       }
     } catch (err) {
       if (checkSeqRef.current !== seq) return;
@@ -63,7 +73,7 @@ export function Updater() {
       setStatus("error");
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(msg);
-      if (manual) toast.error(t("updater.checkFailed", { msg }));
+      if (manual) toast.error(tRef.current("updater.checkFailed", { msg }));
     } finally {
       if (manual) window.dispatchEvent(new Event("update-check-complete"));
     }

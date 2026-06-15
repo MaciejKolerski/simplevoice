@@ -1562,9 +1562,9 @@ fn delete_model(
         .join("models");
     let canon_dir = std::fs::canonicalize(&models_dir).map_err(|e| e.to_string())?;
     let canon_target = std::fs::canonicalize(&path)
-        .map_err(|e| format!("Model not found: {}", e))?;
+        .map_err(|e| format!("errors.model_not_found::{}", e))?;
     if !canon_target.starts_with(&canon_dir) {
-        return Err("Refusing to delete a path outside the models directory".to_string());
+        return Err("errors.model_path_outside_dir".to_string());
     }
 
     // Unload it first if it is the active model, so the app does not keep using a
@@ -1603,43 +1603,43 @@ fn set_secure_api_key(provider: String, key: String) -> Result<(), String> {
         return delete_secure_api_key(provider);
     }
     let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
-        .map_err(|e| format!("Failed to access keyring: {}", e))?;
+        .map_err(|e| format!("errors.keyring_access::{}", e))?;
     entry
         .set_password(&key)
-        .map_err(|e| format!("Failed to set key in keyring: {}", e))?;
+        .map_err(|e| format!("errors.keyring_access::{}", e))?;
     Ok(())
 }
 
 #[tauri::command]
 fn get_secure_api_key(provider: String) -> Result<String, String> {
     let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
-        .map_err(|e| format!("Failed to access keyring: {}", e))?;
+        .map_err(|e| format!("errors.keyring_access::{}", e))?;
     match entry.get_password() {
         Ok(pass) => Ok(pass),
         Err(keyring::Error::NoEntry) => Ok("".to_string()),
-        Err(e) => Err(format!("Failed to retrieve key from keyring: {}", e)),
+        Err(e) => Err(format!("errors.keyring_access::{}", e)),
     }
 }
 
 #[tauri::command]
 fn delete_secure_api_key(provider: String) -> Result<(), String> {
     let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
-        .map_err(|e| format!("Failed to access keyring: {}", e))?;
+        .map_err(|e| format!("errors.keyring_access::{}", e))?;
     match entry.delete_password() {
         Ok(_) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("Failed to delete key from keyring: {}", e)),
+        Err(e) => Err(format!("errors.keyring_access::{}", e)),
     }
 }
 
 #[tauri::command]
 fn has_secure_api_key(provider: String) -> Result<bool, String> {
     let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
-        .map_err(|e| format!("Failed to access keyring: {}", e))?;
+        .map_err(|e| format!("errors.keyring_access::{}", e))?;
     match entry.get_password() {
         Ok(pass) => Ok(!pass.trim().is_empty()),
         Err(keyring::Error::NoEntry) => Ok(false),
-        Err(e) => Err(format!("Failed to check key in keyring: {}", e)),
+        Err(e) => Err(format!("errors.keyring_access::{}", e)),
     }
 }
 
@@ -1651,7 +1651,7 @@ async fn list_cloud_models(
     let key = get_secure_api_key(provider.clone())?;
     if key.trim().is_empty() {
         return Err(format!(
-            "API key for {} is missing. Set it above first.",
+            "errors.api_key_missing::{}",
             provider
         ));
     }
@@ -1760,7 +1760,7 @@ async fn transcribe_audio(
             let provider_name = provider.unwrap_or_else(|| "openai".to_string());
             let key = get_secure_api_key(provider_name.clone())?;
             if key.trim().is_empty() {
-                return Err(format!("ASR API Key for {} is missing or empty. Please set it in models/engines settings.", provider_name));
+                return Err(format!("errors.api_key_missing::{}", provider_name));
             }
             // Same preprocessing + chunking as the local path (per spec): keeps
             // every upload far below provider size caps (OpenAI: 25 MB), yields
