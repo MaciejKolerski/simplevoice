@@ -236,3 +236,88 @@ fn is_ctc_arch(arch: &str) -> bool {
         "WavLMForCTC"    | "MCTCTForCTC"  | "SEWForCTC"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AsrFactory;
+    use crate::stt::traits::ModelFormat;
+    use std::fs::{self, File};
+    use std::io::Write;
+
+    fn write_bytes(path: &std::path::Path, bytes: &[u8]) {
+        let mut f = File::create(path).unwrap();
+        f.write_all(bytes).unwrap();
+    }
+
+    #[test]
+    fn bin_with_valid_ggml_magic_is_ggml() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("model.bin");
+        write_bytes(&p, &[0, 0, b'g', b'g']);
+        assert_eq!(AsrFactory::detect_format(&p).unwrap(), ModelFormat::GgmlBin);
+
+        let p2 = d.path().join("model2.bin");
+        write_bytes(&p2, &[b'G', b'G', 0, 0]);
+        assert_eq!(AsrFactory::detect_format(&p2).unwrap(), ModelFormat::GgmlBin);
+    }
+
+    #[test]
+    fn bin_with_bad_magic_is_error() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("bad.bin");
+        write_bytes(&p, &[0, 0, 0, 0]);
+        assert!(AsrFactory::detect_format(&p).is_err());
+    }
+
+    #[test]
+    fn extension_routing_for_single_files() {
+        let d = tempfile::tempdir().unwrap();
+        for (name, expected) in [
+            ("m.gguf", ModelFormat::Gguf),
+            ("m.onnx", ModelFormat::Onnx),
+            ("m.nemo", ModelFormat::Nemo),
+        ] {
+            let p = d.path().join(name);
+            File::create(&p).unwrap();
+            assert_eq!(AsrFactory::detect_format(&p).unwrap(), expected, "for {}", name);
+        }
+    }
+
+    #[test]
+    fn directory_layouts_are_detected() {
+        let d = tempfile::tempdir().unwrap();
+
+        let safet = d.path().join("safet");
+        fs::create_dir(&safet).unwrap();
+        File::create(safet.join("model.safetensors")).unwrap();
+        assert_eq!(AsrFactory::detect_format(&safet).unwrap(), ModelFormat::HfSafetensors);
+
+        let pyt = d.path().join("pyt");
+        fs::create_dir(&pyt).unwrap();
+        File::create(pyt.join("pytorch_model.bin")).unwrap();
+        assert_eq!(AsrFactory::detect_format(&pyt).unwrap(), ModelFormat::HfPytorch);
+
+        let onnx = d.path().join("onnx");
+        fs::create_dir(&onnx).unwrap();
+        File::create(onnx.join("encoder.onnx")).unwrap();
+        assert_eq!(AsrFactory::detect_format(&onnx).unwrap(), ModelFormat::Onnx);
+    }
+
+    #[test]
+    fn partial_download_directory_is_error() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().join("dl");
+        fs::create_dir(&dir).unwrap();
+        File::create(dir.join("encoder.onnx.part")).unwrap();
+        let err = AsrFactory::detect_format(&dir).unwrap_err();
+        assert!(format!("{}", err).contains("Incomplete download"));
+    }
+
+    #[test]
+    fn empty_directory_is_unrecognized() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().join("empty");
+        fs::create_dir(&dir).unwrap();
+        assert!(AsrFactory::detect_format(&dir).is_err());
+    }
+}
