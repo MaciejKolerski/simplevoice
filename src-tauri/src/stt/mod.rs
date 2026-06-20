@@ -10,6 +10,7 @@ pub mod converter;
 pub mod downloader;
 pub mod streaming;
 pub(crate) mod chunker;
+pub mod text;
 
 #[cfg(feature = "candle")]
 pub mod candle;
@@ -174,7 +175,7 @@ impl SttController {
         }
 
         Ok(ChunkedTranscription {
-            text: parts.join(" "),
+            text: text::collapse_repeats(&parts.join(" ")),
             truncated,
         })
     }
