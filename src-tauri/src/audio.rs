@@ -47,35 +47,35 @@ pub(crate) fn save_wav_file(
     samples: &[f32],
     start_time: chrono::DateTime<chrono::Local>,
 ) -> Result<Option<String>, String> {
-    let pcm_len = samples.len();
-    if pcm_len > 0 {
-        let app_local_data = app_handle
-            .path()
-            .app_local_data_dir()
-            .map_err(|e| e.to_string())?;
-
-        let dir_name = start_time.format("%Y-%m-%d_%H-%M-%S").to_string();
-        let recordings_dir = app_local_data.join("recordings").join(dir_name);
-        std::fs::create_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
-
-        let wav_path = recordings_dir.join("output.wav");
-        let spec = hound::WavSpec {
-            channels: 1,
-            sample_rate: 16000,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
-        };
-        if let Ok(mut writer) = hound::WavWriter::create(&wav_path, spec) {
-            for &sample in samples {
-                let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-                let _ = writer.write_sample(sample_i16);
-            }
-            let _ = writer.finalize();
-            let path_str = wav_path.to_string_lossy().to_string();
-            return Ok(Some(path_str));
-        }
+    // Ok(None) means "nothing to save" (no samples). A real write failure is an
+    // Err, never silently reported as success-without-a-path.
+    if samples.is_empty() {
+        return Ok(None);
     }
-    Ok(None)
+
+    let app_local_data = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+
+    let dir_name = start_time.format("%Y-%m-%d_%H-%M-%S").to_string();
+    let recordings_dir = app_local_data.join("recordings").join(dir_name);
+    std::fs::create_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
+
+    let wav_path = recordings_dir.join("output.wav");
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 16000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(&wav_path, spec).map_err(|e| e.to_string())?;
+    for &sample in samples {
+        let sample_i16 = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+        writer.write_sample(sample_i16).map_err(|e| e.to_string())?;
+    }
+    writer.finalize().map_err(|e| e.to_string())?;
+    Ok(Some(wav_path.to_string_lossy().to_string()))
 }
 
 /// Completes an automatic stop (VAD silence or the max-duration cap) from the
@@ -133,9 +133,14 @@ fn auto_stop_recording(
         crate::play_backend_sound(&app_handle_save_clone, "stop");
         let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
 
-        let saved_path = save_wav_file(&app_handle_save_clone, &samples, start_time)
-            .ok()
-            .flatten();
+        let saved_path = match save_wav_file(&app_handle_save_clone, &samples, start_time) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("save_wav_file failed: {}", e);
+                let _ = app_handle_save_clone.emit("recording-save-failed", e);
+                None
+            }
+        };
 
         {
             let mut s = state_save_clone.lock().unwrap();
@@ -466,8 +471,17 @@ impl AudioController {
 
         let _ = crate::rebuild_tray_menu(app_handle);
 
-        // Run the saving logic in a helper to safely catch early-return errors
-        let save_result = save_wav_file(app_handle, &samples, start_time);
+        // A write failure must not abort transcription: surface it and continue with
+        // no path (the samples are still transcribed from memory). Only a genuine
+        // 0-sample recording yields Ok(None) now.
+        let save_result = match save_wav_file(app_handle, &samples, start_time) {
+            Ok(p) => Ok(p),
+            Err(e) => {
+                eprintln!("save_wav_file failed: {}", e);
+                let _ = app_handle.emit("recording-save-failed", e);
+                Ok(None)
+            }
+        };
 
 
         // WAV saved - switch to transcribing state (blue dot stays on)
