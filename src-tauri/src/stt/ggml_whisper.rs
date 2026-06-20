@@ -58,8 +58,9 @@ impl AsrEngine for GgmlWhisperEngine {
         let mut state_guard = self.state.lock().map_err(|e| AppError::Model(format!("State lock error: {}", e)))?;
         let state = &mut *state_guard;
 
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 2 });
         params.set_temperature(0.0);
+        params.set_temperature_inc(0.2);
         // Optimize thread count per platform for fastest transcription.
         // On macOS (Metal) use ~half the cores (preprocessing bottleneck), clamp to 2-6.
         // On other platforms use 4-8.
@@ -72,10 +73,11 @@ impl AsrEngine for GgmlWhisperEngine {
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_suppress_blank(true);
-        params.set_suppress_nst(false);
+        params.set_suppress_nst(true);
         params.set_no_timestamps(true);
         params.set_logprob_thold(-1.0);
         params.set_no_speech_thold(0.6);
+        params.set_no_context(true);
 
         match language {
             Some(lang) if !lang.trim().is_empty() && lang != "auto" => params.set_language(Some(lang)),
