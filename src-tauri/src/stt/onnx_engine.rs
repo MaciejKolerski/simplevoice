@@ -288,14 +288,17 @@ mod tests {
     }
 
     #[test]
-    fn detects_moonshine_v1_and_v2() {
-        let d1 = tempfile::tempdir().unwrap();
-        touch(d1.path(), "preprocess.onnx");
-        assert_eq!(detect_onnx_layout(d1.path()), OnnxLayout::MoonshineV1);
+    fn detects_moonshine_v1() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path(), "preprocess.onnx");
+        assert_eq!(detect_onnx_layout(d.path()), OnnxLayout::MoonshineV1);
+    }
 
-        let d2 = tempfile::tempdir().unwrap();
-        touch(d2.path(), "merged_decoder.onnx");
-        assert_eq!(detect_onnx_layout(d2.path()), OnnxLayout::MoonshineV2);
+    #[test]
+    fn detects_moonshine_v2() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path(), "merged_decoder.onnx");
+        assert_eq!(detect_onnx_layout(d.path()), OnnxLayout::MoonshineV2);
     }
 
     #[test]

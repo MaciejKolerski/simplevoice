@@ -1,6 +1,8 @@
 //! Offline evaluation metrics for the transcription harness (Etap 0 / H1).
 //! Pure and dependency-free: no audio, no model loading. Unit-tested directly.
 
+use serde::{Deserialize, Serialize};
+
 /// Lowercases (Unicode-aware), drops punctuation (keeping intra-word apostrophes
 /// and hyphens), collapses whitespace, and splits into word tokens. Pure-punctuation
 /// tokens are dropped so a stray "-" never counts as a word.
@@ -21,7 +23,7 @@ pub fn normalize(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Classic Levenshtein edit distance with two rolling rows (O(min) memory).
+/// Classic Levenshtein edit distance with two rolling rows (O(b) memory).
 /// Generic so the same routine scores word slices and char slices.
 pub fn edit_distance<T: Eq>(a: &[T], b: &[T]) -> usize {
     let n = b.len();
@@ -79,8 +81,6 @@ pub fn median(xs: &[f64]) -> f64 {
         (v[n / 2 - 1] + v[n / 2]) / 2.0
     }
 }
-
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct EvalClip {
@@ -212,6 +212,7 @@ mod tests {
         assert_eq!(edit_distance(b"abc", b"abcd"), 1); // insertion
         assert_eq!(edit_distance(b"abc", b"ab"), 1); // deletion
         assert_eq!(edit_distance(b"", b"abc"), 3);
+        assert_eq!(edit_distance(b"abc", b""), 3);
     }
 
     #[test]
@@ -231,6 +232,12 @@ mod tests {
     fn cer_counts_character_edits() {
         // "kitten" vs "sitting": 3 char edits over 6 reference chars.
         assert!((char_error_rate("kitten", "sitting") - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn cer_empty_reference_edge_cases() {
+        assert_eq!(char_error_rate("", ""), 0.0);
+        assert_eq!(char_error_rate("", "extra"), 1.0);
     }
 
     #[test]
