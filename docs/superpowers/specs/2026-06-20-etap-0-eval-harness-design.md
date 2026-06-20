@@ -74,10 +74,13 @@ pub fn mean(xs: &[f64]) -> f64;
 pub fn median(xs: &[f64]) -> f64;
 ```
 
-- `normalize`: Unicode NFC, lowercase, strip punctuation (keep alphanumerics,
-  intra-word `'` and `-`), collapse whitespace, split into tokens. This is the
-  single most important correctness detail — WER is meaningless without it, and it
-  is the most-tested function.
+- `normalize`: Unicode-aware lowercase (`str::to_lowercase`, handles pl/de
+  diacritics), strip punctuation (keep alphanumerics and intra-word `'`/`'`/`-`,
+  map everything else to a separator), collapse whitespace, drop pure-punctuation
+  tokens, split into tokens. This is the single most important correctness detail —
+  WER is meaningless without it, and it is the most-tested function. NFC
+  normalization is intentionally omitted (it would add a runtime dependency; Whisper
+  output and reference text are already NFC in practice) — see out-of-scope.
 - `word_error_rate` = `edit_distance(normalize(ref), normalize(hyp)) / ref_word_count`,
   guarded for empty reference (`ref` empty + `hyp` empty → 0.0; `ref` empty +
   `hyp` non-empty → 1.0).
@@ -218,5 +221,7 @@ change, and it is behavior-preserving.
   threshold (turns the harness into a CI gate).
 - Bundling/scripting a LibriSpeech test-clean subset fetch.
 - CER tokenization tuned per language family (CJK).
+- Unicode NFC normalization in `normalize` before tokenization (deferred; would add
+  a runtime dependency such as `unicode-normalization`).
 - Reusing `eval::edit_distance` from D1's fuzzy custom-word matcher (or swapping to
   `strsim` once D1 introduces it).
