@@ -1,0 +1,100 @@
+# Transcription Improvement Program — live progress tracker
+
+Source of requirements: `TRANSCRIPTION_IMPROVEMENTS.md` (repo root).
+This file is the running status of all **52** items (the document has 52 distinct
+items A1–H5; an earlier "49" count was an arithmetic slip). Updated as each
+sub-project merges to `main`.
+
+## User decisions (binding)
+- **Autonomy:** implement ALL items across all stages, merging each sub-project to
+  `main` without per-stage approval; user reviews at the end.
+- **Python removal (C3/F5):** REMOVE the NeMo per-call sidecar and the on-device
+  converter (`--trust-remote-code`); route `.nemo`/conversion-needing models to an
+  actionable "download a prebuilt ONNX" error.
+- **Platform code I cannot verify on macOS (Linux/Wayland/X11, Windows, ONNX GPU):**
+  implement behind existing `cfg`, but mark **UNVERIFIED — user must confirm on that
+  OS**, and list each under "Needs your verification" below. Linux/Windows-gated code
+  does not even compile-check on this macOS host.
+
+## Measurement caveat
+The only eval clip (`test/output.wav`) is clean → the harness currently proves
+**no regression** (baseline WER 0.000 / EXACT on 4 models), not accuracy *gains*.
+Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
+
+## Status legend
+✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
+
+## Done (5 / 52)
+- ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
+- ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
+- ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
+- ✅ **A4** `set_no_context(true)`
+- ✅ **A5** `set_suppress_nst(true)` + `stt::sanitize_output` (local + cloud)
+
+## Planned sequencing of the remaining 47 (verifiable-first)
+
+### Batch D-text (pure logic, fully macOS-verifiable, high value)
+- ⏳ **D2** filler/stutter/repetition removal → new `stt/text.rs`
+- ⏳ **D4** OpenCC (zh-Hans/Hant) + optional sentence-casing (dep: `ferrous-opencc`)
+- ⏳ **D5** voice formatting commands ("new line", "comma", per-language)
+- ⏳ **D1** custom-dictionary fuzzy corrector (dep: `strsim`/`natural`)
+
+### Batch A-accuracy (decoder/model, mostly verifiable)
+- ⏳ **A3** custom dictionary as `initial_prompt` (Whisper) + ONNX hotwords  — pairs with D1
+- ⏳ **A2** beam search (preset fast/accurate)
+- ⏳ **A8** typed `DecodeParams` + Settings "Accuracy vs Speed"
+- ⏳ **A7** ONNX decoding params (modified_beam_search, hotwords, language routing)
+- ⏳ **A6** Parakeet V3 recommended + calibrated metadata + fix `supports_language_hint` — pairs with F3
+
+### Batch E-delivery (macOS-verifiable parts)
+- ⏳ **E1** save/restore clipboard after auto-paste
+- ⏳ **E7** surface silent paste failures (event → UI toast)
+- ⏳ **E2** output mode (paste / clipboard-only / type) + paste-method
+- ⏳ **E3** append trailing space + auto-submit (Enter)
+- ⏳ **E6** paste delays / modifier-hold + configurable
+- 🚩 **E4** X11 fallback (xdotool/ydotool) — UNVERIFIED (Linux)
+- 🚩 **E5** Wayland fallback (240-char/GNOME) — UNVERIFIED (Linux)
+
+### Batch C-perf + F-models (reliability)
+- ⏳ **C4** cloud: shared `reqwest::Client` + timeout
+- ⏳ **C5** cloud: bounded chunk parallelism
+- ⏳ **C1** model warm-up on record start
+- ⏳ **C2** push-to-talk mode
+- ⏳ **C6** idle-unload model
+- ⏳ **C3** remove NeMo per-call sidecar (route to ONNX) — per decision
+- ⏳ **F1** SHA-256 verification of downloads (dep: `sha2`)
+- ⏳ **F2** atomic multi-file install + completeness manifest
+- ⏳ **F3** curated backend model registry (`stt/registry.rs`) — pairs with A6
+- ⏳ **F4** download retry/backoff + connect timeout
+- ⏳ **F5** remove on-device converter + UI — per decision
+- 🚩 **F6** ONNX GPU provider selector — UNVERIFIED (CoreML/DirectML/CUDA)
+
+### Batch B-audio (input quality)
+- ⏳ **B5** ring-overflow signal + downmix remainder fix
+- ⏳ **B8** DC-block + clipping detect + peak-aware normalize
+- ⏳ **B1** rubato anti-aliasing resampler (dep: `rubato`)
+- ⏳ **B3** pre-roll / look-back buffer
+- ⏳ **B4** configurable VAD threshold/silence + lower consumer latency
+- ⏳ **B7** request/enumerate 16 kHz on device
+- 🚩 **B2** Silero VAD via sherpa-onnx — needs `silero_vad_v4.onnx` ASSET (user provides/OK to fetch)
+- ⏳ **B6** chunker: VAD-driven cuts + overlap
+
+### Batch G-streaming (live mode hardening)
+- ⏳ **G5** thread user language into live session
+- ⏳ **G2** bounded timeout on `finish()`
+- ⏳ **G1** committed-prefix trimming (fix O(n²))
+- ⏳ **G3** surface dropped live audio + coalesce
+- ⏳ **G4** decouple ingest from decode (skip-stale)
+- ⏳ **G7** configurable knobs + CJK character mode
+- ⏸ **G6** native transducer streaming (sherpa OnlineRecognizer) — XL/High risk, last
+
+### Batch H-foundation (observability)
+- ⏳ **H4** fix silent `save_wav_file` failure
+- ⏳ **H3** device-disconnect watchdog
+- ⏳ **H5** structured logging (`tracing` + rotating file)
+
+### Deferred (your input needed)
+- ⏸ **D3** optional LLM cleanup + Apple Intelligence — XL, needs your API keys/provider; last, behind a flag
+
+## Needs your verification / assets (running list)
+_(filled as 🚩 items land)_
