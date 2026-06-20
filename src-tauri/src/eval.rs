@@ -98,6 +98,13 @@ pub struct EvalManifest {
 #[derive(Debug, Clone, Serialize)]
 pub struct ClipResult {
     pub name: String,
+    /// The engine's actual transcription, recorded so a run is self-documenting
+    /// (you can read what came out, not only how far it was from the reference).
+    pub hypothesis: String,
+    /// True when the normalized hypothesis equals the normalized reference, i.e.
+    /// the engine returned exactly what was recorded (word-for-word after casing
+    /// and punctuation normalization).
+    pub exact_match: bool,
     pub wer: f64,
     pub cer: f64,
     pub audio_secs: f64,
@@ -139,6 +146,8 @@ pub fn score_clip(
     };
     ClipResult {
         name: name.to_string(),
+        hypothesis: hypothesis.to_string(),
+        exact_match: normalize(reference) == normalize(hypothesis),
         wer: word_error_rate(reference, hypothesis),
         cer: char_error_rate(reference, hypothesis),
         audio_secs,
@@ -259,9 +268,24 @@ mod tests {
             std::time::Duration::from_millis(5000),
         );
         assert_eq!(r.name, "clip1");
+        assert_eq!(r.hypothesis, "the quick green fox");
+        assert!(!r.exact_match);
         assert!((r.wer - 0.25).abs() < 1e-9);
         assert_eq!(r.elapsed_ms, 5000);
         assert!((r.rtf - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn score_clip_exact_match_ignores_case_and_punctuation() {
+        let r = score_clip(
+            "c",
+            "Hello, world.",
+            "hello world",
+            1.0,
+            std::time::Duration::from_millis(100),
+        );
+        assert!(r.exact_match);
+        assert_eq!(r.wer, 0.0);
     }
 
     #[test]

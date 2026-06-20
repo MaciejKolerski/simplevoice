@@ -42,7 +42,7 @@ fn run() -> Result<(), String> {
     let controller = SttController::new();
     controller.load_model(&model, use_gpu)?;
 
-    println!("{:<32} {:>6} {:>6} {:>8} {:>9} {:>6}", "clip", "WER", "CER", "audio", "elapsed", "RTF");
+    println!("{:<28} {:>6} {:>6} {:>8} {:>9} {:>6}  {}", "clip", "WER", "CER", "audio", "elapsed", "RTF", "match");
     let mut results = Vec::new();
     for clip in &manifest.clips {
         let wav_path = base_dir.join(&clip.wav);
@@ -65,9 +65,14 @@ fn run() -> Result<(), String> {
         let elapsed = started.elapsed();
         let r = score_clip(&clip.wav, &clip.reference, &hyp, audio_secs, elapsed);
         println!(
-            "{:<32} {:>6.3} {:>6.3} {:>7.2}s {:>7}ms {:>6.2}",
-            r.name, r.wer, r.cer, r.audio_secs, r.elapsed_ms, r.rtf
+            "{:<28} {:>6.3} {:>6.3} {:>7.2}s {:>7}ms {:>6.2}  {}",
+            r.name, r.wer, r.cer, r.audio_secs, r.elapsed_ms, r.rtf,
+            if r.exact_match { "EXACT" } else { "diff" }
         );
+        println!("    got: {}", r.hypothesis);
+        if !r.exact_match && !clip.reference.is_empty() {
+            println!("    ref: {}", clip.reference);
+        }
         results.push(r);
     }
 
