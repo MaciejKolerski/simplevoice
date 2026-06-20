@@ -1,0 +1,7 @@
+{
+  "clips": [
+    { "wav": "clips/sample-en.wav", "reference": "the exact words spoken in this clip", "language": "en" },
+    { "wav": "clips/sample-pl.wav", "reference": "dokladny tekst wypowiedziany w nagraniu", "language": "pl" },
+    { "wav": "clips/sample-de.wav", "reference": "der genaue gesprochene text", "language": "de" }
+  ]
+}
