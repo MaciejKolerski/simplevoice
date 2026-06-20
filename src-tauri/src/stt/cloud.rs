@@ -1,6 +1,22 @@
 use reqwest::multipart;
 use std::io::Cursor;
 use base64::Engine;
+use std::sync::OnceLock;
+use std::time::Duration;
+
+/// One process-wide HTTP client: reuses the connection pool / TLS session across
+/// chunks and providers, and bounds every request so a stalled provider cannot hang
+/// transcription forever.
+fn shared_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(120))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
 
 /// Keep model ids that look like speech-to-text models.
 fn asr_model_filter(id: &str) -> bool {
@@ -104,7 +120,7 @@ pub async fn transcribe_cloud(
     language: Option<&str>,
 ) -> Result<String, String> {
     let wav_bytes = pcm_to_wav_bytes(samples)?;
-    let client = reqwest::Client::new();
+    let client = shared_client();
     let provider_str = provider.unwrap_or("").trim().to_lowercase();
 
     if provider_str == "anthropic" {
@@ -349,7 +365,7 @@ pub async fn list_models(
         return Err("errors.provider_no_model_listing::Anthropic".to_string());
     }
     let base_trimmed = base_url.unwrap_or("").trim();
-    let client = reqwest::Client::new();
+    let client = shared_client();
 
     if provider_str == "gemini" {
         let base = if base_trimmed.is_empty() {
