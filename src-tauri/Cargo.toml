@@ -93,6 +93,9 @@ default = ["candle", "onnx"]
 candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers"]
 onnx = ["dep:sherpa-onnx"]
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.dev]
 opt-level = 1
 
