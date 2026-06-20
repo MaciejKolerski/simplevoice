@@ -6367,6 +6367,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-sql",
  "tauri-plugin-updater",
+ "tempfile",
  "thiserror 2.0.18",
  "tokenizers",
  "tokio",
