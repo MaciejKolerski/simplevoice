@@ -24,15 +24,17 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (5 / 52)
+## Done (8 / 52)
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
 - ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
 - ✅ **A4** `set_no_context(true)`
 - ✅ **A5** `set_suppress_nst(true)` + `stt::sanitize_output` (local + cloud)
 - ✅ **D2-core** repetition/loop collapse (`stt::text::collapse_repeats`, local + cloud). _Filler-word lists (uh/um, per-language, tri-state) still pending — needs the config-threading batch (see D2-fillers below)._
+- ✅ **C4** shared cloud `reqwest::Client` (OnceLock) with connect(10s)/read(120s) timeouts
+- ✅ **H4** `save_wav_file` returns Err on write failure (not silent `Ok(None)`); emits `recording-save-failed`, transcription still proceeds. _Frontend toast pending → folds into E7._
 
-## Planned sequencing of the remaining 46 (verifiable-first)
+## Planned sequencing of the remaining 44 (verifiable-first)
 
 ### Batch D-text (pure logic, fully macOS-verifiable, high value)
 - ⏳ **D2-fillers** per-language filler-word removal (uh/um/eh…), config tri-state — needs `TranscribeOptions` config threading
@@ -60,7 +62,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - 🚩 **E5** Wayland fallback (240-char/GNOME) — UNVERIFIED (Linux)
 
 ### Batch C-perf + F-models (reliability)
-- ⏳ **C4** cloud: shared `reqwest::Client` + timeout
+- ✅ **C4** cloud: shared `reqwest::Client` + timeout
 - ⏳ **C5** cloud: bounded chunk parallelism
 - ⏳ **C1** model warm-up on record start
 - ⏳ **C2** push-to-talk mode
@@ -93,7 +95,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ⏸ **G6** native transducer streaming (sherpa OnlineRecognizer) — XL/High risk, last
 
 ### Batch H-foundation (observability)
-- ⏳ **H4** fix silent `save_wav_file` failure
+- ✅ **H4** fix silent `save_wav_file` failure
 - ⏳ **H3** device-disconnect watchdog
 - ⏳ **H5** structured logging (`tracing` + rotating file)
 
