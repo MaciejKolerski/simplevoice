@@ -1,5 +1,6 @@
 mod audio;
 mod error;
+pub mod eval;
 #[cfg(target_os = "linux")]
 mod linux_shortcuts;
 #[cfg(target_os = "linux")]
