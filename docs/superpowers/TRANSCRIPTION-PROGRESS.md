@@ -30,11 +30,15 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
 - ✅ **A4** `set_no_context(true)`
 - ✅ **A5** `set_suppress_nst(true)` + `stt::sanitize_output` (local + cloud)
+- ✅ **D2-core** repetition/loop collapse (`stt::text::collapse_repeats`, local + cloud). _Filler-word lists (uh/um, per-language, tri-state) still pending — needs the config-threading batch (see D2-fillers below)._
 
-## Planned sequencing of the remaining 47 (verifiable-first)
+## Planned sequencing of the remaining 46 (verifiable-first)
 
 ### Batch D-text (pure logic, fully macOS-verifiable, high value)
-- ⏳ **D2** filler/stutter/repetition removal → new `stt/text.rs`
+- ⏳ **D2-fillers** per-language filler-word removal (uh/um/eh…), config tri-state — needs `TranscribeOptions` config threading
+- ⏳ **D4** OpenCC (zh-Hans/Hant) + optional sentence-casing (dep: `ferrous-opencc`)
+- ⏳ **D5** voice formatting commands ("new line", "comma", per-language)
+- ⏳ **D1** custom-dictionary fuzzy corrector (dep: `strsim`/`natural`)
 - ⏳ **D4** OpenCC (zh-Hans/Hant) + optional sentence-casing (dep: `ferrous-opencc`)
 - ⏳ **D5** voice formatting commands ("new line", "comma", per-language)
 - ⏳ **D1** custom-dictionary fuzzy corrector (dep: `strsim`/`natural`)
