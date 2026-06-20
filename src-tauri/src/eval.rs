@@ -80,6 +80,104 @@ pub fn median(xs: &[f64]) -> f64 {
     }
 }
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EvalClip {
+    pub wav: String,
+    pub reference: String,
+    #[serde(default)]
+    pub language: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EvalManifest {
+    pub clips: Vec<EvalClip>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClipResult {
+    pub name: String,
+    pub wer: f64,
+    pub cer: f64,
+    pub audio_secs: f64,
+    pub elapsed_ms: u128,
+    pub rtf: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Aggregate {
+    pub clips: usize,
+    pub mean_wer: f64,
+    pub median_wer: f64,
+    pub mean_cer: f64,
+    pub median_cer: f64,
+    pub median_latency_ms: f64,
+    pub median_rtf: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EvalReport {
+    pub results: Vec<ClipResult>,
+    pub aggregate: Aggregate,
+}
+
+/// Scores one clip: WER/CER against the reference plus latency and real-time
+/// factor (processing time / audio duration).
+pub fn score_clip(
+    name: &str,
+    reference: &str,
+    hypothesis: &str,
+    audio_secs: f64,
+    elapsed: std::time::Duration,
+) -> ClipResult {
+    let elapsed_ms = elapsed.as_millis();
+    let rtf = if audio_secs > 0.0 {
+        (elapsed_ms as f64 / 1000.0) / audio_secs
+    } else {
+        0.0
+    };
+    ClipResult {
+        name: name.to_string(),
+        wer: word_error_rate(reference, hypothesis),
+        cer: char_error_rate(reference, hypothesis),
+        audio_secs,
+        elapsed_ms,
+        rtf,
+    }
+}
+
+impl EvalReport {
+    pub fn from_results(results: Vec<ClipResult>) -> Self {
+        let wers: Vec<f64> = results.iter().map(|r| r.wer).collect();
+        let cers: Vec<f64> = results.iter().map(|r| r.cer).collect();
+        let lats: Vec<f64> = results.iter().map(|r| r.elapsed_ms as f64).collect();
+        let rtfs: Vec<f64> = results.iter().map(|r| r.rtf).collect();
+        let aggregate = Aggregate {
+            clips: results.len(),
+            mean_wer: mean(&wers),
+            median_wer: median(&wers),
+            mean_cer: mean(&cers),
+            median_cer: median(&cers),
+            median_latency_ms: median(&lats),
+            median_rtf: median(&rtfs),
+        };
+        Self { results, aggregate }
+    }
+
+    pub fn render_table(&self) -> String {
+        use std::fmt::Write;
+        let mut s = String::new();
+        let a = &self.aggregate;
+        let _ = writeln!(s, "clips:            {}", a.clips);
+        let _ = writeln!(s, "WER     mean {:.3}   median {:.3}", a.mean_wer, a.median_wer);
+        let _ = writeln!(s, "CER     mean {:.3}   median {:.3}", a.mean_cer, a.median_cer);
+        let _ = writeln!(s, "latency median {:.0} ms", a.median_latency_ms);
+        let _ = writeln!(s, "RTF     median {:.2}", a.median_rtf);
+        s
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +240,45 @@ mod tests {
         assert_eq!(median(&[1.0, 2.0, 3.0, 4.0]), 2.5);
         assert_eq!(mean(&[]), 0.0);
         assert_eq!(median(&[]), 0.0);
+    }
+
+    #[test]
+    fn score_clip_computes_rtf_and_metrics() {
+        let r = score_clip(
+            "clip1",
+            "the quick brown fox",
+            "the quick green fox",
+            10.0,
+            std::time::Duration::from_millis(5000),
+        );
+        assert_eq!(r.name, "clip1");
+        assert!((r.wer - 0.25).abs() < 1e-9);
+        assert_eq!(r.elapsed_ms, 5000);
+        assert!((r.rtf - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn manifest_deserializes_with_optional_language() {
+        let json = r#"{"clips":[
+            {"wav":"a.wav","reference":"hello","language":"en"},
+            {"wav":"b.wav","reference":"czesc"}
+        ]}"#;
+        let m: EvalManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(m.clips.len(), 2);
+        assert_eq!(m.clips[0].language.as_deref(), Some("en"));
+        assert_eq!(m.clips[1].language, None);
+    }
+
+    #[test]
+    fn report_aggregates_and_serializes() {
+        let results = vec![
+            score_clip("a", "a b", "a b", 2.0, std::time::Duration::from_millis(1000)),
+            score_clip("b", "a b", "a c", 2.0, std::time::Duration::from_millis(3000)),
+        ];
+        let report = EvalReport::from_results(results);
+        assert_eq!(report.aggregate.clips, 2);
+        assert!((report.aggregate.median_latency_ms - 2000.0).abs() < 1e-9);
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("\"median_wer\""));
     }
 }
