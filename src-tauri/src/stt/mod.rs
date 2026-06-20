@@ -14,6 +14,44 @@ pub(crate) mod chunker;
 #[cfg(feature = "candle")]
 pub mod candle;
 
+/// Non-speech markers Whisper sometimes emits inside parentheses. Square-bracketed
+/// spans are stripped unconditionally; parenthesized spans are stripped only when
+/// their inner text matches one of these, so real dictated parentheticals like
+/// "(see below)" are kept.
+const NONSPEECH_PAREN_MARKERS: &[&str] = &[
+    "blank_audio", "silence", "music", "applause", "laughter", "noise", "inaudible",
+];
+
+/// Conservatively removes leftover non-speech artifacts from transcribed text and
+/// normalizes whitespace. Total and pure: never panics, never errors; text that is
+/// only markers becomes empty. Applied above every engine (local and cloud) as a
+/// complement to Whisper's suppress_nst.
+pub(crate) fn sanitize_output(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '[' {
+            if let Some(rel) = chars[i + 1..].iter().position(|&ch| ch == ']') {
+                i += 1 + rel + 1;
+                continue;
+            }
+        } else if c == '(' {
+            if let Some(rel) = chars[i + 1..].iter().position(|&ch| ch == ')') {
+                let inner: String = chars[i + 1..i + 1 + rel].iter().collect();
+                if NONSPEECH_PAREN_MARKERS.contains(&inner.trim().to_lowercase().as_str()) {
+                    i += 1 + rel + 1;
+                    continue;
+                }
+            }
+        }
+        out.push(c);
+        i += 1;
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 pub(crate) fn prepare_samples(samples: &[f32]) -> Vec<f32> {
     if samples.is_empty() {
         return vec![];
@@ -115,7 +153,7 @@ impl SttController {
         for (i, range) in chunks.iter().enumerate() {
             match engine.transcribe(&prepared[range.clone()], language) {
                 Ok(text) => {
-                    let text = text.trim().to_string();
+                    let text = sanitize_output(&text);
                     if !text.is_empty() {
                         parts.push(text);
                     }
@@ -273,5 +311,30 @@ mod tests {
         });
         let err = c.transcribe(&speech(120), None).unwrap_err();
         assert!(err.contains("Transcription failed"));
+    }
+
+    #[test]
+    fn sanitize_strips_square_bracket_markers() {
+        assert_eq!(sanitize_output("hello [BLANK_AUDIO] world"), "hello world");
+        assert_eq!(sanitize_output("[ Silence ]"), "");
+        assert_eq!(sanitize_output("[Music] hi"), "hi");
+    }
+
+    #[test]
+    fn sanitize_strips_known_paren_markers_only() {
+        assert_eq!(sanitize_output("hi (music) there"), "hi there");
+        assert_eq!(sanitize_output("(applause)"), "");
+        assert_eq!(sanitize_output("note (see below) please"), "note (see below) please");
+    }
+
+    #[test]
+    fn sanitize_collapses_whitespace_and_trims() {
+        assert_eq!(sanitize_output("  a   b  "), "a b");
+    }
+
+    #[test]
+    fn sanitize_keeps_plain_text_and_real_parens() {
+        assert_eq!(sanitize_output("To jest nagranie"), "To jest nagranie");
+        assert_eq!(sanitize_output("koszt (netto) wynosi"), "koszt (netto) wynosi");
     }
 }

@@ -1818,7 +1818,7 @@ async fn transcribe_audio(
                     );
                 }
             }
-            let mut joined = parts.join(" ");
+            let mut joined = crate::stt::sanitize_output(&parts.join(" "));
             if let Some(secs) = truncated_at {
                 joined.push_str(&truncation_marker(&app_handle, secs));
             }
