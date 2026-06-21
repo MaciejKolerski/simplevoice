@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (39 / 52)
+## Done (40 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -120,7 +120,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 ### Batch H-foundation (observability)
 - ✅ **H4** fix silent `save_wav_file` failure
 - ✅ **H3** device-disconnect watchdog (consumer auto-stops after 5s of no audio + `err_fn` emits `recording-error`/`device_lost`) 🚩 needs real device-unplug check
-- ⏳ **H5** structured logging (`tracing` + rotating file)
+- ✅ **H5** structured logging — `tracing` + daily-rotating `simplevoice.log` under `<app_data>/logs/` + stderr (fault-tolerant init in Tauri setup; all 18 `eprintln!` converted to leveled `tracing::{info,warn,error}`). Verified the file is actually written (ignored test).
 
 ### Deferred (your input needed)
 - ⏸ **D3** optional LLM cleanup + Apple Intelligence — XL, needs your API keys/provider; last, behind a flag
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 13 — needs your involvement (autonomous-safe items exhausted at 35/52)
+## Remaining 12 — needs your involvement (autonomous-safe items exhausted at 35/52)
 
 **Blocked on an asset / key / data you must provide:**
 - ~~**B2** Silero VAD~~ ✅ DONE — model fetched + opt-in outer-silence trim shipped (see Done section).
@@ -150,7 +150,7 @@ _(filled as 🚩 items land)_
 
 **Doable but lower-value / larger — say the word and I'll do them:**
 - **A6** Parakeet-V3 "recommended" badge + calibrated metadata (cosmetic).
-- **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep), **H5** structured `tracing` logging (large mechanical sweep). _(F4-retry, E2-type, F2 ✅ done.)_
+- **A6** Parakeet-V3 "recommended" badge (cosmetic), **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep; niche for a Polish user). _(F4-retry, E2-type, F2, H5 ✅ done.)_
 
 **How to unblock fastest:** drop a `silero_vad_v4.onnx`, an API key (for D3), and tell me whether to ship the platform code unverified — and I'll resume the loop on the rest.
 
