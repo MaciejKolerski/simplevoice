@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (13 / 52)
+## Done (16 / 52)
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
 - ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
@@ -37,8 +37,11 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ✅ **G2** bounded timed-join on streaming `finish()` (5s budget then detach) — no longer blocks shutdown / next recording.
 - ✅ **C1** engine warm-up on record start (`SttController::take_engine_to_warm` + dummy decode off the start path; once per loaded model, no-op for cloud) — cuts first-dictation GPU/session-init latency.
 - ✅ **C3 + F5** removed on-device Python: deleted `nemo_engine.rs` (per-call NeMo sidecar) and gutted `converter.rs` to a stub; `factory` routes `.nemo` to an actionable "download a prebuilt ONNX" error. _Frontend convert-button + i18n `convert`/`converting` keys still present (command stubbed so it doesn't break) → remove in the frontend batch._
+- ✅ **B7** prefer native 16 kHz input config (`choose_input_config`, fallback to default) — resampler passthrough when device supports 16k. 🚩 _needs real-recording verification (capture path not exercised by the harness)._
+- ✅ **A7** Parakeet transducer: `decoding_method="modified_beam_search"` + `max_active_paths=4`. Verified: Parakeet baseline stayed 0.000/EXACT, output segmentation changed (beam active).
+- ✅ **G3-coalesce** worker drains the live-audio backlog into one decode + channel widened 16→64. 🚩 _coalescing not runtime-verified (no live mic here); drop-counter/event half of G3 → H5 pass._
 
-## Planned sequencing of the remaining 42 (verifiable-first)
+## Planned sequencing of the remaining 39 (verifiable-first)
 
 > **G5 reclassified → frontend batch.** The ASR language lives in frontend
 > `localStorage` (`asr_language`), not `config.json`, so the backend cannot read it
@@ -59,7 +62,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ⏳ **A3** custom dictionary as `initial_prompt` (Whisper) + ONNX hotwords  — pairs with D1
 - ⏳ **A2** beam search (preset fast/accurate)
 - ⏳ **A8** typed `DecodeParams` + Settings "Accuracy vs Speed"
-- ⏳ **A7** ONNX decoding params (modified_beam_search, hotwords, language routing)
+- 🔶 **A7** ONNX decoding params — beam search ✅ done (verified); hotwords (with D1 dictionary) + EN-only language-routing gate still pending
 - ⏳ **A6** Parakeet V3 recommended + calibrated metadata + fix `supports_language_hint` — pairs with F3
 
 ### Batch E-delivery (macOS-verifiable parts)
@@ -91,7 +94,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ⏳ **B1** rubato anti-aliasing resampler (dep: `rubato`)
 - ⏳ **B3** pre-roll / look-back buffer
 - ⏳ **B4** configurable VAD threshold/silence + lower consumer latency
-- ⏳ **B7** request/enumerate 16 kHz on device
+- ✅ **B7** request/enumerate 16 kHz on device (🚩 needs real-recording check)
 - 🚩 **B2** Silero VAD via sherpa-onnx — needs `silero_vad_v4.onnx` ASSET (user provides/OK to fetch)
 - ⏳ **B6** chunker: VAD-driven cuts + overlap
 
@@ -99,7 +102,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - 🚩 **G5** thread user language into live session — needs frontend to persist `asr_language` to `config.json` (→ frontend batch; see note above)
 - ✅ **G2** bounded timeout on `finish()`
 - ⏳ **G1** committed-prefix trimming (fix O(n²))
-- ⏳ **G3** surface dropped live audio + coalesce
+- 🔶 **G3** coalesce ✅ done; drop-counter + `transcription-buffering` event still pending (→ H5)
 - ⏳ **G4** decouple ingest from decode (skip-stale)
 - ⏳ **G7** configurable knobs + CJK character mode
 - ⏸ **G6** native transducer streaming (sherpa OnlineRecognizer) — XL/High risk, last
