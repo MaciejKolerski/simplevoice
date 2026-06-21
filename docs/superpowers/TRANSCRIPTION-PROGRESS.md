@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (46 / 52)
+## Done (47 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -86,7 +86,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 
 ### Batch C-perf + F-models (reliability)
 - ✅ **C4** cloud: shared `reqwest::Client` + timeout
-- ⏳ **C5** cloud: bounded chunk parallelism
+- ✅ **C5** cloud bounded chunk parallelism — `futures::stream::buffered(4)` runs up to 4 chunk requests concurrently while preserving order; `join_cloud_results` (unit-tested) keeps parts before the first failure + truncation, same semantics as the old sequential loop. Verified end-to-end: real Gemini transcribes `output.wav` EXACT via the cloud path.
 - ✅ **C1** model warm-up on record start
 - ✅ **C2** push-to-talk mode — opt-in `push_to_talk_enabled` (default off): the record shortcut records while held, stops on release. Shortcut handler processes Pressed/Released; `toggle_recording` split into idempotent `start_recording_action`/`stop_recording_action`. Settings toggle + en/pl/de. 🚩 _needs user's live key-hold/release test (global-shortcut Released delivery)._
 - ✅ **C6** idle-unload model (`SttController::unload`/`unload_if_idle` + watcher thread, 5min, `model_unload_enabled` toggle, transparent reload on next transcribe; baseline EXACT)
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 6 — needs your involvement (B2 reverted; D3 + C2 + E1 + E6 + A7-hotwords + G1 done)
+## Remaining 5 — needs your involvement (B2 reverted; D3 + C2 + E1 + E6 + A7-hotwords + G1 + C5 done)
 
 **Blocked on an asset / key / data you must provide:**
 - ~~**B2** Silero VAD~~ ❌ REMOVED by user — redundant with the auto-end VAD (B4); see Done section.
@@ -144,7 +144,7 @@ _(filled as 🚩 items land)_
 
 **Critical-path changes I can't runtime-verify here (real recording / live mic / paste / cloud key) — merging blind risks regressions on your working app:**
 - **B1** rubato anti-aliasing resampler (capture rewrite), **B3** pre-roll buffer (needs always-on capture), **B6** chunker VAD-driven cuts + overlap.
-- ~~**C2** push-to-talk~~ ✅, ~~**E1** clipboard save/restore~~ ✅, ~~**E6** paste delays~~ ✅ (live-test the first two), **C5** cloud chunk parallelism (needs a cloud API key).
+- ~~**C2** push-to-talk~~ ✅, ~~**E1** clipboard save/restore~~ ✅, ~~**E6** paste delays~~ ✅, ~~**C5** cloud chunk parallelism~~ ✅ (live-test C2/E1).
 - ~~**G1** committed-prefix O(n²) trim~~ ✅ done, **G4** decouple ingest/decode, **G6** native transducer streaming (XL).
 - ~~**A3-onnx / A7-hotwords** ONNX hotwords~~ ✅ done (bpe.vocab derived from bpe.model in Rust; gigaspeech model added).
 
