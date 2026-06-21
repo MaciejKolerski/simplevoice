@@ -135,6 +135,7 @@ export function SettingsView() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [fillerRemovalEnabled, setFillerRemovalEnabled] = useState(false);
   const [sentenceCaseEnabled, setSentenceCaseEnabled] = useState(false);
+  const [formattingCommandsEnabled, setFormattingCommandsEnabled] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -255,6 +256,7 @@ export function SettingsView() {
     setSoundEnabled(getConfig("sound_feedback_enabled", true) !== false);
     setFillerRemovalEnabled(getConfig("filler_removal_enabled", false) === true);
     setSentenceCaseEnabled(getConfig("sentence_case_enabled", false) === true);
+    setFormattingCommandsEnabled(getConfig("formatting_commands_enabled", false) === true);
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
     const chunkMs = getConfig("live_min_chunk_ms", null);
     const speed = Object.entries(LIVE_SPEED_MS).find(([, ms]) => ms === chunkMs)?.[0];
@@ -554,6 +556,11 @@ export function SettingsView() {
   const handleSentenceCaseToggle = (checked: boolean) => {
     setSentenceCaseEnabled(checked);
     updateConfig("sentence_case_enabled", checked);
+  };
+
+  const handleFormattingCommandsToggle = (checked: boolean) => {
+    setFormattingCommandsEnabled(checked);
+    updateConfig("formatting_commands_enabled", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -867,6 +874,10 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.sentenceCase")} description={t("settings.sentenceCaseDesc")}>
             <Switch checked={sentenceCaseEnabled} onCheckedChange={handleSentenceCaseToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.formattingCommands")} description={t("settings.formattingCommandsDesc")}>
+            <Switch checked={formattingCommandsEnabled} onCheckedChange={handleFormattingCommandsToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>

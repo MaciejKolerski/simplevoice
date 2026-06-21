@@ -73,6 +73,89 @@ pub(crate) fn sentence_case(text: &str) -> String {
     out
 }
 
+/// Voice formatting commands per language: (spoken phrase words lowercased,
+/// replacement, is_break). Multi-word phrases are listed first so they match before
+/// their single-word prefixes. `is_break` replacements (newline/paragraph) suppress
+/// surrounding spaces; the rest are punctuation that attaches to the previous word.
+fn formatting_commands(lang: Option<&str>) -> &'static [(&'static [&'static str], &'static str, bool)] {
+    match lang.unwrap_or("").split('-').next().unwrap_or("") {
+        "pl" => &[
+            (&["nowy", "akapit"], "\n\n", true),
+            (&["nowa", "linia"], "\n", true),
+            (&["znak", "zapytania"], "?", false),
+            (&["przecinek"], ",", false),
+            (&["kropka"], ".", false),
+            (&["wykrzyknik"], "!", false),
+            (&["dwukropek"], ":", false),
+            (&["średnik"], ";", false),
+        ],
+        "de" => &[
+            (&["neuer", "absatz"], "\n\n", true),
+            (&["neue", "zeile"], "\n", true),
+            (&["komma"], ",", false),
+            (&["punkt"], ".", false),
+            (&["fragezeichen"], "?", false),
+            (&["ausrufezeichen"], "!", false),
+            (&["doppelpunkt"], ":", false),
+        ],
+        _ => &[
+            (&["new", "paragraph"], "\n\n", true),
+            (&["new", "line"], "\n", true),
+            (&["question", "mark"], "?", false),
+            (&["exclamation", "mark"], "!", false),
+            (&["exclamation", "point"], "!", false),
+            (&["full", "stop"], ".", false),
+            (&["comma"], ",", false),
+            (&["period"], ".", false),
+            (&["colon"], ":", false),
+            (&["semicolon"], ";", false),
+        ],
+    }
+}
+
+/// Replaces spoken formatting commands ("new line", "comma", …) with their symbols.
+/// Off by default; gated by the caller on `formatting_commands_enabled`.
+pub(crate) fn apply_formatting_commands(text: &str, lang: Option<&str>) -> String {
+    let cmds = formatting_commands(lang);
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut out = String::new();
+    let mut last_break = true;
+    let mut i = 0;
+    while i < words.len() {
+        let matched = cmds.iter().find_map(|(phrase, repl, is_break)| {
+            let n = phrase.len();
+            if i + n <= words.len()
+                && (0..n).all(|k| {
+                    words[i + k]
+                        .trim_matches(|c: char| !c.is_alphanumeric())
+                        .to_lowercase()
+                        == phrase[k]
+                })
+            {
+                Some((n, *repl, *is_break))
+            } else {
+                None
+            }
+        });
+        match matched {
+            Some((n, repl, is_break)) => {
+                out.push_str(repl);
+                last_break = is_break;
+                i += n;
+            }
+            None => {
+                if !last_break {
+                    out.push(' ');
+                }
+                out.push_str(words[i]);
+                last_break = false;
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,5 +213,23 @@ mod tests {
     fn sentence_case_leaves_interior_case_alone() {
         assert_eq!(sentence_case("i saw NASA today"), "I saw NASA today");
         assert_eq!(sentence_case(""), "");
+    }
+
+    #[test]
+    fn formatting_punctuation_attaches_to_previous_word() {
+        assert_eq!(apply_formatting_commands("hello comma world period", Some("en")), "hello, world.");
+        assert_eq!(apply_formatting_commands("really question mark", Some("en")), "really?");
+    }
+
+    #[test]
+    fn formatting_newline_and_multiword() {
+        assert_eq!(apply_formatting_commands("line one new line line two", Some("en")), "line one\nline two");
+        assert_eq!(apply_formatting_commands("pierwsza nowa linia druga", Some("pl")), "pierwsza\ndruga");
+        assert_eq!(apply_formatting_commands("a przecinek b", Some("pl")), "a, b");
+    }
+
+    #[test]
+    fn formatting_leaves_normal_text() {
+        assert_eq!(apply_formatting_commands("just normal words", Some("en")), "just normal words");
     }
 }

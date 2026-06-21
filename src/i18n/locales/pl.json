@@ -92,6 +92,8 @@
     "fillerRemovalDesc": "Usuwaj wtrącenia (yyy, eee, hmm) z transkrypcji.",
     "sentenceCase": "Wielkie litery zdań",
     "sentenceCaseDesc": "Nadawaj wielką literę na początku każdego zdania (dla modeli lowercase).",
+    "formattingCommands": "Komendy formatowania głosem",
+    "formattingCommandsDesc": "Zamieniaj wypowiadane komendy (\"nowa linia\", \"przecinek\") na formatowanie.",
     "pauseSystemAudio": "Wstrzymaj dźwięk systemowy",
     "pauseSystemAudioDesc": "Automatycznie wstrzymuj muzykę lub filmy podczas nagrywania i wznawiaj je po jego zakończeniu.",
     "recordingOverlayWindow": "Okno nakładki nagrywania",

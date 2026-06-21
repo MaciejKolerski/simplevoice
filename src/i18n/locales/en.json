@@ -92,6 +92,8 @@
     "fillerRemovalDesc": "Strip filler interjections (uh, um, hmm) from transcriptions.",
     "sentenceCase": "Capitalize sentences",
     "sentenceCaseDesc": "Capitalize the first letter of each sentence (for lowercase models).",
+    "formattingCommands": "Voice formatting commands",
+    "formattingCommandsDesc": "Turn spoken commands (\"new line\", \"comma\") into formatting.",
     "pauseSystemAudio": "Pause System Audio",
     "pauseSystemAudioDesc": "Automatically pause music or videos while recording and resume afterwards.",
     "recordingOverlayWindow": "Recording Overlay Window",
