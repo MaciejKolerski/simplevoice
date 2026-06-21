@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (42 / 52)
+## Done (43 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -76,7 +76,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - 🔶 **A6** "Recommended" badge ✅ done (Parakeet TDT v3 + Whisper Large v3 Turbo flagged in the download list, en/pl/de). _Metadata-calibration + `supports_language_hint` skipped: the latter is dead code, calibration low-value._
 
 ### Batch E-delivery (macOS-verifiable parts)
-- ⏳ **E1** save/restore clipboard after auto-paste
+- ✅ **E1** save/restore clipboard after auto-paste — opt-in `restore_clipboard` (default off): snapshots the user's clipboard text before pasting the transcription, restores it 150ms after the paste/type consumes it. Text clipboards only; last transcription still on copy-last. Skipped in clipboard-only mode. Settings toggle + en/pl/de. 🚩 _needs your live paste-timing test._
 - ✅ **E7** surface paste failures (`paste-error` event → sonner toast in App.tsx); also wired `recording-save-failed` (H4) + `recording-error` (H3) toasts
 - ✅ **E2** output modes: clipboard-only (`clipboard_only`) + "type instead of paste" (`type_output` → types via enigo/`type_text_from_backend`, macOS main-thread hop, clipboard still set). Settings toggle (disabled when clipboard-only) + en/pl/de. _Alt paste-method (Ctrl+Shift+V) still optional/pending._
 - 🔶 **E3** trailing space ✅ done (`append_trailing_space` toggle); auto-submit (Enter after paste) pending — timing/paste, needs real testing
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 10 — needs your involvement (B2 reverted, D3 + C2 done)
+## Remaining 9 — needs your involvement (B2 reverted; D3 + C2 + E1 done)
 
 **Blocked on an asset / key / data you must provide:**
 - ~~**B2** Silero VAD~~ ❌ REMOVED by user — redundant with the auto-end VAD (B4); see Done section.
@@ -144,7 +144,7 @@ _(filled as 🚩 items land)_
 
 **Critical-path changes I can't runtime-verify here (real recording / live mic / paste / cloud key) — merging blind risks regressions on your working app:**
 - **B1** rubato anti-aliasing resampler (capture rewrite), **B3** pre-roll buffer (needs always-on capture), **B6** chunker VAD-driven cuts + overlap.
-- ~~**C2** push-to-talk~~ ✅ done (needs your live test), **C5** cloud chunk parallelism (needs a cloud API key), **E1** clipboard save/restore + **E6** paste delays (paste timing).
+- ~~**C2** push-to-talk~~ ✅ done, ~~**E1** clipboard save/restore~~ ✅ done (both need your live test), **C5** cloud chunk parallelism (needs a cloud API key), **E6** paste delays (paste timing).
 - **G1** committed-prefix O(n²) trim, **G4** decouple ingest/decode, **G6** native transducer streaming (XL).
 - **A3-onnx / A7-hotwords** ONNX hotwords (needs a hotwords file + init-time threading).
 
