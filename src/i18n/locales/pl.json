@@ -100,6 +100,8 @@
     "accurateModeDesc": "Używaj beam search w Whisperze dla wyższej dokładności kosztem większego zużycia CPU.",
     "trailingSpace": "Spacja na końcu",
     "trailingSpaceDesc": "Dodawaj spację po każdej transkrypcji, by kolejne dyktanda się nie sklejały.",
+    "modelUnload": "Zwalniaj model przy bezczynności",
+    "modelUnloadDesc": "Zwalniaj pamięć, wyładowując model mowy po 5 minutach bezczynności; przeładuje się przy następnej transkrypcji.",
     "pauseSystemAudio": "Wstrzymaj dźwięk systemowy",
     "pauseSystemAudioDesc": "Automatycznie wstrzymuj muzykę lub filmy podczas nagrywania i wznawiaj je po jego zakończeniu.",
     "recordingOverlayWindow": "Okno nakładki nagrywania",

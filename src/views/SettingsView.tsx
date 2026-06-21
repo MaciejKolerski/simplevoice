@@ -140,6 +140,7 @@ export function SettingsView() {
   const [customWords, setCustomWords] = useState("");
   const [decodeAccurate, setDecodeAccurate] = useState(false);
   const [trailingSpace, setTrailingSpace] = useState(false);
+  const [modelUnload, setModelUnload] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -264,6 +265,7 @@ export function SettingsView() {
     setCustomWords(((getConfig("custom_words", []) as string[]) || []).join(", "));
     setDecodeAccurate(getConfig("decode_accurate", false) === true);
     setTrailingSpace(getConfig("append_trailing_space", false) === true);
+    setModelUnload(getConfig("model_unload_enabled", false) === true);
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
     const chunkMs = getConfig("live_min_chunk_ms", null);
     const speed = Object.entries(LIVE_SPEED_MS).find(([, ms]) => ms === chunkMs)?.[0];
@@ -584,6 +586,11 @@ export function SettingsView() {
   const handleTrailingSpaceToggle = (checked: boolean) => {
     setTrailingSpace(checked);
     updateConfig("append_trailing_space", checked);
+  };
+
+  const handleModelUnloadToggle = (checked: boolean) => {
+    setModelUnload(checked);
+    updateConfig("model_unload_enabled", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -918,6 +925,10 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.trailingSpace")} description={t("settings.trailingSpaceDesc")}>
             <Switch checked={trailingSpace} onCheckedChange={handleTrailingSpaceToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.modelUnload")} description={t("settings.modelUnloadDesc")}>
+            <Switch checked={modelUnload} onCheckedChange={handleModelUnloadToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>

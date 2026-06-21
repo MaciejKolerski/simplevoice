@@ -286,6 +286,46 @@ fn is_trailing_space_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads `model_unload_enabled` from config.json (default false).
+fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("model_unload_enabled").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
+/// Background watcher: when "unload when idle" is enabled, drops the loaded model
+/// after 5 min of no transcription — never while recording or transcribing. The next
+/// transcription reloads it transparently (C6).
+fn spawn_idle_unload_watcher(app_handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        const IDLE_SECS: u64 = 300;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(15));
+            if !is_model_unload_enabled(&app_handle) {
+                continue;
+            }
+            let busy = {
+                let audio = app_handle.state::<AudioController>();
+                let s = audio.state.lock().unwrap();
+                s.is_recording || s.is_transcribing
+            };
+            if busy {
+                continue;
+            }
+            if app_handle.state::<SttController>().unload_if_idle(IDLE_SECS) {
+                eprintln!("idle-unloaded the ASR model after {}s idle", IDLE_SECS);
+            }
+        }
+    });
+}
+
 /// Reads `formatting_commands_enabled` from config.json (default false).
 fn is_formatting_commands_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
@@ -2986,6 +3026,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            spawn_idle_unload_watcher(app.handle().clone());
             #[cfg(target_os = "macos")]
             {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);

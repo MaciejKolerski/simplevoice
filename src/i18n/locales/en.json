@@ -100,6 +100,8 @@
     "accurateModeDesc": "Use Whisper beam search for higher accuracy at the cost of more CPU time.",
     "trailingSpace": "Trailing space",
     "trailingSpaceDesc": "Add a space after each transcription so consecutive dictations don't run together.",
+    "modelUnload": "Unload model when idle",
+    "modelUnloadDesc": "Free memory by unloading the speech model after 5 minutes of inactivity; it reloads on the next transcription.",
     "pauseSystemAudio": "Pause System Audio",
     "pauseSystemAudioDesc": "Automatically pause music or videos while recording and resume afterwards.",
     "recordingOverlayWindow": "Recording Overlay Window",

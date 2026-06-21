@@ -94,6 +94,10 @@ pub struct SttState {
     /// False after a model load; set true once the engine has been warmed (first
     /// real or dummy decode), so warm-up runs at most once per loaded model.
     pub warmed: bool,
+    /// When the engine was last used, for idle-unload (C6). None until first load.
+    pub last_used: Option<std::time::Instant>,
+    /// `use_gpu` of the last load, so an idle-unloaded model reloads identically.
+    pub loaded_gpu: bool,
 }
 
 #[derive(Clone)]
@@ -109,6 +113,8 @@ impl SttController {
                 loading_model_path: None,
                 engine: None,
                 warmed: false,
+                last_used: None,
+                loaded_gpu: false,
             })),
         }
     }
@@ -122,6 +128,8 @@ impl SttController {
         s.engine = Some(std::sync::Arc::from(engine));
         s.active_model_path = Some(model_path.to_string());
         s.warmed = false;
+        s.loaded_gpu = use_gpu;
+        s.last_used = Some(std::time::Instant::now());
 
         println!("Successfully loaded ASR model: {}", model_path);
         Ok(())
@@ -143,6 +151,28 @@ impl SttController {
         engine
     }
 
+    /// Drops the loaded engine to free RAM/VRAM. `active_model_path`/`loaded_gpu`
+    /// are kept so the next transcription reloads it transparently (C6).
+    pub fn unload(&self) {
+        let mut s = self.state.lock().unwrap();
+        s.engine = None;
+        s.warmed = false;
+    }
+
+    /// Unloads the engine if it has been idle for at least `idle_secs`. Returns true
+    /// if it unloaded. No-op when nothing is loaded or it was used recently.
+    pub fn unload_if_idle(&self, idle_secs: u64) -> bool {
+        let should = {
+            let s = self.state.lock().unwrap();
+            s.engine.is_some()
+                && s.last_used.map_or(false, |t| t.elapsed().as_secs() >= idle_secs)
+        };
+        if should {
+            self.unload();
+        }
+        should
+    }
+
     pub fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {
         self.transcribe_with_progress(samples, language, &mut |_, _| {})
             .map(|c| c.text)
@@ -159,8 +189,22 @@ impl SttController {
     ) -> Result<ChunkedTranscription, String> {
         let prepared = prepare_samples(samples);
 
-        let engine_arc = {
+        // Reload transparently if an idle-unload (C6) dropped the engine.
+        let reload = {
             let s = self.state.lock().unwrap();
+            if s.engine.is_none() {
+                s.active_model_path.clone().map(|p| (p, s.loaded_gpu))
+            } else {
+                None
+            }
+        };
+        if let Some((path, gpu)) = reload {
+            self.load_model(&path, gpu)?;
+        }
+
+        let engine_arc = {
+            let mut s = self.state.lock().unwrap();
+            s.last_used = Some(std::time::Instant::now());
             s.engine.clone()
         };
         let engine =
