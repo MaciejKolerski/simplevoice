@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (16 / 52)
+## Done (17 / 52)
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
 - ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
@@ -40,6 +40,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ✅ **B7** prefer native 16 kHz input config (`choose_input_config`, fallback to default) — resampler passthrough when device supports 16k. 🚩 _needs real-recording verification (capture path not exercised by the harness)._
 - ✅ **A7** Parakeet transducer: `decoding_method="modified_beam_search"` + `max_active_paths=4`. Verified: Parakeet baseline stayed 0.000/EXACT, output segmentation changed (beam active).
 - ✅ **G3-coalesce** worker drains the live-audio backlog into one decode + channel widened 16→64. 🚩 _coalescing not runtime-verified (no live mic here); drop-counter/event half of G3 → H5 pass._
+- 🔶 **F4-timeout** download client gets `connect_timeout(15s)` (no total timeout — large files). _Retry/backoff loop (the other half of F4) still pending → needs real download testing._
 
 ## Planned sequencing of the remaining 39 (verifiable-first)
 
@@ -84,7 +85,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ⏳ **F1** SHA-256 verification of downloads (dep: `sha2`)
 - ⏳ **F2** atomic multi-file install + completeness manifest
 - ⏳ **F3** curated backend model registry (`stt/registry.rs`) — pairs with A6
-- ⏳ **F4** download retry/backoff + connect timeout
+- 🔶 **F4** connect timeout ✅ done; retry/backoff loop pending (needs download testing)
 - ✅ **F5** remove on-device converter (backend) — per decision; UI removal → frontend batch
 - 🚩 **F6** ONNX GPU provider selector — UNVERIFIED (CoreML/DirectML/CUDA)
 
