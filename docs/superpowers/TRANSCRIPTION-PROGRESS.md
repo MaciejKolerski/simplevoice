@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (36 / 52)
+## Done (37 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -78,7 +78,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 ### Batch E-delivery (macOS-verifiable parts)
 - ⏳ **E1** save/restore clipboard after auto-paste
 - ✅ **E7** surface paste failures (`paste-error` event → sonner toast in App.tsx); also wired `recording-save-failed` (H4) + `recording-error` (H3) toasts
-- 🔶 **E2** clipboard-only output mode ✅ done (`clipboard_only` toggle gates auto-paste); "type" mode + paste-method (Ctrl+Shift+V) still pending
+- ✅ **E2** output modes: clipboard-only (`clipboard_only`) + "type instead of paste" (`type_output` → types via enigo/`type_text_from_backend`, macOS main-thread hop, clipboard still set). Settings toggle (disabled when clipboard-only) + en/pl/de. _Alt paste-method (Ctrl+Shift+V) still optional/pending._
 - 🔶 **E3** trailing space ✅ done (`append_trailing_space` toggle); auto-submit (Enter after paste) pending — timing/paste, needs real testing
 - ⏳ **E6** paste delays / modifier-hold + configurable
 - 🚩 **E4** X11 fallback (xdotool/ydotool) — UNVERIFIED (Linux)
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 16 — needs your involvement (autonomous-safe items exhausted at 35/52)
+## Remaining 15 — needs your involvement (autonomous-safe items exhausted at 35/52)
 
 **Blocked on an asset / key / data you must provide:**
 - **B2** Silero VAD — needs the `silero_vad_v4.onnx` model file (provide it, or OK me to fetch it).
@@ -150,7 +150,7 @@ _(filled as 🚩 items land)_
 
 **Doable but lower-value / larger — say the word and I'll do them:**
 - **A6** Parakeet-V3 "recommended" badge + calibrated metadata (cosmetic).
-- **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep), **E2-type** "type instead of paste" mode, **F2** atomic multi-file install, **H5** structured `tracing` logging (large mechanical sweep). _(F4-retry ✅ done.)_
+- **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep), **F2** atomic multi-file install, **H5** structured `tracing` logging (large mechanical sweep). _(F4-retry, E2-type ✅ done.)_
 
 **How to unblock fastest:** drop a `silero_vad_v4.onnx`, an API key (for D3), and tell me whether to ship the platform code unverified — and I'll resume the loop on the rest.
 
