@@ -272,6 +272,20 @@ fn is_sentence_case_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads `append_trailing_space` from config.json (default false).
+fn is_trailing_space_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("append_trailing_space").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
 /// Reads `formatting_commands_enabled` from config.json (default false).
 fn is_formatting_commands_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
@@ -1973,6 +1987,12 @@ async fn transcribe_audio(
     };
     let text = if is_sentence_case_enabled(&app_handle) {
         crate::stt::text::sentence_case(&text)
+    } else {
+        text
+    };
+    // Trailing space (last in the chain) so consecutive dictations don't glue words.
+    let text = if is_trailing_space_enabled(&app_handle) && !text.trim().is_empty() {
+        format!("{} ", text.trim_end())
     } else {
         text
     };
