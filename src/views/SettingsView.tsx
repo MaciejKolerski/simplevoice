@@ -144,6 +144,7 @@ export function SettingsView() {
   const [trailingSpace, setTrailingSpace] = useState(false);
   const [modelUnload, setModelUnload] = useState(false);
   const [clipboardOnly, setClipboardOnly] = useState(false);
+  const [typeOutput, setTypeOutput] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -272,6 +273,7 @@ export function SettingsView() {
     setTrailingSpace(getConfig("append_trailing_space", false) === true);
     setModelUnload(getConfig("model_unload_enabled", false) === true);
     setClipboardOnly(getConfig("clipboard_only", false) === true);
+    setTypeOutput(getConfig("type_output", false) === true);
     setVadThreshold(String(getConfig("vad_threshold", 0.008)));
     setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
@@ -616,6 +618,11 @@ export function SettingsView() {
   const handleClipboardOnlyToggle = (checked: boolean) => {
     setClipboardOnly(checked);
     updateConfig("clipboard_only", checked);
+  };
+
+  const handleTypeOutputToggle = (checked: boolean) => {
+    setTypeOutput(checked);
+    updateConfig("type_output", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -983,6 +990,10 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.clipboardOnly")} description={t("settings.clipboardOnlyDesc")}>
             <Switch checked={clipboardOnly} onCheckedChange={handleClipboardOnlyToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.typeOutput")} description={t("settings.typeOutputDesc")}>
+            <Switch checked={typeOutput} disabled={clipboardOnly} onCheckedChange={handleTypeOutputToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>

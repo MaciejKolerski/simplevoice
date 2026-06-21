@@ -111,6 +111,8 @@
     "modelUnloadDesc": "Free memory by unloading the speech model after 5 minutes of inactivity; it reloads on the next transcription.",
     "clipboardOnly": "Clipboard only (no auto-paste)",
     "clipboardOnlyDesc": "Copy the transcription to the clipboard without pressing paste for you.",
+    "typeOutput": "Type instead of paste",
+    "typeOutputDesc": "Deliver the transcription by typing the characters at the cursor instead of simulating paste. Helps in apps that block Cmd/Ctrl+V or clobber the clipboard. Ignored when 'Clipboard only' is on.",
     "pauseSystemAudio": "Pause System Audio",
     "pauseSystemAudioDesc": "Automatically pause music or videos while recording and resume afterwards.",
     "recordingOverlayWindow": "Recording Overlay Window",

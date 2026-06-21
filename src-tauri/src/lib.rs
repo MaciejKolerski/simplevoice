@@ -317,6 +317,23 @@ fn is_clipboard_only(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads `type_output` from config.json (default false): deliver the result by
+/// typing the characters directly at the cursor instead of simulating a paste
+/// keystroke (E2). Useful for apps that ignore Cmd/Ctrl+V or clobber the
+/// clipboard. Ignored when `clipboard_only` is on (that suppresses all output).
+fn is_type_output_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("type_output").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
 /// Reads `model_unload_enabled` from config.json (default false).
 fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
@@ -2138,16 +2155,24 @@ async fn transcribe_audio(
         // Output mode (E2): "clipboard only" keeps the text on the clipboard and
         // skips auto-paste; otherwise auto-paste as usual.
         if !is_clipboard_only(&app_handle) {
-            let paste_owned = text.clone();
-            let app_for_paste = app_handle.clone();
+            let out_owned = text.clone();
+            let app_for_out = app_handle.clone();
+            // Output mode (E2): type the characters directly, or simulate a paste
+            // keystroke (default). Read once here, off the runtime thread below.
+            let use_typing = is_type_output_enabled(&app_handle);
             let _ = tauri::async_runtime::spawn_blocking(move || {
                 // Let the just-set clipboard propagate and the previously focused app
-                // settle before simulating the paste keystroke.
+                // settle before delivering.
                 std::thread::sleep(std::time::Duration::from_millis(100));
-                if let Err(e) = paste_text_from_backend(&app_for_paste, paste_owned) {
-                    eprintln!("[transcribe_audio] backend auto-paste failed: {e}");
+                let res = if use_typing {
+                    type_text_from_backend(&app_for_out, out_owned)
+                } else {
+                    paste_text_from_backend(&app_for_out, out_owned)
+                };
+                if let Err(e) = res {
+                    eprintln!("[transcribe_audio] backend auto-output failed: {e}");
                     // Surface the silent failure so the UI can prompt manual paste (E7).
-                    let _ = app_for_paste.emit("paste-error", format!("{e}"));
+                    let _ = app_for_out.emit("paste-error", format!("{e}"));
                 }
             })
             .await;
@@ -2835,6 +2860,29 @@ fn paste_text_from_backend(app_handle: &tauri::AppHandle, text: String) -> Resul
     {
         let _ = app_handle;
         paste_text(text)
+    }
+}
+
+/// Backend-side wrapper for [`type_text`], mirroring [`paste_text_from_backend`]:
+/// `type_text` also drives enigo, so on macOS it must run on the main thread to
+/// avoid the HIToolbox `dispatch_assert_queue` SIGTRAP. Used by the E2 "type
+/// instead of paste" output mode from the runtime/blocking delivery thread.
+fn type_text_from_backend(app_handle: &tauri::AppHandle, text: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        app_handle
+            .run_on_main_thread(move || {
+                let _ = tx.send(type_text(text));
+            })
+            .map_err(|e| format!("main-thread dispatch failed: {e}"))?;
+        rx.recv_timeout(std::time::Duration::from_secs(30))
+            .map_err(|e| format!("main-thread type result lost: {e}"))?
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app_handle;
+        type_text(text)
     }
 }
 

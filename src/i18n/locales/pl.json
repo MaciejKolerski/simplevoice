@@ -111,6 +111,8 @@
     "modelUnloadDesc": "Zwalniaj pamięć, wyładowując model mowy po 5 minutach bezczynności; przeładuje się przy następnej transkrypcji.",
     "clipboardOnly": "Tylko schowek (bez auto-wklejania)",
     "clipboardOnlyDesc": "Kopiuj transkrypcję do schowka bez automatycznego wklejania.",
+    "typeOutput": "Pisz zamiast wklejać",
+    "typeOutputDesc": "Dostarcza transkrypcję, wpisując znaki w miejscu kursora zamiast symulować wklejanie. Pomaga w aplikacjach, które blokują Cmd/Ctrl+V lub czyszczą schowek. Ignorowane, gdy włączony jest tryb „Tylko schowek”.",
     "pauseSystemAudio": "Wstrzymaj dźwięk systemowy",
     "pauseSystemAudioDesc": "Automatycznie wstrzymuj muzykę lub filmy podczas nagrywania i wznawiaj je po jego zakończeniu.",
     "recordingOverlayWindow": "Okno nakładki nagrywania",

@@ -111,6 +111,8 @@
     "modelUnloadDesc": "Speicher freigeben, indem das Sprachmodell nach 5 Minuten Inaktivität entladen wird; es wird bei der nächsten Transkription neu geladen.",
     "clipboardOnly": "Nur Zwischenablage (kein Auto-Einfügen)",
     "clipboardOnlyDesc": "Die Transkription in die Zwischenablage kopieren, ohne automatisch einzufügen.",
+    "typeOutput": "Tippen statt einfügen",
+    "typeOutputDesc": "Liefert die Transkription, indem die Zeichen an der Cursorposition getippt werden, statt Einfügen zu simulieren. Hilft in Apps, die Cmd/Strg+V blockieren oder die Zwischenablage überschreiben. Wird ignoriert, wenn „Nur Zwischenablage” aktiv ist.",
     "pauseSystemAudio": "Systemaudio pausieren",
     "pauseSystemAudioDesc": "Musik oder Videos während der Aufnahme automatisch pausieren und danach fortsetzen.",
     "recordingOverlayWindow": "Aufnahme-Overlay-Fenster",
