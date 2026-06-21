@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (33 / 52)
+## Done (34 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -109,7 +109,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ⏳ **B6** chunker: VAD-driven cuts + overlap
 
 ### Batch G-streaming (live mode hardening)
-- 🚩 **G5** thread user language into live session — needs frontend to persist `asr_language` to `config.json` (→ frontend batch; see note above)
+- ✅ **G5** thread user ASR language into live session (`asr_language` mirrored to config.json from frontend; `begin_live_session` reads it)
 - ✅ **G2** bounded timeout on `finish()`
 - ⏳ **G1** committed-prefix trimming (fix O(n²))
 - ✅ **G3** coalesce + live drop-counter (warn-once); `transcription-buffering` UI event → frontend batch
