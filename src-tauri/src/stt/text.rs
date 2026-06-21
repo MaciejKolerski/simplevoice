@@ -204,6 +204,138 @@ pub(crate) fn apply_custom_words(text: &str, custom: &[String]) -> String {
         .join(" ")
 }
 
+/// A single user dictionary rule: a spoken trigger phrase mapped to an action.
+/// `value` is the replacement for `Text` rules and ignored for `Time`/`Date`.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub(crate) struct DictionaryRule {
+    pub trigger: String,
+    pub action: RuleAction,
+    #[serde(default)]
+    pub value: Option<String>,
+}
+
+/// Dictionary action kind. Unknown values from a newer config are tolerated and
+/// skipped (forward-compatible) rather than failing the whole config read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum RuleAction {
+    Text,
+    Time,
+    Date,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Lowercased alphanumeric core of a whitespace token (attached punctuation stripped).
+fn token_core(token: &str) -> String {
+    token.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase()
+}
+
+/// Replaces spoken trigger phrases with their action result: literal text, the
+/// current time (`%H:%M:%S`), or the current date (`%Y-%m-%d`). Matching is
+/// case-insensitive, on word boundaries, and multi-word (the longest trigger wins).
+/// Single-word `Text` rules also snap near-miss typos via the same fuzzy rule the
+/// former `apply_custom_words` used. `now` is injected for deterministic tests.
+/// Off when `rules` is empty (the caller skips the call).
+pub(crate) fn apply_dictionary_rules(
+    text: &str,
+    rules: &[DictionaryRule],
+    now: chrono::NaiveDateTime,
+) -> String {
+    struct Prepared {
+        cores: Vec<String>,
+        replacement: String,
+        is_text: bool,
+    }
+
+    let mut prepared: Vec<Prepared> = Vec::new();
+    for r in rules {
+        let cores: Vec<String> = r
+            .trigger
+            .split_whitespace()
+            .map(token_core)
+            .filter(|c| !c.is_empty())
+            .collect();
+        if cores.is_empty() {
+            continue;
+        }
+        let replacement = match r.action {
+            RuleAction::Text => match &r.value {
+                Some(v) if !v.is_empty() => v.clone(),
+                _ => continue,
+            },
+            RuleAction::Time => now.format("%H:%M:%S").to_string(),
+            RuleAction::Date => now.format("%Y-%m-%d").to_string(),
+            RuleAction::Unknown => continue,
+        };
+        prepared.push(Prepared { cores, replacement, is_text: matches!(r.action, RuleAction::Text) });
+    }
+    if prepared.is_empty() {
+        return text.to_string();
+    }
+    // Longest trigger first so multi-word phrases win over their single-word prefixes.
+    prepared.sort_by(|a, b| b.cores.len().cmp(&a.cores.len()));
+
+    // Single-word Text rules are eligible for fuzzy typo-snapping.
+    let fuzzy: Vec<(Vec<char>, &str)> = prepared
+        .iter()
+        .filter(|p| p.cores.len() == 1 && p.is_text)
+        .map(|p| (p.cores[0].chars().collect(), p.replacement.as_str()))
+        .collect();
+
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut out: Vec<String> = Vec::with_capacity(words.len());
+    let mut i = 0;
+    while i < words.len() {
+        if let Some(p) = prepared.iter().find(|p| {
+            let n = p.cores.len();
+            i + n <= words.len() && (0..n).all(|k| token_core(words[i + k]) == p.cores[k])
+        }) {
+            let n = p.cores.len();
+            let lead: String = words[i].chars().take_while(|c| !c.is_alphanumeric()).collect();
+            let trail: String = {
+                let rev: String = words[i + n - 1].chars().rev().take_while(|c| !c.is_alphanumeric()).collect();
+                rev.chars().rev().collect()
+            };
+            out.push(format!("{}{}{}", lead, p.replacement, trail));
+            i += n;
+            continue;
+        }
+
+        let core_chars: Vec<char> = token_core(words[i]).chars().collect();
+        if core_chars.len() >= 4 {
+            let mut best: Option<(usize, f64)> = None;
+            for (idx, (fc, _)) in fuzzy.iter().enumerate() {
+                if (core_chars.len() as i64 - fc.len() as i64).abs() > 2 {
+                    continue;
+                }
+                let dist = crate::eval::edit_distance(&core_chars, fc);
+                let norm = dist as f64 / core_chars.len().max(fc.len()) as f64;
+                if best.map_or(true, |(_, b)| norm < b) {
+                    best = Some((idx, norm));
+                }
+            }
+            if let Some((idx, norm)) = best {
+                if norm > 0.0 && norm <= 0.25 {
+                    // Preserve attached punctuation, mirroring the exact-match branch.
+                    let lead: String = words[i].chars().take_while(|c| !c.is_alphanumeric()).collect();
+                    let trail: String = {
+                        let rev: String = words[i].chars().rev().take_while(|c| !c.is_alphanumeric()).collect();
+                        rev.chars().rev().collect()
+                    };
+                    out.push(format!("{}{}{}", lead, fuzzy[idx].1, trail));
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+
+        out.push(words[i].to_string());
+        i += 1;
+    }
+    out.join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,5 +430,97 @@ mod tests {
         let cw = vec!["ChatGPT".to_string()];
         assert_eq!(apply_custom_words("the cat sat down", &cw), "the cat sat down");
         assert_eq!(apply_custom_words("anything", &[]), "anything");
+    }
+
+    fn rule(trigger: &str, action: RuleAction, value: Option<&str>) -> DictionaryRule {
+        DictionaryRule {
+            trigger: trigger.to_string(),
+            action,
+            value: value.map(|s| s.to_string()),
+        }
+    }
+
+    fn now_fixed() -> chrono::NaiveDateTime {
+        chrono::NaiveDate::from_ymd_opt(2026, 6, 21)
+            .unwrap()
+            .and_hms_opt(15, 0, 39)
+            .unwrap()
+    }
+
+    #[test]
+    fn dict_text_single_word_case_insensitive() {
+        let r = vec![rule("chatgpt", RuleAction::Text, Some("ChatGPT"))];
+        assert_eq!(apply_dictionary_rules("i use chatgpt daily", &r, now_fixed()), "i use ChatGPT daily");
+    }
+
+    #[test]
+    fn dict_text_multiword_phrase() {
+        let r = vec![rule("czat dżi pi ti", RuleAction::Text, Some("ChatGPT"))];
+        assert_eq!(apply_dictionary_rules("powiedz czat dżi pi ti teraz", &r, now_fixed()), "powiedz ChatGPT teraz");
+    }
+
+    #[test]
+    fn dict_longest_trigger_wins() {
+        let r = vec![
+            rule("new", RuleAction::Text, Some("NEW")),
+            rule("new york", RuleAction::Text, Some("NYC")),
+        ];
+        assert_eq!(apply_dictionary_rules("i love new york today", &r, now_fixed()), "i love NYC today");
+        assert_eq!(apply_dictionary_rules("a new day", &r, now_fixed()), "a NEW day");
+    }
+
+    #[test]
+    fn dict_word_boundary_no_false_positive() {
+        let r = vec![rule("cat", RuleAction::Text, Some("CAT"))];
+        assert_eq!(apply_dictionary_rules("category cat", &r, now_fixed()), "category CAT");
+    }
+
+    #[test]
+    fn dict_preserves_attached_punctuation() {
+        let r = vec![rule("kubernetes", RuleAction::Text, Some("Kubernetes"))];
+        assert_eq!(apply_dictionary_rules("deploy kubernetes, now", &r, now_fixed()), "deploy Kubernetes, now");
+    }
+
+    #[test]
+    fn dict_time_and_date() {
+        let rt = vec![rule("obecna godzina", RuleAction::Time, None)];
+        assert_eq!(apply_dictionary_rules("teraz obecna godzina koniec", &rt, now_fixed()), "teraz 15:00:39 koniec");
+        let rd = vec![rule("dzisiejsza data", RuleAction::Date, None)];
+        assert_eq!(apply_dictionary_rules("dzisiejsza data", &rd, now_fixed()), "2026-06-21");
+    }
+
+    #[test]
+    fn dict_fuzzy_for_single_word_text_rules() {
+        let r = vec![rule("kubernetes", RuleAction::Text, Some("Kubernetes"))];
+        assert_eq!(apply_dictionary_rules("deploy kubernetis today", &r, now_fixed()), "deploy Kubernetes today");
+    }
+
+    #[test]
+    fn dict_no_fuzzy_for_multiword_triggers() {
+        let r = vec![rule("new york", RuleAction::Text, Some("NYC"))];
+        // A near-miss of a multi-word trigger must NOT match — multi-word triggers
+        // are exact-only; only single-word Text rules get fuzzy snapping. The exact
+        // phrase still substitutes mid-sentence.
+        assert_eq!(apply_dictionary_rules("visit new yor today", &r, now_fixed()), "visit new yor today");
+        assert_eq!(apply_dictionary_rules("visit new york today", &r, now_fixed()), "visit NYC today");
+    }
+
+    #[test]
+    fn dict_no_fuzzy_for_single_word_time_date_rules() {
+        let r = vec![rule("godzina", RuleAction::Time, None)];
+        // Fuzzy snapping is Text-only; a near-miss of a Time/Date trigger stays put,
+        // while the exact trigger still fires.
+        assert_eq!(apply_dictionary_rules("powiedz godzin teraz", &r, now_fixed()), "powiedz godzin teraz");
+        assert_eq!(apply_dictionary_rules("powiedz godzina teraz", &r, now_fixed()), "powiedz 15:00:39 teraz");
+    }
+
+    #[test]
+    fn dict_empty_and_invalid_rules_passthrough() {
+        assert_eq!(apply_dictionary_rules("nothing here", &[], now_fixed()), "nothing here");
+        let r = vec![
+            rule("x", RuleAction::Unknown, Some("Y")),
+            rule("z", RuleAction::Text, None),
+        ];
+        assert_eq!(apply_dictionary_rules("x z stays", &r, now_fixed()), "x z stays");
     }
 }
