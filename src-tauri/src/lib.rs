@@ -241,6 +241,22 @@ fn live_min_chunk_ms(app_handle: &tauri::AppHandle) -> u32 {
         .unwrap_or(600)
 }
 
+/// Reads `live_buffer_cap_s` (max seconds the live utterance buffer grows before a
+/// forced final, bounding the O(n) re-decode) from config.json. Default 20 (G7).
+fn live_buffer_cap_s(app_handle: &tauri::AppHandle) -> u32 {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return 20;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return 20;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("live_buffer_cap_s").and_then(|n| n.as_u64()))
+        .map(|n| (n as u32).clamp(5, 120))
+        .unwrap_or(20)
+}
+
 /// Starts a live session if the flag is set and a local engine is loaded.
 /// No-op otherwise (cloud/no-model/flag-off => classic batch behavior).
 /// Reads `filler_removal_enabled` from config.json (default false). Opt-in so the
@@ -428,7 +444,7 @@ fn begin_live_session(app: &tauri::AppHandle) {
     // G5: use the user's configured ASR language (None = auto-detect) so live
     // re-decodes don't drift across languages on short buffers.
     let strategy = Box::new(crate::stt::streaming::local_agreement::LocalAgreementStrategy::new(
-        engine, threshold, silence_ms, min_chunk_ms, asr_language(app),
+        engine, threshold, silence_ms, min_chunk_ms, asr_language(app), live_buffer_cap_s(app),
     ));
     let streaming = app.state::<crate::stt::streaming::StreamingController>();
     let tx = streaming.start(app.clone(), strategy);

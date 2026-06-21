@@ -38,6 +38,7 @@ impl LocalAgreementStrategy {
         silence_ms: u32,
         min_chunk_ms: u32,
         language: Option<String>,
+        cap_secs: u32,
     ) -> Self {
         Self {
             engine,
@@ -47,7 +48,7 @@ impl LocalAgreementStrategy {
             session: Vec::new(),
             last_full: String::new(),
             min_chunk_samples: (min_chunk_ms as usize) * SAMPLES_PER_MS,
-            cap_samples: 20 * SAMPLE_RATE,
+            cap_samples: (cap_secs.clamp(5, 120) as usize) * SAMPLE_RATE,
             since_decode: 0,
         }
     }
@@ -202,7 +203,7 @@ mod tests {
             script: vec!["alpha".into(), "beta".into(), "gamma".into(), "delta".into()],
             step: 1600,
         });
-        let mut s = LocalAgreementStrategy::new(engine, 0.01, 100, 100, None);
+        let mut s = LocalAgreementStrategy::new(engine, 0.01, 100, 100, None, 20);
         let (tx, rx) = crossbeam_channel::unbounded();
 
         // Feed 4 loud chunks of 1600 samples each (no pause -> stays one utterance).
@@ -231,7 +232,7 @@ mod tests {
             script: vec!["one".into(), "two".into(), "three".into()],
             step: 1600,
         });
-        let mut s = LocalAgreementStrategy::new(engine, 0.01, 100, 100, None);
+        let mut s = LocalAgreementStrategy::new(engine, 0.01, 100, 100, None, 20);
         let (tx, rx) = crossbeam_channel::unbounded();
         for _ in 0..3 {
             s.push_audio(&loud(1600), &tx).unwrap();
@@ -255,7 +256,7 @@ mod tests {
             script: vec!["hello".into()],
             step: 1600,
         });
-        let mut s = LocalAgreementStrategy::new(engine, 0.01, 100, 100, None);
+        let mut s = LocalAgreementStrategy::new(engine, 0.01, 100, 100, None, 20);
         let (tx, rx) = crossbeam_channel::unbounded();
 
         // Utterance 1: one word, then a 1600-sample silence closes it (100ms @16k).
@@ -276,7 +277,7 @@ mod tests {
 
     #[test]
     fn engine_error_is_recoverable() {
-        let mut s = LocalAgreementStrategy::new(Arc::new(ErrEngine), 0.01, 100, 100, None);
+        let mut s = LocalAgreementStrategy::new(Arc::new(ErrEngine), 0.01, 100, 100, None, 20);
         let (tx, rx) = crossbeam_channel::unbounded();
         s.push_audio(&loud(1600), &tx).unwrap();
         let events = drain(&rx);
