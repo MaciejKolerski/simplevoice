@@ -104,8 +104,6 @@
     "sentenceCaseDesc": "Nadawaj wielką literę na początku każdego zdania (dla modeli lowercase).",
     "formattingCommands": "Komendy formatowania głosem",
     "formattingCommandsDesc": "Zamieniaj wypowiadane komendy (\"nowa linia\", \"przecinek\") na formatowanie.",
-    "customWords": "Słownik własny",
-    "customWordsDesc": "Nazwy/terminy oddzielone przecinkami, poprawiane w transkrypcji (np. ChatGPT, Kubernetes).",
     "accurateMode": "Tryb dokładny (beam search)",
     "accurateModeDesc": "Używaj beam search w Whisperze dla wyższej dokładności kosztem większego zużycia CPU.",
     "llmCleanup": "Czyszczenie AI (LLM)",

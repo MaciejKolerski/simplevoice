@@ -139,7 +139,6 @@ export function SettingsView() {
   const [fillerRemovalEnabled, setFillerRemovalEnabled] = useState(false);
   const [sentenceCaseEnabled, setSentenceCaseEnabled] = useState(false);
   const [formattingCommandsEnabled, setFormattingCommandsEnabled] = useState(false);
-  const [customWords, setCustomWords] = useState("");
   const [decodeAccurate, setDecodeAccurate] = useState(false);
   const [trailingSpace, setTrailingSpace] = useState(false);
   const [modelUnload, setModelUnload] = useState(false);
@@ -274,7 +273,6 @@ export function SettingsView() {
     setFillerRemovalEnabled(getConfig("filler_removal_enabled", false) === true);
     setSentenceCaseEnabled(getConfig("sentence_case_enabled", false) === true);
     setFormattingCommandsEnabled(getConfig("formatting_commands_enabled", false) === true);
-    setCustomWords(((getConfig("custom_words", []) as string[]) || []).join(", "));
     setDecodeAccurate(getConfig("decode_accurate", false) === true);
     setTrailingSpace(getConfig("append_trailing_space", false) === true);
     setModelUnload(getConfig("model_unload_enabled", false) === true);
@@ -604,12 +602,6 @@ export function SettingsView() {
   const handleFormattingCommandsToggle = (checked: boolean) => {
     setFormattingCommandsEnabled(checked);
     updateConfig("formatting_commands_enabled", checked);
-  };
-
-  const handleCustomWordsChange = (value: string) => {
-    setCustomWords(value);
-    const words = value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
-    updateConfig("custom_words", words);
   };
 
   const handleDecodeAccurateToggle = (checked: boolean) => {
@@ -1022,15 +1014,6 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.formattingCommands")} description={t("settings.formattingCommandsDesc")}>
             <Switch checked={formattingCommandsEnabled} onCheckedChange={handleFormattingCommandsToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.customWords")} description={t("settings.customWordsDesc")}>
-            <Input
-              value={customWords}
-              onChange={(e) => handleCustomWordsChange(e.target.value)}
-              placeholder="ChatGPT, Kubernetes"
-              className="w-64"
-            />
           </SettingRow>
 
           <SettingRow title={t("settings.accurateMode")} description={t("settings.accurateModeDesc")}>

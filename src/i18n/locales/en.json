@@ -104,8 +104,6 @@
     "sentenceCaseDesc": "Capitalize the first letter of each sentence (for lowercase models).",
     "formattingCommands": "Voice formatting commands",
     "formattingCommandsDesc": "Turn spoken commands (\"new line\", \"comma\") into formatting.",
-    "customWords": "Custom dictionary",
-    "customWordsDesc": "Comma-separated names/terms to correct in transcriptions (e.g. ChatGPT, Kubernetes).",
     "accurateMode": "Accurate mode (beam search)",
     "accurateModeDesc": "Use Whisper beam search for higher accuracy at the cost of more CPU time.",
     "llmCleanup": "AI cleanup (LLM)",
