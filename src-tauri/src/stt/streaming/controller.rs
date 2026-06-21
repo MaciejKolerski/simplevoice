@@ -56,7 +56,7 @@ impl StreamingController {
     ) -> Sender<Vec<f32>> {
         self.finish();
 
-        let (audio_tx, audio_rx) = bounded::<Vec<f32>>(16);
+        let (audio_tx, audio_rx) = bounded::<Vec<f32>>(64);
         let stop = std::sync::Arc::new(AtomicBool::new(false));
         let stop_thread = stop.clone();
 
@@ -67,7 +67,14 @@ impl StreamingController {
                     break;
                 }
                 match audio_rx.recv_timeout(Duration::from_millis(100)) {
-                    Ok(chunk) => {
+                    Ok(mut chunk) => {
+                        // Coalesce backlog: if decode fell behind, drain all
+                        // immediately-available chunks into one push so a single
+                        // re-decode absorbs the accumulated audio instead of
+                        // queueing N decodes (G3).
+                        while let Ok(more) = audio_rx.try_recv() {
+                            chunk.extend_from_slice(&more);
+                        }
                         let _ = strategy.push_audio(&chunk, &sink);
                     }
                     Err(RecvTimeoutError::Timeout) => {}
