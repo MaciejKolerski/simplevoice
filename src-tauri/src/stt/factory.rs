@@ -41,10 +41,11 @@ impl AsrFactory {
                 let engine = super::onnx_engine::OnnxEngine::initialize(path, use_gpu)?;
                 Ok(Box::new(engine))
             }
-            ModelFormat::Nemo => {
-                let engine = super::nemo_engine::NemoEngine::initialize(path, use_gpu)?;
-                Ok(Box::new(engine))
-            }
+            ModelFormat::Nemo => Err(AppError::Model(
+                "NeMo .nemo models are no longer supported on-device. Download a \
+                 prebuilt ONNX model (e.g. Parakeet) from the model list instead."
+                    .to_string(),
+            )),
         }
     }
 
