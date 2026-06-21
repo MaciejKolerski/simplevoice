@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (18 / 52)
+## Done (19 / 52)
 _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and live-drop counter (`note_live_drop`) merged on top of the earlier downmix/coalesce halves. The `transcription-buffering` UI event stays for the frontend batch._
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
@@ -111,7 +111,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 
 ### Batch H-foundation (observability)
 - ✅ **H4** fix silent `save_wav_file` failure
-- ⏳ **H3** device-disconnect watchdog
+- ✅ **H3** device-disconnect watchdog (consumer auto-stops after 5s of no audio + `err_fn` emits `recording-error`/`device_lost`) 🚩 needs real device-unplug check
 - ⏳ **H5** structured logging (`tracing` + rotating file)
 
 ### Deferred (your input needed)
