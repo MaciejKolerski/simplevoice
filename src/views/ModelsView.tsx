@@ -144,6 +144,20 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     recommended: true
   },
   {
+    name: "Zipformer GigaSpeech (EN · hotwords)",
+    repo_id: "csukuangfj/sherpa-onnx-zipformer-gigaspeech-2023-12-12",
+    files: [
+      "encoder-epoch-30-avg-1.int8.onnx",
+      "decoder-epoch-30-avg-1.int8.onnx",
+      "joiner-epoch-30-avg-1.int8.onnx",
+      "tokens.txt",
+      "bpe.model"
+    ],
+    descriptionKey: "models.desc.zipformerGigaspeechEn",
+    format: "onnx",
+    size_formatted: "73 MB"
+  },
+  {
     name: "Whisper Medium (GGML)",
     repo_id: "ggerganov/whisper.cpp",
     files: ["ggml-medium.bin"],

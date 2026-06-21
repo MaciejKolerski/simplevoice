@@ -296,6 +296,7 @@
       "whisperSmallEn": "Model Small tylko dla języka angielskiego. Wyższa dokładność dla angielskiego przy tej samej szybkości.",
       "parakeetV2": "NVIDIA Parakeet poprzedniej generacji (angielski). Bardzo szybkie rozpoznawanie mowy INT8 na CPU.",
       "parakeetV3": "Najnowocześniejsze, wielojęzyczne rozpoznawanie mowy od NVIDIA. Kwantyzacja INT8, działa natywnie na CPU.",
+      "zipformerGigaspeechEn": "Angielski transducer Zipformer (INT8, CPU). Obsługuje hotwords ze słownika własnego — biasuje rozpoznawanie w stronę Twoich fraz (np. nazwy, żargon).",
       "whisperMedium": "Większy, wielojęzyczny model. Wyraźnie lepsza dokładność; wymaga więcej pamięci RAM i czasu.",
       "whisperLargeV3Turbo": "Najnowszy duży model zoptymalizowany pod kątem szybkości. Jakość zbliżona do large-v3, znacznie szybszy.",
       "whisperLargeV2": "Sprawdzony, poprzedni flagowy model. Doskonała dokładność wielojęzyczna.",

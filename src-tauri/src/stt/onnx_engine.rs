@@ -2,6 +2,23 @@ use crate::error::AppError;
 use crate::stt::traits::{AsrEngine, ModelFormat};
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+/// Per-transcription hotwords (one phrase per line) that bias the ONNX
+/// transducer decoder toward the user's custom-dictionary phrases (A7/A3). Set
+/// from the delivery layer before each transcribe; read in `transcribe` to build
+/// a hotword-aware stream. Lives outside the `onnx` feature gate so the setter
+/// compiles even when ONNX is off.
+pub(crate) static ONNX_HOTWORDS: Mutex<String> = Mutex::new(String::new());
+
+/// Set the ONNX transducer hotwords (one phrase per line). Public so the eval
+/// harness can exercise contextual biasing; the app sets it from the delivery
+/// layer per transcription.
+pub fn set_onnx_hotwords(hotwords: String) {
+    if let Ok(mut g) = ONNX_HOTWORDS.lock() {
+        *g = hotwords;
+    }
+}
 
 #[cfg(feature = "onnx")]
 use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig};
@@ -39,6 +56,97 @@ fn find_file_with_keywords(dir: &Path, contains: &[&str], extension: &str) -> Op
         }
     }
     None
+}
+
+/// Derive the text `bpe.vocab` sherpa-onnx needs for hotword tokenization from a
+/// SentencePiece `bpe.model` (a protobuf). Models ship the binary `bpe.model` but
+/// not the `<piece> <score>`-per-line vocab; this minimal proto reader extracts
+/// each `SentencePiece { piece = 1 (string), score = 2 (float) }` from the
+/// top-level `ModelProto { pieces = 1 (repeated) }`. Returns the vocab text, or
+/// None on a malformed proto. No external deps (avoids re-introducing Python).
+fn bpe_vocab_from_model(model_bytes: &[u8]) -> Option<String> {
+    fn read_varint(b: &[u8], i: &mut usize) -> Option<u64> {
+        let mut result: u64 = 0;
+        let mut shift = 0u32;
+        loop {
+            let byte = *b.get(*i)?;
+            *i += 1;
+            result |= ((byte & 0x7f) as u64) << shift;
+            if byte & 0x80 == 0 {
+                return Some(result);
+            }
+            shift += 7;
+            if shift >= 64 {
+                return None;
+            }
+        }
+    }
+    fn skip(b: &[u8], i: &mut usize, wire: u64) -> Option<()> {
+        match wire {
+            0 => {
+                read_varint(b, i)?;
+            }
+            1 => *i += 8,
+            2 => {
+                let len = read_varint(b, i)? as usize;
+                *i += len;
+            }
+            5 => *i += 4,
+            _ => return None,
+        }
+        if *i > b.len() {
+            None
+        } else {
+            Some(())
+        }
+    }
+
+    let mut out = String::new();
+    let mut i = 0;
+    while i < model_bytes.len() {
+        let tag = read_varint(model_bytes, &mut i)?;
+        let (field, wire) = (tag >> 3, tag & 0x7);
+        if field == 1 && wire == 2 {
+            // A `SentencePiece` submessage.
+            let len = read_varint(model_bytes, &mut i)? as usize;
+            let end = i.checked_add(len)?;
+            if end > model_bytes.len() {
+                return None;
+            }
+            let mut piece: Option<String> = None;
+            let mut score: f32 = 0.0;
+            while i < end {
+                let t = read_varint(model_bytes, &mut i)?;
+                match (t >> 3, t & 0x7) {
+                    (1, 2) => {
+                        let l = read_varint(model_bytes, &mut i)? as usize;
+                        let s = model_bytes.get(i..i.checked_add(l)?)?;
+                        piece = Some(String::from_utf8_lossy(s).into_owned());
+                        i += l;
+                    }
+                    (2, 5) => {
+                        let b = model_bytes.get(i..i + 4)?;
+                        score = f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+                        i += 4;
+                    }
+                    (_, w) => skip(model_bytes, &mut i, w)?,
+                }
+            }
+            if let Some(p) = piece {
+                out.push_str(&p);
+                out.push(' ');
+                out.push_str(&score.to_string());
+                out.push('\n');
+            }
+        } else {
+            skip(model_bytes, &mut i, wire)?;
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 /// Reproduces the exact precedence used by `OnnxEngine::initialize`: a transducer
@@ -116,17 +224,50 @@ impl OnnxEngine {
 
         match detect_onnx_layout(dir) {
             OnnxLayout::Transducer { encoder, decoder, joiner } => {
-                println!("Initializing Transducer (Parakeet TDT) engine from: {}", dir.display());
+                println!("Initializing ONNX transducer engine from: {}", dir.display());
                 config.model_config.transducer = OfflineTransducerModelConfig {
                     encoder: Some(encoder.to_string_lossy().to_string()),
                     decoder: Some(decoder.to_string_lossy().to_string()),
                     joiner: Some(joiner.to_string_lossy().to_string()),
                 };
-                config.model_config.model_type = Some("nemo_transducer".to_string());
                 // A7: modified beam search over the transducer lattice (vs default
                 // greedy) recovers accuracy on harder audio at a small cost.
                 config.decoding_method = Some("modified_beam_search".to_string());
                 config.max_active_paths = 4;
+                // A7/A3: contextual biasing. hotwords_score boosts phrases passed
+                // per-stream via create_stream_with_hotwords (only used when the
+                // custom dictionary is non-empty); requires modified_beam_search,
+                // set above. 0 phrases => no effect.
+                // Boost applied to hotword token paths. `SV_HOTWORDS_SCORE` lets
+                // the eval harness / power users tune it; 2.0 is sherpa's typical
+                // default and biases rare/OOV terms without over-triggering.
+                config.hotwords_score = std::env::var("SV_HOTWORDS_SCORE")
+                    .ok()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(2.0);
+                // Two transducer families need different handling:
+                //  - k2/icefall BPE zipformers ship a SentencePiece `bpe.model`.
+                //    sherpa needs the TEXT `bpe.vocab` to ENCODE hotwords, so derive
+                //    it once from bpe.model and cache it, then enable BPE modeling.
+                //  - NeMo Parakeet ships neither; it needs model_type=nemo_transducer
+                //    (and can't encode hotwords — sherpa logs "Encode hotwords failed,
+                //    skipping"). Forcing nemo_transducer on a k2 model fails with
+                //    "'vocab_size' does not exist in the metadata".
+                let bpe_vocab = dir.join("bpe.vocab");
+                let bpe_model = dir.join("bpe.model");
+                if !bpe_vocab.exists() && bpe_model.exists() {
+                    if let Ok(bytes) = std::fs::read(&bpe_model) {
+                        if let Some(vocab) = bpe_vocab_from_model(&bytes) {
+                            let _ = std::fs::write(&bpe_vocab, vocab);
+                        }
+                    }
+                }
+                if bpe_vocab.exists() {
+                    config.model_config.modeling_unit = Some("bpe".to_string());
+                    config.model_config.bpe_vocab = Some(bpe_vocab.to_string_lossy().to_string());
+                } else {
+                    config.model_config.model_type = Some("nemo_transducer".to_string());
+                }
             }
             OnnxLayout::MoonshineV1 => {
                 println!("Initializing Moonshine v1 engine from: {}", dir.display());
@@ -180,7 +321,16 @@ impl AsrEngine for OnnxEngine {
         samples: &[f32],
         language: Option<&str>,
     ) -> Result<String, AppError> {
-        let stream = self.recognizer.create_stream();
+        // A7/A3: bias toward the custom-dictionary phrases when present.
+        let hotwords = ONNX_HOTWORDS
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+        let stream = if hotwords.trim().is_empty() {
+            self.recognizer.create_stream()
+        } else {
+            self.recognizer.create_stream_with_hotwords(&hotwords)
+        };
 
         if let Some(lang) = language {
             if !lang.is_empty() && lang != "auto" {
@@ -318,5 +468,23 @@ mod tests {
         touch(d.path(), "notes.txt");
         assert!(find_file_with_keywords(d.path(), &["encoder"], "onnx").is_some());
         assert!(find_file_with_keywords(d.path(), &["decoder"], "onnx").is_none());
+    }
+
+    #[test]
+    fn bpe_vocab_from_model_extracts_piece_and_score() {
+        // ModelProto { pieces: [ SentencePiece { piece: "▁the", score: -1.5 } ] }.
+        // submessage: field 1 (piece, len-delim) "▁the" = E2 96 81 74 68 65;
+        //             field 2 (score, fixed32) -1.5 = 00 00 C0 BF (f32 LE).
+        let sub: Vec<u8> = vec![
+            0x0A, 0x06, 0xE2, 0x96, 0x81, 0x74, 0x68, 0x65, 0x15, 0x00, 0x00, 0xC0, 0xBF,
+        ];
+        let mut proto = vec![0x0A, sub.len() as u8];
+        proto.extend_from_slice(&sub);
+        assert_eq!(
+            super::bpe_vocab_from_model(&proto).as_deref(),
+            Some("▁the -1.5\n")
+        );
+        // Malformed (truncated) input must not panic.
+        assert!(super::bpe_vocab_from_model(&[0x0A, 0x06, 0xE2]).is_none());
     }
 }

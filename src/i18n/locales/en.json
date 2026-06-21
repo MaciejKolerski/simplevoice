@@ -296,6 +296,7 @@
       "whisperSmallEn": "English-only Small. Higher accuracy for English at the same speed.",
       "parakeetV2": "Previous-generation NVIDIA Parakeet (English). Very fast INT8 ASR on CPU.",
       "parakeetV3": "State-of-the-art multilingual ASR by NVIDIA. INT8 quantized, runs natively on CPU.",
+      "zipformerGigaspeechEn": "English Zipformer transducer (INT8, CPU). Supports custom-dictionary hotwords — it biases recognition toward your dictionary phrases (e.g. names, jargon).",
       "whisperMedium": "Larger multilingual model. Clearly better accuracy; needs more RAM and time.",
       "whisperLargeV3Turbo": "Newest large model tuned for speed. Near large-v3 quality, much faster.",
       "whisperLargeV2": "Proven previous flagship. Excellent multilingual accuracy.",

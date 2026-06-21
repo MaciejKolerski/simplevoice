@@ -2164,6 +2164,11 @@ async fn transcribe_audio(
     *crate::stt::ggml_whisper::WHISPER_INITIAL_PROMPT.lock().unwrap() =
         custom_words(&app_handle).join(", ");
 
+    // A7/A3: bias the ONNX transducer decoder toward the same custom-dictionary
+    // phrases (one per line, contextual hotwords). Empty = no biasing.
+    *crate::stt::onnx_engine::ONNX_HOTWORDS.lock().unwrap() =
+        custom_words(&app_handle).join("\n");
+
     let final_samples: std::sync::Arc<Vec<f32>> = match samples {
         Some(v) => std::sync::Arc::new(v),
         None => {
