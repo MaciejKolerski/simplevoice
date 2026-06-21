@@ -52,6 +52,27 @@ pub(crate) fn remove_fillers(text: &str, lang: Option<&str>) -> String {
     kept.join(" ")
 }
 
+/// Capitalizes the first letter of the text and of each sentence (after `.`, `!`,
+/// `?`). For ASR models that emit all-lowercase text. Conservative: only changes the
+/// case of the first alphabetic character after sentence punctuation; everything else
+/// is left as-is. Off by default; gated by the caller on `sentence_case_enabled`.
+pub(crate) fn sentence_case(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut cap_next = true;
+    for c in text.chars() {
+        if cap_next && c.is_alphabetic() {
+            out.extend(c.to_uppercase());
+            cap_next = false;
+        } else {
+            out.push(c);
+            if matches!(c, '.' | '!' | '?') {
+                cap_next = true;
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,5 +118,17 @@ mod tests {
         assert_eq!(remove_fillers("no i co", Some("pl")), "no i co");
         assert_eq!(remove_fillers("yyy no dobrze", Some("pl")), "no dobrze");
         assert_eq!(remove_fillers("hello world", Some("en")), "hello world");
+    }
+
+    #[test]
+    fn sentence_case_capitalizes_starts() {
+        assert_eq!(sentence_case("hello world. how are you?"), "Hello world. How are you?");
+        assert_eq!(sentence_case("one. two! three?"), "One. Two! Three?");
+    }
+
+    #[test]
+    fn sentence_case_leaves_interior_case_alone() {
+        assert_eq!(sentence_case("i saw NASA today"), "I saw NASA today");
+        assert_eq!(sentence_case(""), "");
     }
 }

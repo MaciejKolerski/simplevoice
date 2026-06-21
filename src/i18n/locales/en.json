@@ -90,6 +90,8 @@
     "soundEffectsDesc": "Play a premium audio cue when starting and stopping recording.",
     "fillerRemoval": "Remove filler words",
     "fillerRemovalDesc": "Strip filler interjections (uh, um, hmm) from transcriptions.",
+    "sentenceCase": "Capitalize sentences",
+    "sentenceCaseDesc": "Capitalize the first letter of each sentence (for lowercase models).",
     "pauseSystemAudio": "Pause System Audio",
     "pauseSystemAudioDesc": "Automatically pause music or videos while recording and resume afterwards.",
     "recordingOverlayWindow": "Recording Overlay Window",

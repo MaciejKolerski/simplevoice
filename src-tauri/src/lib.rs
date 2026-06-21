@@ -258,6 +258,20 @@ fn is_filler_removal_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads `sentence_case_enabled` from config.json (default false).
+fn is_sentence_case_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("sentence_case_enabled").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
 fn begin_live_session(app: &tauri::AppHandle) {
     if !is_live_transcription_enabled(app) {
         return;
@@ -1892,6 +1906,11 @@ async fn transcribe_audio(
     // step; custom-words / OpenCC / formatting commands will land here too.
     let text = if is_filler_removal_enabled(&app_handle) {
         crate::stt::text::remove_fillers(&text, language.as_deref())
+    } else {
+        text
+    };
+    let text = if is_sentence_case_enabled(&app_handle) {
+        crate::stt::text::sentence_case(&text)
     } else {
         text
     };
