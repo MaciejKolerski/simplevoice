@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (41 / 52)
+## Done (40 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -105,7 +105,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ⏳ **B3** pre-roll / look-back buffer
 - 🔶 **B4** configurable VAD threshold + silence ✅ done (`apply_vad_config` reads config at record start + Settings number inputs) 🚩 needs real-recording check; consumer-latency reduction (50ms→10ms) still pending
 - ✅ **B7** request/enumerate 16 kHz on device (🚩 needs real-recording check)
-- ✅ **B2** Silero VAD via sherpa-onnx (`stt/vad.rs`, `VoiceActivityDetector`) — opt-in `vad_trim_enabled` trims leading/trailing silence before transcription (NOT segment-concat: that hurt WER 0→0.267; outer-trim keeps EXACT, cuts 24.3s→16.7s). Falls back to untrimmed on any failure. Settings toggle + en/pl/de. Verified on ggml-small + large-v3-turbo (EXACT). `SV_VAD_TRIM=1` added to eval harness. _Live-mode VAD segmenter (replace RMS) still a separate future option._
+- ❌ **B2** Silero VAD silence-trim — implemented then **REMOVED at user's request** (2026-06-21). A "Trim silence (VAD)" toggle was redundant with the existing auto-end VAD (B4): if recording already auto-ends on silence, pre-trimming buys nothing. (Also: segment-concat trimming actively hurt Whisper — WER 0→0.267 — and even outer-trim adds no real value here.) Fully reverted: `stt/vad.rs`, wiring, toggle, eval `SV_VAD_TRIM` instrumentation, and the downloaded model all deleted. **Lesson: VAD belongs in endpointing (B4), not as a separate pre-transcription trim — don't add a second VAD feature.**
 - ⏳ **B6** chunker: VAD-driven cuts + overlap
 
 ### Batch G-streaming (live mode hardening)
@@ -131,10 +131,10 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 11 — needs your involvement (autonomous-safe items now truly exhausted)
+## Remaining 12 — needs your involvement (B2 reverted; autonomous-safe items exhausted)
 
 **Blocked on an asset / key / data you must provide:**
-- ~~**B2** Silero VAD~~ ✅ DONE — model fetched + opt-in outer-silence trim shipped (see Done section).
+- ~~**B2** Silero VAD~~ ❌ REMOVED by user — redundant with the auto-end VAD (B4); see Done section.
 - **D3** LLM cleanup + Apple Intelligence — needs your API keys/provider choice.
 - **F1 / F3** SHA-256 verification + curated registry — needs the real per-model hashes (I can compute hashes only for models you have installed).
 
@@ -173,10 +173,11 @@ _(filled as 🚩 items land)_
 - Still wanted from user: a few hard PL clips in `/Users/woro/Documents/Simple/test/`
   for real WER-gain measurement (harness currently proves no-regression only).
 
-### D3 key status (2026-06-21)
-- Gemini key STORED in OS keychain (`simplevoice` / `api_key_gemini`) — readable by
-  `get_secure_api_key("gemini")`. Key no longer needed in conversation context.
-- ⚠️ Format does NOT match a standard Google AI Studio key (`AIzaSy…`); looks OAuth-ish.
-  Verify it actually authenticates when D3 is first tested; ask user for the real key if it 401s.
-- D3 implementation: reuse the existing Gemini client in `stt/cloud.rs` + keyring; keep it a
-  deliberate cycle (sends text to Google) — NOT folded into the blind autonomous loop.
+### D3 key status (2026-06-21, updated)
+- ✅ Gemini key **CONFIRMED WORKING by the user** — it authenticates 100% when added
+  manually to **`models/byok`** (the app's bring-your-own-key file). My earlier
+  "format looks wrong (not `AIzaSy…`)" worry was a false alarm; the key is valid.
+- **Investigate the `models/byok` mechanism** (how the app reads BYOK keys) before
+  building D3 — D3 should plug into whatever `byok` already provides, not just keyring.
+- D3 still NOT built: it's a deliberate cycle (sends transcription text to Google);
+  awaiting the user's go-ahead. Reuse the existing Gemini client in `stt/cloud.rs`.
