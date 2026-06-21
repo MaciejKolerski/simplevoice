@@ -294,6 +294,7 @@ impl AudioController {
             let mut has_spoken = false;
             let mut silence_samples = 0;
             let mut warned_about_cap = false;
+            let mut last_audio = std::time::Instant::now();
 
             loop {
                 // Check state at start of loop iteration
@@ -320,6 +321,7 @@ impl AudioController {
                 // Read from consumer
                 let read = consumer.pop_slice(&mut local_buf);
                 if read > 0 {
+                    last_audio = std::time::Instant::now();
                     // Compute RMS of the newly read samples for visualizer
                     let mut sum_sq = 0.0;
                     for &sample in &local_buf[..read] {
@@ -381,6 +383,16 @@ impl AudioController {
                     }
                 }
 
+                // Device-disconnect watchdog: if no audio arrived for 5 s while
+                // recording (mic unplugged / asleep / Bluetooth dropped), the data
+                // callback has gone silent — stop instead of "recording" dead air.
+                if is_recording && last_audio.elapsed() > std::time::Duration::from_secs(5) {
+                    let _ = app_handle_clone.emit("recording-error", "device_lost");
+                    let s = state_clone.lock().unwrap();
+                    auto_stop_recording(s, &state_clone, &app_handle_clone);
+                    break;
+                }
+
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
         });
@@ -388,7 +400,11 @@ impl AudioController {
         // Create the resampler and downmixer
         let mut resampler = Resampler::new(src_rate, dst_rate);
 
-        let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+        let err_app = app_handle.clone();
+        let err_fn = move |err| {
+            eprintln!("an error occurred on stream: {}", err);
+            let _ = err_app.emit("recording-error", "device_lost");
+        };
 
         let stream = match sample_format {
             cpal::SampleFormat::F32 => device.build_input_stream(
