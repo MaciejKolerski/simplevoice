@@ -2068,6 +2068,8 @@ async fn transcribe_audio(
             std::thread::sleep(std::time::Duration::from_millis(100));
             if let Err(e) = paste_text_from_backend(&app_for_paste, paste_owned) {
                 eprintln!("[transcribe_audio] backend auto-paste failed: {e}");
+                // Surface the silent failure so the UI can prompt manual paste (E7).
+                let _ = app_for_paste.emit("paste-error", format!("{e}"));
             }
         })
         .await;

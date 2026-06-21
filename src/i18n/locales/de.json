@@ -1,5 +1,8 @@
 {
   "common": {
+    "pasteFailed": "Automatisches Einfügen fehlgeschlagen — der Text ist in der Zwischenablage, bitte manuell einfügen.",
+    "saveFailed": "Aufnahmedatei konnte nicht gespeichert werden (die Transkription lief trotzdem).",
+    "deviceLost": "Aufnahmegerät getrennt — Aufnahme gestoppt.",
     "next": "Weiter",
     "back": "Zurück",
     "finish": "Fertig",

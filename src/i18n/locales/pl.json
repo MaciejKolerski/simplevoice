@@ -1,5 +1,8 @@
 {
   "common": {
+    "pasteFailed": "Nie udało się wkleić automatycznie — tekst jest w schowku, wklej go ręcznie.",
+    "saveFailed": "Nie udało się zapisać pliku nagrania (transkrypcja i tak zadziałała).",
+    "deviceLost": "Urządzenie nagrywające odłączone — nagrywanie zatrzymane.",
     "next": "Dalej",
     "back": "Wstecz",
     "finish": "Zakończ",

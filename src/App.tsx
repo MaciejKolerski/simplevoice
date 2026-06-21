@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import "./App.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -370,6 +371,16 @@ function App() {
       },
     );
 
+    const unlistenPasteError = listen<string>("paste-error", () => {
+      toast.error(t("common.pasteFailed"));
+    });
+    const unlistenSaveFailed = listen<string>("recording-save-failed", () => {
+      toast.error(t("common.saveFailed"));
+    });
+    const unlistenDeviceError = listen<string>("recording-error", () => {
+      toast.error(t("common.deviceLost"));
+    });
+
     return () => {
       unlistenStarted.then((f) => f());
       unlistenStopped.then((f) => f());
@@ -377,6 +388,9 @@ function App() {
       unlistenFinal.then((f) => f());
       unlistenProgress.then((f) => f());
       unlistenFailed.then((f) => f());
+      unlistenPasteError.then((f) => f());
+      unlistenSaveFailed.then((f) => f());
+      unlistenDeviceError.then((f) => f());
     };
   }, []);
 

@@ -1,5 +1,8 @@
 {
   "common": {
+    "pasteFailed": "Couldn't paste automatically — the text is on the clipboard, paste it manually.",
+    "saveFailed": "Couldn't save the recording file (the transcription still ran).",
+    "deviceLost": "Recording device disconnected — recording stopped.",
     "next": "Next",
     "back": "Back",
     "finish": "Finish",
