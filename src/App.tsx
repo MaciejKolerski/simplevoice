@@ -16,6 +16,7 @@ import { UsageView } from "./views/UsageView";
 import { ModelsView } from "./views/ModelsView";
 import { TranscriptionsView } from "./views/TranscriptionsView";
 import { SettingsView } from "./views/SettingsView";
+import { DictionaryView } from "./views/DictionaryView";
 import { WaveBar } from "@/components/brand/WaveBar";
 import {
   AlertDialog,
@@ -29,7 +30,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type ViewId = "usage" | "models" | "transcriptions" | "settings";
+type ViewId = "usage" | "models" | "transcriptions" | "settings" | "dictionary";
 
 function App() {
   const { t } = useTranslation();
@@ -456,6 +457,9 @@ function App() {
             </div>
             <div className={`view ${activeView === "settings" ? "active" : ""}`}>
               <SettingsView />
+            </div>
+            <div className={`view ${activeView === "dictionary" ? "active" : ""}`}>
+              <DictionaryView />
             </div>
           </main>
         </div>

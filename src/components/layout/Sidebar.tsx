@@ -1,4 +1,4 @@
-import { Activity, Box, History, Settings } from "lucide-react";
+import { Activity, Box, History, Languages, Settings } from "lucide-react";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { id: "usage", Icon: Activity },
   { id: "models", Icon: Box },
   { id: "transcriptions", Icon: History },
+  { id: "dictionary", Icon: Languages },
 ] as const;
 
 export function Sidebar({ collapsed, activeView, setActiveView }: SidebarProps) {

@@ -22,7 +22,8 @@
     "usage": "Usage",
     "models": "Models",
     "transcriptions": "Transcriptions",
-    "settings": "Settings"
+    "settings": "Settings",
+    "dictionary": "Dictionary"
   },
   "tray": {
     "startRecording": "Start Recording",
@@ -335,6 +336,18 @@
     "historyCleared": "History cleared",
     "clearFailed": "Failed to clear history",
     "deleteFailed": "Failed to delete transcription"
+  },
+  "dictionary": {
+    "title": "Dictionary",
+    "description": "Replace spoken trigger phrases with text, the current time, or the current date.",
+    "addRule": "Add rule",
+    "remove": "Remove",
+    "triggerPlaceholder": "Trigger phrase",
+    "valuePlaceholder": "Replacement text",
+    "actionText": "Text",
+    "actionTime": "Current time",
+    "actionDate": "Current date",
+    "empty": "No rules yet. Add one to get started."
   },
   "onboarding": {
     "stepCounter": "Step {{current}} / {{total}}",

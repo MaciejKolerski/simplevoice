@@ -22,7 +22,8 @@
     "usage": "Użycie",
     "models": "Modele",
     "transcriptions": "Transkrypcje",
-    "settings": "Ustawienia"
+    "settings": "Ustawienia",
+    "dictionary": "Słownik"
   },
   "tray": {
     "startRecording": "Rozpocznij nagrywanie",
@@ -335,6 +336,18 @@
     "historyCleared": "Historia wyczyszczona",
     "clearFailed": "Nie udało się wyczyścić historii",
     "deleteFailed": "Nie udało się usunąć transkrypcji"
+  },
+  "dictionary": {
+    "title": "Słownik własny",
+    "description": "Zamieniaj wypowiedziane frazy na tekst, aktualną godzinę lub datę.",
+    "addRule": "Dodaj regułę",
+    "remove": "Usuń",
+    "triggerPlaceholder": "Fraza wyzwalająca",
+    "valuePlaceholder": "Tekst zamiany",
+    "actionText": "Tekst",
+    "actionTime": "Aktualna godzina",
+    "actionDate": "Aktualna data",
+    "empty": "Brak reguł. Dodaj pierwszą, aby zacząć."
   },
   "onboarding": {
     "stepCounter": "Krok {{current}} / {{total}}",
