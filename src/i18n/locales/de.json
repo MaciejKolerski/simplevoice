@@ -88,6 +88,8 @@
     "liveSpeedAccurate": "Genau",
     "soundEffects": "Soundeffekte",
     "soundEffectsDesc": "Beim Starten und Beenden der Aufnahme einen hochwertigen Audiohinweis abspielen.",
+    "fillerRemoval": "Füllwörter entfernen",
+    "fillerRemovalDesc": "Fülllaute (äh, ähm, hm) aus Transkriptionen entfernen.",
     "pauseSystemAudio": "Systemaudio pausieren",
     "pauseSystemAudioDesc": "Musik oder Videos während der Aufnahme automatisch pausieren und danach fortsetzen.",
     "recordingOverlayWindow": "Aufnahme-Overlay-Fenster",

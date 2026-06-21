@@ -133,6 +133,7 @@ export function SettingsView() {
   const [liveOverlayMode, setLiveOverlayMode] = useState("full");
   const [liveSpeed, setLiveSpeed] = useState("balanced");
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [fillerRemovalEnabled, setFillerRemovalEnabled] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -251,6 +252,7 @@ export function SettingsView() {
   // dev and installed builds and used to silently overwrite the config).
   useEffect(() => {
     setSoundEnabled(getConfig("sound_feedback_enabled", true) !== false);
+    setFillerRemovalEnabled(getConfig("filler_removal_enabled", false) === true);
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
     const chunkMs = getConfig("live_min_chunk_ms", null);
     const speed = Object.entries(LIVE_SPEED_MS).find(([, ms]) => ms === chunkMs)?.[0];
@@ -540,6 +542,11 @@ export function SettingsView() {
   const handleSoundToggle = (checked: boolean) => {
     setSoundEnabled(checked);
     updateConfig("sound_feedback_enabled", checked);
+  };
+
+  const handleFillerRemovalToggle = (checked: boolean) => {
+    setFillerRemovalEnabled(checked);
+    updateConfig("filler_removal_enabled", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -845,6 +852,10 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.soundEffects")} description={t("settings.soundEffectsDesc")}>
             <Switch checked={soundEnabled} onCheckedChange={handleSoundToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.fillerRemoval")} description={t("settings.fillerRemovalDesc")}>
+            <Switch checked={fillerRemovalEnabled} onCheckedChange={handleFillerRemovalToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>

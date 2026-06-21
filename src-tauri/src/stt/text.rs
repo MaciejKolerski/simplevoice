@@ -25,6 +25,33 @@ pub(crate) fn collapse_repeats(text: &str) -> String {
     out.join(" ")
 }
 
+// Filler interjections per language. Conservative lists: only sounds that are not
+// real words (e.g. Polish "no" / German "so" are real words and are excluded).
+const FILLERS_EN: &[&str] = &["uh", "uhh", "um", "umm", "hmm", "er", "erm", "ah", "eh", "mm"];
+const FILLERS_PL: &[&str] = &["yyy", "yy", "eee", "ee", "mmm", "eem", "yhy"];
+const FILLERS_DE: &[&str] = &["äh", "ähm", "öh", "hm", "ähem"];
+
+/// Removes filler interjections ("uh", "um", …) for the given language. Tokens are
+/// matched by their alphanumeric, lowercased core so attached punctuation is dropped
+/// with the filler ("Um, hello" -> "hello"). Unknown/`None` language uses the English
+/// set (those sounds are not words in most languages). Off by default; gated by the
+/// caller on the `filler_removal_enabled` setting.
+pub(crate) fn remove_fillers(text: &str, lang: Option<&str>) -> String {
+    let fillers: &[&str] = match lang.unwrap_or("").split('-').next().unwrap_or("") {
+        "pl" => FILLERS_PL,
+        "de" => FILLERS_DE,
+        _ => FILLERS_EN,
+    };
+    let kept: Vec<&str> = text
+        .split_whitespace()
+        .filter(|w| {
+            let core: String = w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+            !fillers.contains(&core.as_str())
+        })
+        .collect();
+    kept.join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,5 +82,20 @@ mod tests {
     #[test]
     fn collapses_only_the_repeated_run() {
         assert_eq!(collapse_repeats("a a a b c c c d"), "a b c d");
+    }
+
+    #[test]
+    fn removes_english_fillers() {
+        assert_eq!(remove_fillers("um hello uh world", Some("en")), "hello world");
+        assert_eq!(remove_fillers("Um, hello.", Some("en")), "hello.");
+        assert_eq!(remove_fillers("uh um hmm", None), "");
+    }
+
+    #[test]
+    fn keeps_real_words_and_other_languages() {
+        // "no" is a real Polish word and must not be treated as a filler.
+        assert_eq!(remove_fillers("no i co", Some("pl")), "no i co");
+        assert_eq!(remove_fillers("yyy no dobrze", Some("pl")), "no dobrze");
+        assert_eq!(remove_fillers("hello world", Some("en")), "hello world");
     }
 }

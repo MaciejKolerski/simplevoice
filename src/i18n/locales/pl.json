@@ -88,6 +88,8 @@
     "liveSpeedAccurate": "Dokładnie",
     "soundEffects": "Efekty dźwiękowe",
     "soundEffectsDesc": "Odtwarzaj wysokiej jakości sygnał dźwiękowy przy rozpoczęciu i zatrzymaniu nagrywania.",
+    "fillerRemoval": "Usuwaj wypełniacze",
+    "fillerRemovalDesc": "Usuwaj wtrącenia (yyy, eee, hmm) z transkrypcji.",
     "pauseSystemAudio": "Wstrzymaj dźwięk systemowy",
     "pauseSystemAudioDesc": "Automatycznie wstrzymuj muzykę lub filmy podczas nagrywania i wznawiaj je po jego zakończeniu.",
     "recordingOverlayWindow": "Okno nakładki nagrywania",

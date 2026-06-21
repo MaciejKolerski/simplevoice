@@ -243,6 +243,21 @@ fn live_min_chunk_ms(app_handle: &tauri::AppHandle) -> u32 {
 
 /// Starts a live session if the flag is set and a local engine is loaded.
 /// No-op otherwise (cloud/no-model/flag-off => classic batch behavior).
+/// Reads `filler_removal_enabled` from config.json (default false). Opt-in so the
+/// default behavior is unchanged.
+fn is_filler_removal_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("filler_removal_enabled").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
 fn begin_live_session(app: &tauri::AppHandle) {
     if !is_live_transcription_enabled(app) {
         return;
@@ -1870,6 +1885,15 @@ async fn transcribe_audio(
             }
             joined
         }
+    };
+
+    // Delivery-layer post-processing (config-gated; the eval-harness path through
+    // transcribe_with_progress is not affected). Filler removal is the first such
+    // step; custom-words / OpenCC / formatting commands will land here too.
+    let text = if is_filler_removal_enabled(&app_handle) {
+        crate::stt::text::remove_fillers(&text, language.as_deref())
+    } else {
+        text
     };
 
     eprintln!(
