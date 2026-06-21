@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (11 / 52)
+## Done (13 / 52)
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
 - ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
@@ -36,6 +36,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ✅ **B5-downmix** `downmix` keeps the trailing partial frame (was `chunks_exact`, silently dropped). _Ring-overflow signal (the other half of B5) still pending → folds into the H5 observability pass._
 - ✅ **G2** bounded timed-join on streaming `finish()` (5s budget then detach) — no longer blocks shutdown / next recording.
 - ✅ **C1** engine warm-up on record start (`SttController::take_engine_to_warm` + dummy decode off the start path; once per loaded model, no-op for cloud) — cuts first-dictation GPU/session-init latency.
+- ✅ **C3 + F5** removed on-device Python: deleted `nemo_engine.rs` (per-call NeMo sidecar) and gutted `converter.rs` to a stub; `factory` routes `.nemo` to an actionable "download a prebuilt ONNX" error. _Frontend convert-button + i18n `convert`/`converting` keys still present (command stubbed so it doesn't break) → remove in the frontend batch._
 
 ## Planned sequencing of the remaining 42 (verifiable-first)
 
@@ -76,12 +77,12 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ✅ **C1** model warm-up on record start
 - ⏳ **C2** push-to-talk mode
 - ⏳ **C6** idle-unload model
-- ⏳ **C3** remove NeMo per-call sidecar (route to ONNX) — per decision
+- ✅ **C3** remove NeMo per-call sidecar (route to ONNX) — per decision
 - ⏳ **F1** SHA-256 verification of downloads (dep: `sha2`)
 - ⏳ **F2** atomic multi-file install + completeness manifest
 - ⏳ **F3** curated backend model registry (`stt/registry.rs`) — pairs with A6
 - ⏳ **F4** download retry/backoff + connect timeout
-- ⏳ **F5** remove on-device converter + UI — per decision
+- ✅ **F5** remove on-device converter (backend) — per decision; UI removal → frontend batch
 - 🚩 **F6** ONNX GPU provider selector — UNVERIFIED (CoreML/DirectML/CUDA)
 
 ### Batch B-audio (input quality)
