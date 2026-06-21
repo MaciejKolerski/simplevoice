@@ -514,15 +514,46 @@ impl AudioController {
 }
 
 fn downmix(data: &[f32], channels: u16) -> Vec<f32> {
-    if channels == 1 {
+    if channels <= 1 {
         return data.to_vec();
     }
-    let mut mono = Vec::with_capacity(data.len() / channels as usize);
-    for chunk in data.chunks_exact(channels as usize) {
-        let sum: f32 = chunk.iter().sum();
-        mono.push(sum / channels as f32);
+    let ch = channels as usize;
+    let mut mono = Vec::with_capacity(data.len() / ch + 1);
+    let mut chunks = data.chunks_exact(ch);
+    for chunk in &mut chunks {
+        mono.push(chunk.iter().sum::<f32>() / channels as f32);
+    }
+    // chunks_exact drops the trailing partial frame; average what is present so the
+    // last samples of every callback are not silently lost.
+    let rem = chunks.remainder();
+    if !rem.is_empty() {
+        mono.push(rem.iter().sum::<f32>() / rem.len() as f32);
     }
     mono
+}
+
+#[cfg(test)]
+mod downmix_tests {
+    use super::downmix;
+
+    #[test]
+    fn mono_passthrough() {
+        assert_eq!(downmix(&[0.1, 0.2, 0.3], 1), vec![0.1, 0.2, 0.3]);
+    }
+
+    #[test]
+    fn stereo_averages_pairs() {
+        assert_eq!(downmix(&[0.0, 1.0, 2.0, 3.0], 2), vec![0.5, 2.5]);
+    }
+
+    #[test]
+    fn keeps_trailing_partial_frame() {
+        // 3 channels, 4 samples: one full frame (0+1+2)/3 = 1.0 plus remainder [9.0].
+        let out = downmix(&[0.0, 1.0, 2.0, 9.0], 3);
+        assert_eq!(out.len(), 2);
+        assert!((out[0] - 1.0).abs() < 1e-6);
+        assert!((out[1] - 9.0).abs() < 1e-6);
+    }
 }
 
 pub struct Resampler {
