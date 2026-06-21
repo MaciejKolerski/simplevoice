@@ -148,6 +148,8 @@ export function SettingsView() {
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [pushToTalk, setPushToTalk] = useState(false);
   const [restoreClipboard, setRestoreClipboard] = useState(false);
+  const [pasteDelay, setPasteDelay] = useState("100");
+  const [pasteKeyHold, setPasteKeyHold] = useState("0");
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -280,6 +282,8 @@ export function SettingsView() {
     setLlmCleanup(getConfig("llm_cleanup_enabled", false) === true);
     setPushToTalk(getConfig("push_to_talk_enabled", false) === true);
     setRestoreClipboard(getConfig("restore_clipboard", false) === true);
+    setPasteDelay(String(getConfig("paste_delay_ms", 100)));
+    setPasteKeyHold(String(getConfig("paste_key_hold_ms", 0)));
     setVadThreshold(String(getConfig("vad_threshold", 0.008)));
     setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
@@ -639,6 +643,18 @@ export function SettingsView() {
   const handleRestoreClipboardToggle = (checked: boolean) => {
     setRestoreClipboard(checked);
     updateConfig("restore_clipboard", checked);
+  };
+
+  const handlePasteDelayChange = (value: string) => {
+    setPasteDelay(value);
+    const n = parseInt(value, 10);
+    if (!isNaN(n)) updateConfig("paste_delay_ms", n);
+  };
+
+  const handlePasteKeyHoldChange = (value: string) => {
+    setPasteKeyHold(value);
+    const n = parseInt(value, 10);
+    if (!isNaN(n)) updateConfig("paste_key_hold_ms", n);
   };
 
   const handleLlmCleanupToggle = (checked: boolean) => {
@@ -1036,6 +1052,26 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.restoreClipboard")} description={t("settings.restoreClipboardDesc")}>
             <Switch checked={restoreClipboard} disabled={clipboardOnly} onCheckedChange={handleRestoreClipboardToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.pasteDelay")} description={t("settings.pasteDelayDesc")}>
+            <Input
+              type="number"
+              step="50"
+              value={pasteDelay}
+              onChange={(e) => handlePasteDelayChange(e.target.value)}
+              className="w-24"
+            />
+          </SettingRow>
+
+          <SettingRow title={t("settings.pasteKeyHold")} description={t("settings.pasteKeyHoldDesc")}>
+            <Input
+              type="number"
+              step="10"
+              value={pasteKeyHold}
+              onChange={(e) => handlePasteKeyHoldChange(e.target.value)}
+              className="w-24"
+            />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>

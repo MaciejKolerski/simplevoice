@@ -435,6 +435,45 @@ fn is_restore_clipboard_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Modifier-key hold delay (ms) inserted into the simulated paste keystroke for
+/// apps that drop a too-fast Cmd/Ctrl+V (E6). Set from `paste_key_hold_ms` config
+/// before each backend paste and read in `paste_text`; 0 = no hold (default).
+static PASTE_KEY_HOLD_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Pre-paste settle delay in ms (default 100, clamped 0..=2000): how long to wait
+/// after copying the transcription before simulating the paste keystroke, so the
+/// previously-focused app and the clipboard have time to settle (E6).
+fn paste_delay_ms(app_handle: &tauri::AppHandle) -> u64 {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return 100;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return 100;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("paste_delay_ms").and_then(|x| x.as_u64()))
+        .unwrap_or(100)
+        .clamp(0, 2000)
+}
+
+/// Modifier-hold delay in ms (default 0, clamped 0..=500) inserted between the
+/// modifier press, the V click, and the release in `paste_text`, for apps that
+/// drop a too-fast paste keystroke (E6).
+fn paste_key_hold_ms(app_handle: &tauri::AppHandle) -> u64 {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return 0;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return 0;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("paste_key_hold_ms").and_then(|x| x.as_u64()))
+        .unwrap_or(0)
+        .clamp(0, 500)
+}
+
 /// Reads `model_unload_enabled` from config.json (default false).
 fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
@@ -2313,10 +2352,17 @@ async fn transcribe_audio(
             // Output mode (E2): type the characters directly, or simulate a paste
             // keystroke (default). Read once here, off the runtime thread below.
             let use_typing = is_type_output_enabled(&app_handle);
+            // E6: configurable pre-paste settle delay; the modifier-hold is read
+            // inside paste_text via PASTE_KEY_HOLD_MS, set here from config.
+            let paste_delay = paste_delay_ms(&app_handle);
+            PASTE_KEY_HOLD_MS.store(
+                paste_key_hold_ms(&app_handle),
+                std::sync::atomic::Ordering::Relaxed,
+            );
             let _ = tauri::async_runtime::spawn_blocking(move || {
                 // Let the just-set clipboard propagate and the previously focused app
                 // settle before delivering.
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                std::thread::sleep(std::time::Duration::from_millis(paste_delay));
                 let res = if use_typing {
                     type_text_from_backend(&app_for_out, out_owned)
                 } else {
@@ -3099,14 +3145,25 @@ fn paste_text(text: String) -> Result<(), String> {
         }
     })?;
 
+    // E6: optional hold around the paste keystroke for apps that drop a too-fast
+    // Cmd/Ctrl+V. 0 (default) keeps the original instant paste.
+    let hold_ms = PASTE_KEY_HOLD_MS.load(std::sync::atomic::Ordering::Relaxed);
+    let hold = || {
+        if hold_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+        }
+    };
+
     #[cfg(target_os = "macos")]
     {
         enigo
             .key(Key::Meta, Direction::Press)
             .map_err(|e| format!("Keyboard simulation failed (Meta press): {}", e))?;
+        hold();
         enigo
             .key(Key::Unicode('v'), Direction::Click)
             .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
+        hold();
         enigo
             .key(Key::Meta, Direction::Release)
             .map_err(|e| format!("Keyboard simulation failed (Meta release): {}", e))?;
@@ -3116,9 +3173,11 @@ fn paste_text(text: String) -> Result<(), String> {
         enigo
             .key(Key::Control, Direction::Press)
             .map_err(|e| format!("Keyboard simulation failed (Ctrl press): {}", e))?;
+        hold();
         enigo
             .key(Key::Unicode('v'), Direction::Click)
             .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
+        hold();
         enigo
             .key(Key::Control, Direction::Release)
             .map_err(|e| format!("Keyboard simulation failed (Ctrl release): {}", e))?;
@@ -3128,9 +3187,11 @@ fn paste_text(text: String) -> Result<(), String> {
         enigo
             .key(Key::Control, Direction::Press)
             .map_err(|e| format!("Keyboard simulation failed (Ctrl press): {}", e))?;
+        hold();
         enigo
             .key(Key::Unicode('v'), Direction::Click)
             .map_err(|e| format!("Keyboard simulation failed (V click): {}", e))?;
+        hold();
         enigo
             .key(Key::Control, Direction::Release)
             .map_err(|e| format!("Keyboard simulation failed (Ctrl release): {}", e))?;
