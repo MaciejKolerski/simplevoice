@@ -3123,6 +3123,14 @@ fn type_text(text: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Silence whisper.cpp/ggml's very verbose internal stderr logging (model-load
+    // dump, Metal pipeline compiles, per-token beam-search trace). This routes
+    // their logs through whisper-rs's trampoline; with no `log_backend`/
+    // `tracing_backend` feature enabled the trampoline is a no-op, so the noise is
+    // dropped while our own `tracing` output stays clean. Real failures still
+    // surface via `Result`. Must run before any whisper context is created.
+    whisper_rs::install_logging_hooks();
+
     #[cfg(target_os = "linux")]
     {
         // Disable DMA-BUF renderer in WebKitGTK to prevent black screens/GBM failures on some GPUs
