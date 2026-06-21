@@ -399,6 +399,7 @@ impl AudioController {
 
         // Create the resampler and downmixer
         let mut resampler = Resampler::new(src_rate, dst_rate);
+        let mut dc_blocker = DcBlocker::new();
 
         let err_app = app_handle.clone();
         let err_fn = move |err| {
@@ -411,7 +412,7 @@ impl AudioController {
                 &stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     let mono = downmix(data, channels);
-                    let resampled = resampler.process(&mono);
+                    let resampled = dc_blocker.process(&resampler.process(&mono));
                     let pushed = producer.push_slice(&resampled);
                     if pushed < resampled.len() {
                         note_ring_overflow(resampled.len() - pushed);
@@ -428,7 +429,7 @@ impl AudioController {
                         .map(|&s| cpal::Sample::to_sample::<f32>(s))
                         .collect();
                     let mono = downmix(&f32_data, channels);
-                    let resampled = resampler.process(&mono);
+                    let resampled = dc_blocker.process(&resampler.process(&mono));
                     let pushed = producer.push_slice(&resampled);
                     if pushed < resampled.len() {
                         note_ring_overflow(resampled.len() - pushed);
@@ -445,7 +446,7 @@ impl AudioController {
                         .map(|&s| cpal::Sample::to_sample::<f32>(s))
                         .collect();
                     let mono = downmix(&f32_data, channels);
-                    let resampled = resampler.process(&mono);
+                    let resampled = dc_blocker.process(&resampler.process(&mono));
                     let pushed = producer.push_slice(&resampled);
                     if pushed < resampled.len() {
                         note_ring_overflow(resampled.len() - pushed);
@@ -629,6 +630,55 @@ mod downmix_tests {
         assert_eq!(out.len(), 2);
         assert!((out[0] - 1.0).abs() < 1e-6);
         assert!((out[1] - 9.0).abs() < 1e-6);
+    }
+}
+
+/// One-pole DC-blocking high-pass filter (`y[n] = x[n] - x[n-1] + R*y[n-1]`).
+/// Removes a constant/near-DC offset that would otherwise inflate RMS and bias the
+/// VAD/chunker silence thresholds, while preserving speech. State carries across
+/// callbacks (B8).
+struct DcBlocker {
+    prev_x: f32,
+    prev_y: f32,
+}
+
+impl DcBlocker {
+    fn new() -> Self {
+        Self { prev_x: 0.0, prev_y: 0.0 }
+    }
+
+    fn process(&mut self, input: &[f32]) -> Vec<f32> {
+        const R: f32 = 0.995;
+        input
+            .iter()
+            .map(|&x| {
+                let y = x - self.prev_x + R * self.prev_y;
+                self.prev_x = x;
+                self.prev_y = y;
+                y
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod dc_blocker_tests {
+    use super::DcBlocker;
+
+    #[test]
+    fn removes_constant_offset() {
+        let mut f = DcBlocker::new();
+        let out = f.process(&vec![0.5; 1000]);
+        assert!(out.last().unwrap().abs() < 0.05, "DC not removed: {}", out.last().unwrap());
+    }
+
+    #[test]
+    fn preserves_alternating_ac() {
+        let mut f = DcBlocker::new();
+        let input: Vec<f32> = (0..1000).map(|i| if i % 2 == 0 { 0.5 } else { -0.5 }).collect();
+        let out = f.process(&input);
+        let max = out.iter().cloned().fold(0.0f32, |a, b| a.max(b.abs()));
+        assert!(max > 0.4, "AC attenuated too much: {}", max);
     }
 }
 
