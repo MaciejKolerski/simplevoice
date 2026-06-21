@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (27 / 52)
+## Done (28 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -89,7 +89,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ⏳ **C5** cloud: bounded chunk parallelism
 - ✅ **C1** model warm-up on record start
 - ⏳ **C2** push-to-talk mode
-- ⏳ **C6** idle-unload model
+- ✅ **C6** idle-unload model (`SttController::unload`/`unload_if_idle` + watcher thread, 5min, `model_unload_enabled` toggle, transparent reload on next transcribe; baseline EXACT)
 - ✅ **C3** remove NeMo per-call sidecar (route to ONNX) — per decision
 - ⏳ **F1** SHA-256 verification of downloads (dep: `sha2`)
 - ⏳ **F2** atomic multi-file install + completeness manifest
