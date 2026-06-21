@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (32 / 52)
+## Done (33 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -103,7 +103,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - 🔶 **B8** DC-block ✅ done (`DcBlocker` one-pole HPF in capture, unit-tested) 🚩 needs real-recording check; clipping detect + peak-aware normalize still pending
 - ⏳ **B1** rubato anti-aliasing resampler (dep: `rubato`)
 - ⏳ **B3** pre-roll / look-back buffer
-- ⏳ **B4** configurable VAD threshold/silence + lower consumer latency
+- 🔶 **B4** configurable VAD threshold + silence ✅ done (`apply_vad_config` reads config at record start + Settings number inputs) 🚩 needs real-recording check; consumer-latency reduction (50ms→10ms) still pending
 - ✅ **B7** request/enumerate 16 kHz on device (🚩 needs real-recording check)
 - 🚩 **B2** Silero VAD via sherpa-onnx — needs `silero_vad_v4.onnx` ASSET (user provides/OK to fetch)
 - ⏳ **B6** chunker: VAD-driven cuts + overlap
