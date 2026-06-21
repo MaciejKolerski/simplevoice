@@ -1896,6 +1896,11 @@ async fn transcribe_audio(
     // transcribing (A2/A8).
     apply_decode_preset(&app_handle);
 
+    // Bias Whisper decoding toward the custom dictionary via initial_prompt (A3),
+    // complementing the delivery-layer fuzzy correction (D1). Empty = no bias.
+    *crate::stt::ggml_whisper::WHISPER_INITIAL_PROMPT.lock().unwrap() =
+        custom_words(&app_handle).join(", ");
+
     let final_samples: std::sync::Arc<Vec<f32>> = match samples {
         Some(v) => std::sync::Arc::new(v),
         None => {

@@ -9,6 +9,11 @@ use crate::stt::traits::{AsrEngine, ModelFormat};
 /// param through every engine call; set from config before each transcription (A2/A8).
 pub static WHISPER_BEAM_SIZE: AtomicI32 = AtomicI32::new(0);
 
+/// Whisper initial prompt (custom dictionary, A3): biases decoding toward these
+/// words/names so proper nouns and jargon transcribe correctly. Empty = no prompt.
+/// Set from config before each transcription.
+pub static WHISPER_INITIAL_PROMPT: Mutex<String> = Mutex::new(String::new());
+
 pub struct GgmlWhisperEngine {
     _context: WhisperContext,
     state: Mutex<WhisperState>,
@@ -96,6 +101,11 @@ impl AsrEngine for GgmlWhisperEngine {
             _ => params.set_language(None),
         }
         params.set_translate(false);
+
+        let initial_prompt = WHISPER_INITIAL_PROMPT.lock().unwrap().clone();
+        if !initial_prompt.is_empty() {
+            params.set_initial_prompt(&initial_prompt);
+        }
 
         state.full(params, samples)
             .map_err(|e| AppError::Model(format!("Whisper inference run failed: {}", e)))?;
