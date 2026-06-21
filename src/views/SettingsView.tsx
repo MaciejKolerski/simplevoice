@@ -246,6 +246,8 @@ export function SettingsView() {
 
     const savedLang = localStorage.getItem("asr_language") || "auto";
     setAsrLanguage(savedLang);
+    // Migrate the localStorage value into config.json for the backend live session (G5).
+    updateConfig("asr_language", savedLang);
 
     isEnabled().then(setAutostartEnabled);
 
@@ -624,6 +626,8 @@ export function SettingsView() {
   const handleAsrLanguageChange = (val: string) => {
     setAsrLanguage(val);
     localStorage.setItem("asr_language", val);
+    // Mirror into config.json so the backend live session can read it (G5).
+    updateConfig("asr_language", val);
   };
 
   const handleRecordingWindowModeChange = async (val: string) => {

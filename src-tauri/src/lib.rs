@@ -388,6 +388,20 @@ fn apply_decode_preset(app_handle: &tauri::AppHandle) {
         .store(if accurate { 5 } else { 0 }, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Reads `asr_language` from config.json for the live session (G5). Returns None for
+/// "auto"/empty/missing so Whisper auto-detects; otherwise the language code.
+fn asr_language(app_handle: &tauri::AppHandle) -> Option<String> {
+    let dir = app_handle.path().app_local_data_dir().ok()?;
+    let content = std::fs::read_to_string(dir.join("config.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let code = v.get("asr_language")?.as_str()?.trim();
+    if code.is_empty() || code == "auto" {
+        None
+    } else {
+        Some(code.to_string())
+    }
+}
+
 fn begin_live_session(app: &tauri::AppHandle) {
     if !is_live_transcription_enabled(app) {
         return;
@@ -411,8 +425,10 @@ fn begin_live_session(app: &tauri::AppHandle) {
     // commit only stabilized words live (no mid-word splits). Works with any
     // local batch engine via transcribe() + whitespace split.
     let min_chunk_ms = live_min_chunk_ms(app);
+    // G5: use the user's configured ASR language (None = auto-detect) so live
+    // re-decodes don't drift across languages on short buffers.
     let strategy = Box::new(crate::stt::streaming::local_agreement::LocalAgreementStrategy::new(
-        engine, threshold, silence_ms, min_chunk_ms, None,
+        engine, threshold, silence_ms, min_chunk_ms, asr_language(app),
     ));
     let streaming = app.state::<crate::stt::streaming::StreamingController>();
     let tx = streaming.start(app.clone(), strategy);
