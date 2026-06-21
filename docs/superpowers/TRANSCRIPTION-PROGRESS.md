@@ -24,7 +24,15 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (20 / 52)
+## Done (21 / 52)
+
+> **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
+> `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
+> and applies it; `SettingsView.tsx` adds a `useState` + handler calling
+> `updateConfig("key", v)` + a `<SettingRow><Switch/></SettingRow>`; i18n keys go in
+> `src/i18n/locales/{en,pl,de}.json`. Verify with `cargo test` + `pnpm lint`
+> (`pnpm install --frozen-lockfile` first — node_modules isn't in the repo). Reuse this
+> for D4, D5, A3/D1, A2/A8, E2/E3, C2, C6, G5.
 _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and live-drop counter (`note_live_drop`) merged on top of the earlier downmix/coalesce halves. The `transcription-buffering` UI event stays for the frontend batch._
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
@@ -52,7 +60,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 > Forcing `ui_language` would be wrong (user dictates pl, UI is en).
 
 ### Batch D-text (pure logic, fully macOS-verifiable, high value)
-- ⏳ **D2-fillers** per-language filler-word removal (uh/um/eh…), config tri-state — needs `TranscribeOptions` config threading
+- ✅ **D2-fillers** per-language filler-word removal (en/pl/de), opt-in via `filler_removal_enabled` config + Settings toggle (delivery-layer in `transcribe_audio`)
 - ⏳ **D4** OpenCC (zh-Hans/Hant) + optional sentence-casing (dep: `ferrous-opencc`)
 - ⏳ **D5** voice formatting commands ("new line", "comma", per-language)
 - ⏳ **D1** custom-dictionary fuzzy corrector (dep: `strsim`/`natural`)
