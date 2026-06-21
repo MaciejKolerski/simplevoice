@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (35 / 52)
+## Done (36 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -49,7 +49,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ✅ **B7** prefer native 16 kHz input config (`choose_input_config`, fallback to default) — resampler passthrough when device supports 16k. 🚩 _needs real-recording verification (capture path not exercised by the harness)._
 - ✅ **A7** Parakeet transducer: `decoding_method="modified_beam_search"` + `max_active_paths=4`. Verified: Parakeet baseline stayed 0.000/EXACT, output segmentation changed (beam active).
 - ✅ **G3-coalesce** worker drains the live-audio backlog into one decode + channel widened 16→64. 🚩 _coalescing not runtime-verified (no live mic here); drop-counter/event half of G3 → H5 pass._
-- 🔶 **F4-timeout** download client gets `connect_timeout(15s)` (no total timeout — large files). _Retry/backoff loop (the other half of F4) still pending → needs real download testing._
+- ✅ **F4** download client `connect_timeout(15s)` + retry/backoff loop: transient failures (network / 5xx / 408 / 429 / truncated stream) retry with capped exponential backoff (1→30s), resuming via `.part` + HTTP Range. Non-retryable: other 4xx, disk errors, unsafe paths. Pause/cancel short-circuit. Unit-tested (backoff curve, status classification).
 
 ## Planned sequencing of the remaining 39 (verifiable-first)
 
@@ -94,7 +94,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ⏳ **F1** SHA-256 verification of downloads (dep: `sha2`)
 - ⏳ **F2** atomic multi-file install + completeness manifest
 - ⏳ **F3** curated backend model registry (`stt/registry.rs`) — pairs with A6
-- 🔶 **F4** connect timeout ✅ done; retry/backoff loop pending (needs download testing)
+- ✅ **F4** connect timeout + retry/backoff loop (capped exp backoff, resumes via `.part`+Range; unit-tested)
 - ✅ **F5** remove on-device converter (backend) — per decision; UI removal → frontend batch
 - 🚩 **F6** ONNX GPU provider selector — UNVERIFIED (CoreML/DirectML/CUDA)
 
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 17 — needs your involvement (autonomous-safe items exhausted at 35/52)
+## Remaining 16 — needs your involvement (autonomous-safe items exhausted at 35/52)
 
 **Blocked on an asset / key / data you must provide:**
 - **B2** Silero VAD — needs the `silero_vad_v4.onnx` model file (provide it, or OK me to fetch it).
@@ -150,7 +150,7 @@ _(filled as 🚩 items land)_
 
 **Doable but lower-value / larger — say the word and I'll do them:**
 - **A6** Parakeet-V3 "recommended" badge + calibrated metadata (cosmetic).
-- **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep), **E2-type** "type instead of paste" mode, **F2** atomic multi-file install, **F4-retry** download retry/backoff, **H5** structured `tracing` logging (large mechanical sweep).
+- **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep), **E2-type** "type instead of paste" mode, **F2** atomic multi-file install, **H5** structured `tracing` logging (large mechanical sweep). _(F4-retry ✅ done.)_
 
 **How to unblock fastest:** drop a `silero_vad_v4.onnx`, an API key (for D3), and tell me whether to ship the platform code unverified — and I'll resume the loop on the rest.
 
