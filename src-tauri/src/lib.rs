@@ -528,22 +528,38 @@ fn is_formatting_commands_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Reads the `custom_words` string array from config.json (empty by default).
-fn custom_words(app_handle: &tauri::AppHandle) -> Vec<String> {
+/// Reads `dictionary_rules` from config.json. Falls back to migrating the legacy
+/// `custom_words` array (each word -> a `text` rule) when `dictionary_rules` is
+/// absent, so existing installs keep their dictionary behavior without a rewrite.
+fn dictionary_rules(app_handle: &tauri::AppHandle) -> Vec<crate::stt::text::DictionaryRule> {
+    use crate::stt::text::{DictionaryRule, RuleAction};
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return Vec::new();
     };
     let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
         return Vec::new();
     };
-    serde_json::from_str::<serde_json::Value>(&content)
-        .ok()
-        .and_then(|v| {
-            v.get("custom_words").and_then(|a| a.as_array()).map(|arr| {
-                arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return Vec::new();
+    };
+    if let Some(arr) = v.get("dictionary_rules").and_then(|a| a.as_array()) {
+        return arr
+            .iter()
+            .filter_map(|item| serde_json::from_value::<DictionaryRule>(item.clone()).ok())
+            .collect();
+    }
+    if let Some(arr) = v.get("custom_words").and_then(|a| a.as_array()) {
+        return arr
+            .iter()
+            .filter_map(|x| x.as_str())
+            .map(|s| DictionaryRule {
+                trigger: s.to_string(),
+                action: RuleAction::Text,
+                value: Some(s.to_string()),
             })
-        })
-        .unwrap_or_default()
+            .collect();
+    }
+    Vec::new()
 }
 
 /// Reads `decode_accurate` from config.json and sets the Whisper beam width (beam
@@ -2231,15 +2247,18 @@ async fn transcribe_audio(
     // transcribing (A2/A8).
     apply_decode_preset(&app_handle);
 
-    // Bias Whisper decoding toward the custom dictionary via initial_prompt (A3),
-    // complementing the delivery-layer fuzzy correction (D1). Empty = no bias.
-    *crate::stt::ggml_whisper::WHISPER_INITIAL_PROMPT.lock().unwrap() =
-        custom_words(&app_handle).join(", ");
-
-    // A7/A3: bias the ONNX transducer decoder toward the same custom-dictionary
-    // phrases (one per line, contextual hotwords). Empty = no biasing.
-    *crate::stt::onnx_engine::ONNX_HOTWORDS.lock().unwrap() =
-        custom_words(&app_handle).join("\n");
+    // Bias decoding toward the custom dictionary (A3/A7). After migration this
+    // equals the former custom_words set, so recognition is unchanged. Only
+    // `text`-rule values bias; time/date are dynamic and contribute nothing.
+    let dict_rules = dictionary_rules(&app_handle);
+    let bias: Vec<String> = dict_rules
+        .iter()
+        .filter(|r| r.action == crate::stt::text::RuleAction::Text)
+        .filter_map(|r| r.value.clone())
+        .filter(|v| !v.is_empty())
+        .collect();
+    *crate::stt::ggml_whisper::WHISPER_INITIAL_PROMPT.lock().unwrap() = bias.join(", ");
+    *crate::stt::onnx_engine::ONNX_HOTWORDS.lock().unwrap() = bias.join("\n");
 
     let final_samples: std::sync::Arc<Vec<f32>> = match samples {
         Some(v) => std::sync::Arc::new(v),
@@ -2366,11 +2385,16 @@ async fn transcribe_audio(
     } else {
         text
     };
-    let custom = custom_words(&app_handle);
-    let text = if !custom.is_empty() {
-        crate::stt::text::apply_custom_words(&text, &custom)
-    } else {
+    // Dictionary rules: substitute spoken trigger phrases with text / current
+    // time / current date. Reuses the rules read for biasing above.
+    let text = if dict_rules.is_empty() {
         text
+    } else {
+        crate::stt::text::apply_dictionary_rules(
+            &text,
+            &dict_rules,
+            chrono::Local::now().naive_local(),
+        )
     };
     let text = if is_formatting_commands_enabled(&app_handle) {
         crate::stt::text::apply_formatting_commands(&text, language.as_deref())
