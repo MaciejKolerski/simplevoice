@@ -11,7 +11,7 @@ use crate::stt::traits::AsrEngine;
 
 use super::segmenter::{SegmenterEvent, SpeechSegmenter};
 use super::stabilizer::Stabilizer;
-use super::words::{join_words, split_words};
+use super::words::{join_onto, join_words, split_words};
 use super::{StreamEvent, StreamSink, StreamingStrategy};
 
 const SAMPLE_RATE: usize = 16_000;
@@ -22,8 +22,10 @@ pub struct LocalAgreementStrategy {
     language: Option<String>,
     segmenter: SpeechSegmenter,
     stab: Stabilizer,
-    /// Finalized words from previous utterances this session.
-    session: Vec<String>,
+    /// Joined text of all finalized utterances this session, kept incrementally
+    /// so `full_text` is O(current utterance) rather than re-cloning and
+    /// re-joining the whole history on every decode (G1).
+    session_text: String,
     /// Last emitted committed text, for computing the append-only delta.
     last_full: String,
     min_chunk_samples: usize,
@@ -45,7 +47,7 @@ impl LocalAgreementStrategy {
             language,
             segmenter: SpeechSegmenter::new(threshold, silence_ms, SAMPLE_RATE as u32),
             stab: Stabilizer::new(),
-            session: Vec::new(),
+            session_text: String::new(),
             last_full: String::new(),
             min_chunk_samples: (min_chunk_ms as usize) * SAMPLES_PER_MS,
             cap_samples: (cap_secs.clamp(5, 120) as usize) * SAMPLE_RATE,
@@ -54,9 +56,7 @@ impl LocalAgreementStrategy {
     }
 
     fn full_text(&self) -> String {
-        let mut all = self.session.clone();
-        all.extend_from_slice(self.stab.committed());
-        join_words(&all)
+        join_onto(&self.session_text, self.stab.committed())
     }
 
     fn decode(&self, audio: &[f32]) -> Result<Vec<String>, AppError> {
@@ -94,7 +94,7 @@ impl LocalAgreementStrategy {
             }
         }
         self.stab.flush();
-        self.session.extend(self.stab.committed().iter().cloned());
+        self.session_text = join_onto(&self.session_text, self.stab.committed());
         self.stab = Stabilizer::new();
         self.since_decode = 0;
         self.emit_state(sink, &[]);
@@ -142,9 +142,9 @@ impl StreamingStrategy for LocalAgreementStrategy {
             self.finalize_utterance(&seg, sink);
         } else {
             self.stab.flush();
-            self.session.extend(self.stab.committed().iter().cloned());
+            self.session_text = join_onto(&self.session_text, self.stab.committed());
         }
-        let _ = sink.send(StreamEvent::Final { text: join_words(&self.session) });
+        let _ = sink.send(StreamEvent::Final { text: self.session_text.clone() });
         Ok(())
     }
 }

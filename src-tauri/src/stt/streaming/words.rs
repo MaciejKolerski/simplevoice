@@ -75,6 +75,30 @@ pub fn join_words(words: &[String]) -> String {
     out
 }
 
+/// Append `words` onto an already-joined `prefix`, applying the exact same
+/// boundary rule as [`join_words`] between the last char of `prefix` and the
+/// first unit. Lets a caller keep a running joined string in O(appended) work
+/// instead of re-cloning and re-joining the whole history on every update (G1):
+/// `join_onto(&join_words(a), b) == join_words(&[a, b].concat())`.
+pub fn join_onto(prefix: &str, words: &[String]) -> String {
+    let tail = join_words(words);
+    if prefix.is_empty() {
+        return tail;
+    }
+    if tail.is_empty() {
+        return prefix.to_string();
+    }
+    let prev_cjk = prefix.chars().last().map_or(false, is_cjk);
+    let next_cjk = tail.chars().next().map_or(false, is_cjk);
+    let mut out = String::with_capacity(prefix.len() + 1 + tail.len());
+    out.push_str(prefix);
+    if !(prev_cjk && next_cjk) {
+        out.push(' ');
+    }
+    out.push_str(&tail);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +144,26 @@ mod tests {
         assert_eq!(join_words(&v(&["你", "好"])), "你好");
         assert_eq!(join_words(&v(&["你", "world"])), "你 world");
         assert_eq!(join_words(&v(&["hello", "world"])), "hello world");
+    }
+
+    #[test]
+    fn join_onto_matches_full_join() {
+        // join_onto(join_words(a), b) must equal join_words(a ++ b) for every
+        // boundary case the streaming cache relies on.
+        let cases: &[(&[&str], &[&str])] = &[
+            (&["alpha", "beta"], &["gamma", "delta"]),
+            (&[], &["a", "b"]),
+            (&["a", "b"], &[]),
+            (&["你", "好"], &["世", "界"]),   // CJK | CJK -> no space at seam
+            (&["hello"], &["你"]),            // latin | CJK -> space
+            (&["你"], &["world"]),            // CJK | latin -> space
+        ];
+        for (a, b) in cases {
+            let a = v(a);
+            let b = v(b);
+            let mut all = a.clone();
+            all.extend(b.clone());
+            assert_eq!(join_onto(&join_words(&a), &b), join_words(&all), "a={a:?} b={b:?}");
+        }
     }
 }
