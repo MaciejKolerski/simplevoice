@@ -1,7 +1,13 @@
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicI32, Ordering};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 use crate::error::AppError;
 use crate::stt::traits::{AsrEngine, ModelFormat};
+
+/// Whisper beam width: 0 = greedy (fast preset), >=1 = beam search (accurate preset).
+/// Process-global so the "Accuracy vs Speed" setting applies without re-threading a
+/// param through every engine call; set from config before each transcription (A2/A8).
+pub static WHISPER_BEAM_SIZE: AtomicI32 = AtomicI32::new(0);
 
 pub struct GgmlWhisperEngine {
     _context: WhisperContext,
@@ -58,7 +64,13 @@ impl AsrEngine for GgmlWhisperEngine {
         let mut state_guard = self.state.lock().map_err(|e| AppError::Model(format!("State lock error: {}", e)))?;
         let state = &mut *state_guard;
 
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 2 });
+        let beam = WHISPER_BEAM_SIZE.load(Ordering::Relaxed);
+        let strategy = if beam >= 1 {
+            SamplingStrategy::BeamSearch { beam_size: beam, patience: -1.0 }
+        } else {
+            SamplingStrategy::Greedy { best_of: 2 }
+        };
+        let mut params = FullParams::new(strategy);
         params.set_temperature(0.0);
         params.set_temperature_inc(0.2);
         // Optimize thread count per platform for fastest transcription.

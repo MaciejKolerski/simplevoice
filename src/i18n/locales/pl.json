@@ -96,6 +96,8 @@
     "formattingCommandsDesc": "Zamieniaj wypowiadane komendy (\"nowa linia\", \"przecinek\") na formatowanie.",
     "customWords": "Słownik własny",
     "customWordsDesc": "Nazwy/terminy oddzielone przecinkami, poprawiane w transkrypcji (np. ChatGPT, Kubernetes).",
+    "accurateMode": "Tryb dokładny (beam search)",
+    "accurateModeDesc": "Używaj beam search w Whisperze dla wyższej dokładności kosztem większego zużycia CPU.",
     "pauseSystemAudio": "Wstrzymaj dźwięk systemowy",
     "pauseSystemAudioDesc": "Automatycznie wstrzymuj muzykę lub filmy podczas nagrywania i wznawiaj je po jego zakończeniu.",
     "recordingOverlayWindow": "Okno nakładki nagrywania",

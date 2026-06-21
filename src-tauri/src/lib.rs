@@ -304,6 +304,21 @@ fn custom_words(app_handle: &tauri::AppHandle) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Reads `decode_accurate` from config.json and sets the Whisper beam width (beam
+/// search when accurate, greedy otherwise) before a transcription (A2/A8).
+fn apply_decode_preset(app_handle: &tauri::AppHandle) {
+    let accurate = app_handle
+        .path()
+        .app_local_data_dir()
+        .ok()
+        .and_then(|dir| std::fs::read_to_string(dir.join("config.json")).ok())
+        .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+        .and_then(|v| v.get("decode_accurate").and_then(|b| b.as_bool()))
+        .unwrap_or(false);
+    crate::stt::ggml_whisper::WHISPER_BEAM_SIZE
+        .store(if accurate { 5 } else { 0 }, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn begin_live_session(app: &tauri::AppHandle) {
     if !is_live_transcription_enabled(app) {
         return;
@@ -1822,6 +1837,10 @@ async fn transcribe_audio(
     let _app_nap_guard = AppNapGuard::begin("SimpleVoice is transcribing audio");
 
     let controller = stt_controller.inner().clone();
+
+    // Apply the Accuracy-vs-Speed preset (Whisper beam width) from config before
+    // transcribing (A2/A8).
+    apply_decode_preset(&app_handle);
 
     let final_samples: std::sync::Arc<Vec<f32>> = match samples {
         Some(v) => std::sync::Arc::new(v),

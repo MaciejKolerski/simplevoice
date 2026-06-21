@@ -138,6 +138,7 @@ export function SettingsView() {
   const [sentenceCaseEnabled, setSentenceCaseEnabled] = useState(false);
   const [formattingCommandsEnabled, setFormattingCommandsEnabled] = useState(false);
   const [customWords, setCustomWords] = useState("");
+  const [decodeAccurate, setDecodeAccurate] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -260,6 +261,7 @@ export function SettingsView() {
     setSentenceCaseEnabled(getConfig("sentence_case_enabled", false) === true);
     setFormattingCommandsEnabled(getConfig("formatting_commands_enabled", false) === true);
     setCustomWords(((getConfig("custom_words", []) as string[]) || []).join(", "));
+    setDecodeAccurate(getConfig("decode_accurate", false) === true);
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
     const chunkMs = getConfig("live_min_chunk_ms", null);
     const speed = Object.entries(LIVE_SPEED_MS).find(([, ms]) => ms === chunkMs)?.[0];
@@ -570,6 +572,11 @@ export function SettingsView() {
     setCustomWords(value);
     const words = value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
     updateConfig("custom_words", words);
+  };
+
+  const handleDecodeAccurateToggle = (checked: boolean) => {
+    setDecodeAccurate(checked);
+    updateConfig("decode_accurate", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -896,6 +903,10 @@ export function SettingsView() {
               placeholder="ChatGPT, Kubernetes"
               className="w-64"
             />
+          </SettingRow>
+
+          <SettingRow title={t("settings.accurateMode")} description={t("settings.accurateModeDesc")}>
+            <Switch checked={decodeAccurate} onCheckedChange={handleDecodeAccurateToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>
