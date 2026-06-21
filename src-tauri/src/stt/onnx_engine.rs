@@ -123,6 +123,10 @@ impl OnnxEngine {
                     joiner: Some(joiner.to_string_lossy().to_string()),
                 };
                 config.model_config.model_type = Some("nemo_transducer".to_string());
+                // A7: modified beam search over the transducer lattice (vs default
+                // greedy) recovers accuracy on harder audio at a small cost.
+                config.decoding_method = Some("modified_beam_search".to_string());
+                config.max_active_paths = 4;
             }
             OnnxLayout::MoonshineV1 => {
                 println!("Initializing Moonshine v1 engine from: {}", dir.display());
