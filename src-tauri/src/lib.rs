@@ -419,6 +419,22 @@ fn is_type_output_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads `restore_clipboard` from config.json (default false): after auto-paste,
+/// put the user's previous clipboard contents back instead of leaving the
+/// transcription on the clipboard (E1). Text clipboards only.
+fn is_restore_clipboard_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("restore_clipboard").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
 /// Reads `model_unload_enabled` from config.json (default false).
 fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
@@ -2266,6 +2282,19 @@ async fn transcribe_audio(
     // pasted" hang. Anything the user is waiting on therefore happens here, not in
     // the frontend's post-await code, so it no longer depends on that delivery.
     if !text.trim().is_empty() {
+        // E1: when enabled, remember the user's current clipboard so we can restore
+        // it after auto-paste consumes our transcription (text clipboards only).
+        // Skipped in clipboard-only mode, where keeping the text on the clipboard
+        // is the whole point.
+        let saved_clipboard = if is_restore_clipboard_enabled(&app_handle)
+            && !is_clipboard_only(&app_handle)
+        {
+            arboard::Clipboard::new()
+                .ok()
+                .and_then(|mut c| c.get_text().ok())
+        } else {
+            None
+        };
         // System clipboard (arboard; on Wayland its wlr-data-control backend keeps
         // a background server alive after the handle drops).
         if let Ok(mut clipboard) = arboard::Clipboard::new() {
@@ -2297,6 +2326,15 @@ async fn transcribe_audio(
                     tracing::error!("[transcribe_audio] backend auto-output failed: {e}");
                     // Surface the silent failure so the UI can prompt manual paste (E7).
                     let _ = app_for_out.emit("paste-error", format!("{e}"));
+                }
+                // E1: restore the user's previous clipboard once the paste has
+                // consumed our text. The short delay lets the target app read the
+                // clipboard before we overwrite it.
+                if let Some(prev) = saved_clipboard {
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    if let Ok(mut c) = arboard::Clipboard::new() {
+                        let _ = c.set_text(prev);
+                    }
                 }
             })
             .await;

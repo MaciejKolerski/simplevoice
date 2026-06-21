@@ -117,6 +117,8 @@
     "clipboardOnlyDesc": "Kopiuj transkrypcję do schowka bez automatycznego wklejania.",
     "typeOutput": "Pisz zamiast wklejać",
     "typeOutputDesc": "Dostarcza transkrypcję, wpisując znaki w miejscu kursora zamiast symulować wklejanie. Pomaga w aplikacjach, które blokują Cmd/Ctrl+V lub czyszczą schowek. Ignorowane, gdy włączony jest tryb „Tylko schowek”.",
+    "restoreClipboard": "Przywróć schowek po wklejeniu",
+    "restoreClipboardDesc": "Po auto-wklejeniu przywraca poprzednią zawartość schowka, żeby transkrypcja nie nadpisywała tego, co miałeś skopiowane. Tylko schowek tekstowy; ostatnia transkrypcja nadal dostępna pod skrótem kopiowania. Ignorowane, gdy włączony jest tryb „Tylko schowek”.",
     "pauseSystemAudio": "Wstrzymaj dźwięk systemowy",
     "pauseSystemAudioDesc": "Automatycznie wstrzymuj muzykę lub filmy podczas nagrywania i wznawiaj je po jego zakończeniu.",
     "recordingOverlayWindow": "Okno nakładki nagrywania",

@@ -147,6 +147,7 @@ export function SettingsView() {
   const [typeOutput, setTypeOutput] = useState(false);
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [pushToTalk, setPushToTalk] = useState(false);
+  const [restoreClipboard, setRestoreClipboard] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -278,6 +279,7 @@ export function SettingsView() {
     setTypeOutput(getConfig("type_output", false) === true);
     setLlmCleanup(getConfig("llm_cleanup_enabled", false) === true);
     setPushToTalk(getConfig("push_to_talk_enabled", false) === true);
+    setRestoreClipboard(getConfig("restore_clipboard", false) === true);
     setVadThreshold(String(getConfig("vad_threshold", 0.008)));
     setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
@@ -632,6 +634,11 @@ export function SettingsView() {
   const handlePushToTalkToggle = (checked: boolean) => {
     setPushToTalk(checked);
     updateConfig("push_to_talk_enabled", checked);
+  };
+
+  const handleRestoreClipboardToggle = (checked: boolean) => {
+    setRestoreClipboard(checked);
+    updateConfig("restore_clipboard", checked);
   };
 
   const handleLlmCleanupToggle = (checked: boolean) => {
@@ -1025,6 +1032,10 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.typeOutput")} description={t("settings.typeOutputDesc")}>
             <Switch checked={typeOutput} disabled={clipboardOnly} onCheckedChange={handleTypeOutputToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.restoreClipboard")} description={t("settings.restoreClipboardDesc")}>
+            <Switch checked={restoreClipboard} disabled={clipboardOnly} onCheckedChange={handleRestoreClipboardToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>
