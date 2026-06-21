@@ -2,6 +2,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::Sender;
 use ringbuf::{storage::Heap, traits::*, SharedRb};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tauri::{Emitter, Manager};
 
 /// Safety net for forgotten recordings (the design target is ~1 h sessions).
@@ -393,7 +394,10 @@ impl AudioController {
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     let mono = downmix(data, channels);
                     let resampled = resampler.process(&mono);
-                    let _ = producer.push_slice(&resampled);
+                    let pushed = producer.push_slice(&resampled);
+                    if pushed < resampled.len() {
+                        note_ring_overflow(resampled.len() - pushed);
+                    }
                 },
                 err_fn,
                 None,
@@ -407,7 +411,10 @@ impl AudioController {
                         .collect();
                     let mono = downmix(&f32_data, channels);
                     let resampled = resampler.process(&mono);
-                    let _ = producer.push_slice(&resampled);
+                    let pushed = producer.push_slice(&resampled);
+                    if pushed < resampled.len() {
+                        note_ring_overflow(resampled.len() - pushed);
+                    }
                 },
                 err_fn,
                 None,
@@ -421,7 +428,10 @@ impl AudioController {
                         .collect();
                     let mono = downmix(&f32_data, channels);
                     let resampled = resampler.process(&mono);
-                    let _ = producer.push_slice(&resampled);
+                    let pushed = producer.push_slice(&resampled);
+                    if pushed < resampled.len() {
+                        note_ring_overflow(resampled.len() - pushed);
+                    }
                 },
                 err_fn,
                 None,
@@ -533,6 +543,19 @@ fn choose_input_config(device: &cpal::Device) -> Result<cpal::SupportedStreamCon
         }
     }
     device.default_input_config().map_err(|e| e.to_string())
+}
+
+static RING_DROPPED: AtomicUsize = AtomicUsize::new(0);
+static RING_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// Records samples dropped because the consumer fell behind and the ring filled
+/// (previously a silent `let _ = push_slice`). Warns once per process so a
+/// persistent fault is visible without log spam (B5).
+fn note_ring_overflow(dropped: usize) {
+    RING_DROPPED.fetch_add(dropped, Ordering::Relaxed);
+    if !RING_WARNED.swap(true, Ordering::Relaxed) {
+        eprintln!("audio ring buffer overflow: consumer fell behind, dropping samples");
+    }
 }
 
 fn downmix(data: &[f32], channels: u16) -> Vec<f32> {
