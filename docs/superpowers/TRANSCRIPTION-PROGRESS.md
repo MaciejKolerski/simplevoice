@@ -65,9 +65,8 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ✅ **D5** voice formatting commands (`apply_formatting_commands`, en/pl/de) + `formatting_commands_enabled` toggle
 - ✅ **D1-fuzzy** custom-dictionary correction (`apply_custom_words` reusing `eval::edit_distance`) + `custom_words` config + Settings input. _A3 decode-time initial_prompt/hotwords still pending._
 - ✅ **A2/A8** Whisper beam-search accuracy preset (`WHISPER_BEAM_SIZE` global set from `decode_accurate` config in `transcribe_audio`) + Settings toggle. Verified: beam path EXACT on baseline.
-- 🔶 **D4** sentence-casing ✅ done (`sentence_case` + `sentence_case_enabled` toggle); OpenCC zh-Hans/Hant pending (dep `ferrous-opencc`)
-- ✅ **D5** voice formatting commands ("new line"/"comma"/"period"…, en/pl/de) + `formatting_commands_enabled` toggle
-- 🔶 **D1** custom-dictionary fuzzy corrector ✅ done (delivery-layer, `apply_custom_words` reusing `eval::edit_distance`, `custom_words` config + Settings input); A3 decode-time `initial_prompt`/hotwords still pending (needs options threaded into engines)
+
+> **Remaining D-tail:** D4-OpenCC zh-Hans/Hant (dep `ferrous-opencc`), A3 decode-time `initial_prompt`/hotwords (needs options threaded into engines), D3 LLM cleanup (deferred, needs API keys).
 
 ### Batch A-accuracy (decoder/model, mostly verifiable)
 - ⏳ **A3** custom dictionary as `initial_prompt` (Whisper) + ONNX hotwords  — pairs with D1
