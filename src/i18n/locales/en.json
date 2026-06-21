@@ -81,6 +81,8 @@
     "vadSilenceDesc": "How long silence must last before auto-stop triggers.",
     "liveTranscription": "Live transcription",
     "liveTranscriptionDesc": "Show text in the recording overlay as you speak, instead of only after you stop.",
+    "pushToTalk": "Push-to-talk",
+    "pushToTalkDesc": "Hold the record shortcut to record and release it to stop, instead of pressing once to start and again to stop.",
     "liveAutopaste": "Type live transcription",
     "liveAutopasteDesc": "Type confirmed words into the active app as you speak. When off, the full text is pasted once at the end.",
     "liveGroup": "Live transcription",

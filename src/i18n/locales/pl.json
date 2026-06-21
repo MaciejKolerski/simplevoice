@@ -81,6 +81,8 @@
     "vadSilenceDesc": "Jak długo musi trwać cisza, zanim nastąpi auto-stop.",
     "liveTranscription": "Transkrypcja na żywo",
     "liveTranscriptionDesc": "Pokazuj tekst w nakładce nagrywania w trakcie mówienia, a nie dopiero po zakończeniu.",
+    "pushToTalk": "Push-to-talk (przytrzymaj)",
+    "pushToTalkDesc": "Przytrzymaj skrót nagrywania, by nagrywać, i puść, by zakończyć — zamiast naciskać raz, by zacząć, i drugi raz, by zatrzymać.",
     "liveAutopaste": "Wpisuj transkrypcję na żywo",
     "liveAutopasteDesc": "Wpisuj zatwierdzone słowa do aktywnej aplikacji w trakcie mówienia. Gdy wyłączone, cały tekst zostaje wklejony raz na końcu.",
     "liveGroup": "Transkrypcja na żywo",

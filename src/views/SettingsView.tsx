@@ -146,6 +146,7 @@ export function SettingsView() {
   const [clipboardOnly, setClipboardOnly] = useState(false);
   const [typeOutput, setTypeOutput] = useState(false);
   const [llmCleanup, setLlmCleanup] = useState(false);
+  const [pushToTalk, setPushToTalk] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -276,6 +277,7 @@ export function SettingsView() {
     setClipboardOnly(getConfig("clipboard_only", false) === true);
     setTypeOutput(getConfig("type_output", false) === true);
     setLlmCleanup(getConfig("llm_cleanup_enabled", false) === true);
+    setPushToTalk(getConfig("push_to_talk_enabled", false) === true);
     setVadThreshold(String(getConfig("vad_threshold", 0.008)));
     setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
@@ -627,6 +629,11 @@ export function SettingsView() {
     updateConfig("type_output", checked);
   };
 
+  const handlePushToTalkToggle = (checked: boolean) => {
+    setPushToTalk(checked);
+    updateConfig("push_to_talk_enabled", checked);
+  };
+
   const handleLlmCleanupToggle = (checked: boolean) => {
     setLlmCleanup(checked);
     updateConfig("llm_cleanup_enabled", checked);
@@ -843,6 +850,13 @@ export function SettingsView() {
               description={t("settings.liveTranscriptionDesc")}
             >
               <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
+            </SettingRow>
+
+            <SettingRow
+              title={t("settings.pushToTalk")}
+              description={t("settings.pushToTalkDesc")}
+            >
+              <Switch checked={pushToTalk} onCheckedChange={handlePushToTalkToggle} />
             </SettingRow>
 
             <div

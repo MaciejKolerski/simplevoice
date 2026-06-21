@@ -81,6 +81,8 @@
     "vadSilenceDesc": "Wie lange Stille andauern muss, bevor der Auto-Stopp auslöst.",
     "liveTranscription": "Live-Transkription",
     "liveTranscriptionDesc": "Text während des Sprechens im Aufnahme-Overlay anzeigen, statt erst nach dem Stopp.",
+    "pushToTalk": "Push-to-talk (gedrückt halten)",
+    "pushToTalkDesc": "Aufnahme-Kürzel gedrückt halten zum Aufnehmen und loslassen zum Stoppen — statt einmal zum Starten und erneut zum Stoppen zu drücken.",
     "liveAutopaste": "Live-Transkription tippen",
     "liveAutopasteDesc": "Bestätigte Wörter während des Sprechens in die aktive App tippen. Wenn aus, wird der ganze Text am Ende einmal eingefügt.",
     "liveGroup": "Live-Transkription",

@@ -1442,52 +1442,88 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
 /// Toggles the voice recording state.
 /// If active, stops the recording and emits the transcribed payload.
 /// If inactive, starts recording if allowed by configuration.
-fn toggle_recording(app: &tauri::AppHandle) {
+/// Reads `push_to_talk_enabled` from config.json (default false): hold the record
+/// shortcut to record and release it to stop, instead of press-to-toggle (C2).
+fn is_push_to_talk_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("push_to_talk_enabled").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
+/// Start recording (no-op if already recording). Shared by the press-to-toggle
+/// shortcut and the push-to-talk key-down.
+fn start_recording_action(app: &tauri::AppHandle) {
     let controller = app.state::<AudioController>();
     if controller.is_recording() {
-        if let Ok(wav_path) = controller.stop_recording(app) {
-            play_backend_sound(app, "stop");
-            let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
-            let _ = app.emit("recording-stopped", payload);
-            update_recording_window_visibility(app);
-            end_live_session(app);
+        return;
+    }
+    let stt = app.state::<SttController>();
+    let config = app.state::<AppConfig>();
+    match is_recording_allowed(&config, &stt) {
+        Ok(_) => {
+            let pause_audio = is_pause_audio_enabled(app);
+            match controller.start_recording(app.clone(), pause_audio) {
+                Ok(()) => {
+                    play_backend_sound(app, "start");
+                    let _ = app.emit("recording-started", ());
+                    update_recording_window_visibility(app);
+                    apply_vad_config(app);
+                    begin_live_session(app);
+                    warm_up_engine(app);
+                }
+                Err(reason) => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                    let _ = app.emit("recording-failed-to-start", reason);
+                }
+            }
         }
-    } else {
-        let stt = app.state::<SttController>();
-        let config = app.state::<AppConfig>();
-        match is_recording_allowed(&config, &stt) {
-            Ok(_) => {
-                let pause_audio = is_pause_audio_enabled(app);
-                match controller.start_recording(app.clone(), pause_audio) {
-                    Ok(()) => {
-                        play_backend_sound(app, "start");
-                        let _ = app.emit("recording-started", ());
-                        update_recording_window_visibility(app);
-                        apply_vad_config(app);
-                        begin_live_session(app);
-                        warm_up_engine(app);
-                    }
-                    Err(reason) => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
-                        let _ = app.emit("recording-failed-to-start", reason);
-                    }
-                }
+        Err(reason) => {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
             }
-            Err(reason) => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
-                let _ = app.emit("recording-failed-to-start", reason);
-            }
+            let _ = app.emit("recording-failed-to-start", reason);
         }
     }
     let _ = rebuild_tray_menu(app);
+}
+
+/// Stop recording (no-op if not recording). Shared by the press-to-toggle
+/// shortcut and the push-to-talk key-up.
+fn stop_recording_action(app: &tauri::AppHandle) {
+    let controller = app.state::<AudioController>();
+    if !controller.is_recording() {
+        return;
+    }
+    if let Ok(wav_path) = controller.stop_recording(app) {
+        play_backend_sound(app, "stop");
+        let payload = wav_path.unwrap_or_else(|| "Recording stopped".to_string());
+        let _ = app.emit("recording-stopped", payload);
+        update_recording_window_visibility(app);
+        end_live_session(app);
+    }
+    let _ = rebuild_tray_menu(app);
+}
+
+fn toggle_recording(app: &tauri::AppHandle) {
+    let controller = app.state::<AudioController>();
+    if controller.is_recording() {
+        stop_recording_action(app);
+    } else {
+        start_recording_action(app);
+    }
 }
 
 fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
@@ -3139,19 +3175,21 @@ pub fn run() {
 
     let global_shortcut_plugin = tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
-            if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                // Determine action by looking up the shortcut in the registry
-                let action = {
-                    let registry = app.state::<ShortcutRegistry>();
-                    let entries = registry.entries.lock().unwrap();
-                    entries
-                        .iter()
-                        .find(|e| e.shortcut == *shortcut)
-                        .map(|e| e.action.clone())
-                };
+            use tauri_plugin_global_shortcut::ShortcutState;
+            let state = event.state();
+            // Determine action by looking up the shortcut in the registry
+            let action = {
+                let registry = app.state::<ShortcutRegistry>();
+                let entries = registry.entries.lock().unwrap();
+                entries
+                    .iter()
+                    .find(|e| e.shortcut == *shortcut)
+                    .map(|e| e.action.clone())
+            };
 
-                match action {
-                    Some(ShortcutAction::CopyLast) => {
+            match action {
+                Some(ShortcutAction::CopyLast) => {
+                    if state == ShortcutState::Pressed {
                         let last = app.state::<LastTranscription>();
                         let text = last.text.lock().unwrap().clone();
                         if let Some(ref t) = text {
@@ -3164,7 +3202,16 @@ pub fn run() {
                             }
                         }
                     }
-                    Some(ShortcutAction::Record) | None => {
+                }
+                Some(ShortcutAction::Record) | None => {
+                    // Push-to-talk (C2): hold to record, release to stop. When off,
+                    // the record shortcut press-toggles recording as before.
+                    if is_push_to_talk_enabled(app) {
+                        match state {
+                            ShortcutState::Pressed => start_recording_action(app),
+                            ShortcutState::Released => stop_recording_action(app),
+                        }
+                    } else if state == ShortcutState::Pressed {
                         toggle_recording(app);
                     }
                 }
