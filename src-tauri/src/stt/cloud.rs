@@ -355,6 +355,168 @@ pub async fn transcribe_cloud(
     Ok(result.text.trim().to_string())
 }
 
+/// Instruction for D3 LLM cleanup. Deliberately constrains the model to a
+/// correction-only task so it never rewrites, translates, or answers the text.
+const CLEANUP_INSTRUCTION: &str = "You are a dictation cleanup tool. Fix punctuation, \
+capitalization, and obvious spelling errors in the transcribed text below. Preserve the \
+original wording and language exactly — do not translate, rephrase, summarize, add or remove \
+content, or answer anything in the text. Output ONLY the corrected text, with no quotes, \
+labels, or commentary.";
+
+fn extract_gemini_text(json: &serde_json::Value) -> Option<String> {
+    let t = json
+        .get("candidates")?
+        .as_array()?
+        .first()?
+        .get("content")?
+        .get("parts")?
+        .as_array()?
+        .first()?
+        .get("text")?
+        .as_str()?;
+    Some(t.trim().to_string())
+}
+
+fn extract_openai_text(json: &serde_json::Value) -> Option<String> {
+    let t = json
+        .get("choices")?
+        .as_array()?
+        .first()?
+        .get("message")?
+        .get("content")?
+        .as_str()?;
+    Some(t.trim().to_string())
+}
+
+fn extract_anthropic_text(json: &serde_json::Value) -> Option<String> {
+    let t = json
+        .get("content")?
+        .as_array()?
+        .first()?
+        .get("text")?
+        .as_str()?;
+    Some(t.trim().to_string())
+}
+
+/// D3: send a finished transcription to an LLM for punctuation/casing/typo cleanup
+/// and return the corrected text. Reuses the BYOK cloud provider/model/key. Errors
+/// (network, auth, bad response) propagate so the caller can keep the local text.
+pub async fn cleanup_text(
+    text: &str,
+    api_key: &str,
+    provider: Option<&str>,
+    model: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let client = shared_client();
+    let provider_str = provider.unwrap_or("").trim().to_lowercase();
+    let base_url_trimmed = base_url.unwrap_or("").trim();
+    let model_str = model.unwrap_or("").trim();
+
+    if provider_str == "gemini" {
+        let base = if base_url_trimmed.is_empty() {
+            "https://generativelanguage.googleapis.com/v1beta"
+        } else {
+            base_url_trimmed
+        };
+        let model_name = if model_str.is_empty() { "gemini-flash-latest" } else { model_str };
+        let endpoint =
+            format!("{}/models/{}:generateContent", base.trim_end_matches('/'), model_name);
+        let payload = serde_json::json!({
+            "contents": [{
+                "role": "user",
+                "parts": [{ "text": format!("{}\n\n---\n{}", CLEANUP_INSTRUCTION, text) }]
+            }],
+            "generationConfig": { "temperature": 0.0 }
+        });
+        let response = client
+            .post(&endpoint)
+            .header("x-goog-api-key", api_key)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("errors.cloud_request_failed::{}", e))?;
+        if !response.status().is_success() {
+            let err_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(format!("errors.cloud_api_error::{}", err_text));
+        }
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("errors.cloud_response_parse::{}", e))?;
+        return extract_gemini_text(&json).ok_or_else(|| "errors.cloud_extract_text".to_string());
+    }
+
+    if provider_str == "anthropic" {
+        let base = if base_url_trimmed.is_empty() {
+            "https://api.anthropic.com/v1"
+        } else {
+            base_url_trimmed
+        };
+        let model_name =
+            if model_str.is_empty() { "claude-3-5-haiku-20241022" } else { model_str };
+        let endpoint = format!("{}/messages", base.trim_end_matches('/'));
+        let payload = serde_json::json!({
+            "model": model_name,
+            "max_tokens": 4096,
+            "temperature": 0.0,
+            "system": CLEANUP_INSTRUCTION,
+            "messages": [{ "role": "user", "content": text }]
+        });
+        let response = client
+            .post(&endpoint)
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("errors.cloud_request_failed::{}", e))?;
+        if !response.status().is_success() {
+            let err_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(format!("errors.cloud_api_error::{}", err_text));
+        }
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("errors.cloud_response_parse::{}", e))?;
+        return extract_anthropic_text(&json)
+            .ok_or_else(|| "errors.cloud_extract_text".to_string());
+    }
+
+    // OpenAI-compatible (openai / openrouter / custom): chat/completions.
+    let base = if base_url_trimmed.is_empty() {
+        "https://api.openai.com/v1"
+    } else {
+        base_url_trimmed
+    };
+    let model_name = if model_str.is_empty() { "gpt-4o-mini" } else { model_str };
+    let endpoint = format!("{}/chat/completions", base.trim_end_matches('/'));
+    let payload = serde_json::json!({
+        "model": model_name,
+        "temperature": 0.0,
+        "messages": [
+            { "role": "system", "content": CLEANUP_INSTRUCTION },
+            { "role": "user", "content": text }
+        ]
+    });
+    let response = client
+        .post(&endpoint)
+        .bearer_auth(api_key)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("errors.cloud_request_failed::{}", e))?;
+    if !response.status().is_success() {
+        let err_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("errors.cloud_api_error::{}", err_text));
+    }
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("errors.cloud_response_parse::{}", e))?;
+    extract_openai_text(&json).ok_or_else(|| "errors.cloud_extract_text".to_string())
+}
+
 pub async fn list_models(
     provider: &str,
     base_url: Option<&str>,
@@ -517,5 +679,30 @@ mod tests {
             {"name":"gemini-pro","supportedGenerationMethods":["generateContent"]}
         ]});
         assert_eq!(parse_gemini_models(&j), vec!["gemini-pro"]);
+    }
+
+    #[test]
+    fn extracts_gemini_cleanup_text() {
+        let j = json!({"candidates":[{"content":{"parts":[{"text":"  Hello, world.  "}]}}]});
+        assert_eq!(extract_gemini_text(&j).as_deref(), Some("Hello, world."));
+    }
+
+    #[test]
+    fn extracts_openai_cleanup_text() {
+        let j = json!({"choices":[{"message":{"role":"assistant","content":"Cleaned text."}}]});
+        assert_eq!(extract_openai_text(&j).as_deref(), Some("Cleaned text."));
+    }
+
+    #[test]
+    fn extracts_anthropic_cleanup_text() {
+        let j = json!({"content":[{"type":"text","text":"Cleaned."}]});
+        assert_eq!(extract_anthropic_text(&j).as_deref(), Some("Cleaned."));
+    }
+
+    #[test]
+    fn cleanup_extractors_return_none_on_missing_fields() {
+        assert!(extract_gemini_text(&json!({"candidates":[]})).is_none());
+        assert!(extract_openai_text(&json!({})).is_none());
+        assert!(extract_anthropic_text(&json!({"content":[]})).is_none());
     }
 }

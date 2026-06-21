@@ -145,6 +145,7 @@ export function SettingsView() {
   const [modelUnload, setModelUnload] = useState(false);
   const [clipboardOnly, setClipboardOnly] = useState(false);
   const [typeOutput, setTypeOutput] = useState(false);
+  const [llmCleanup, setLlmCleanup] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -274,6 +275,7 @@ export function SettingsView() {
     setModelUnload(getConfig("model_unload_enabled", false) === true);
     setClipboardOnly(getConfig("clipboard_only", false) === true);
     setTypeOutput(getConfig("type_output", false) === true);
+    setLlmCleanup(getConfig("llm_cleanup_enabled", false) === true);
     setVadThreshold(String(getConfig("vad_threshold", 0.008)));
     setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
@@ -623,6 +625,17 @@ export function SettingsView() {
   const handleTypeOutputToggle = (checked: boolean) => {
     setTypeOutput(checked);
     updateConfig("type_output", checked);
+  };
+
+  const handleLlmCleanupToggle = (checked: boolean) => {
+    setLlmCleanup(checked);
+    updateConfig("llm_cleanup_enabled", checked);
+    if (checked) {
+      // Snapshot the configured BYOK cloud provider + base URL so the backend can
+      // reach it. The model defaults to a current flash model server-side.
+      updateConfig("cloud_provider", localStorage.getItem("asr_provider") || "");
+      updateConfig("cloud_base_url", localStorage.getItem("asr_base_url") || "");
+    }
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -978,6 +991,10 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.accurateMode")} description={t("settings.accurateModeDesc")}>
             <Switch checked={decodeAccurate} onCheckedChange={handleDecodeAccurateToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.llmCleanup")} description={t("settings.llmCleanupDesc")}>
+            <Switch checked={llmCleanup} onCheckedChange={handleLlmCleanupToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.trailingSpace")} description={t("settings.trailingSpaceDesc")}>

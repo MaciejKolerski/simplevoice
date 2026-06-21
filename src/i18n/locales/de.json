@@ -105,6 +105,8 @@
     "customWordsDesc": "Durch Kommas getrennte Namen/Begriffe, die in Transkriptionen korrigiert werden (z. B. ChatGPT, Kubernetes).",
     "accurateMode": "Genauer Modus (Beam-Search)",
     "accurateModeDesc": "Whisper-Beam-Search für höhere Genauigkeit auf Kosten von mehr CPU-Zeit verwenden.",
+    "llmCleanup": "KI-Bereinigung (LLM)",
+    "llmCleanupDesc": "Sendet den Text nach der Transkription an dein konfiguriertes BYOK-Cloud-Modell, um Zeichensetzung, Großschreibung und Tippfehler zu korrigieren (Wortlaut und Sprache bleiben erhalten). Erfordert einen Cloud-Schlüssel im Modelle-Tab. Hinweis: Der Text verlässt dein Gerät.",
     "trailingSpace": "Leerzeichen am Ende",
     "trailingSpaceDesc": "Nach jeder Transkription ein Leerzeichen anhängen, damit aufeinanderfolgende Diktate nicht zusammenlaufen.",
     "modelUnload": "Modell bei Inaktivität entladen",

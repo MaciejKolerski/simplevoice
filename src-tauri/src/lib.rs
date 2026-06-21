@@ -303,6 +303,90 @@ fn is_trailing_space_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads `llm_cleanup_enabled` from config.json (default false): after
+/// transcription, send the text to the configured BYOK cloud model for
+/// punctuation/casing/typo cleanup (D3).
+fn is_llm_cleanup_enabled(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("llm_cleanup_enabled").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
+/// Reads the BYOK cloud model config the Settings page mirrors into config.json
+/// (`cloud_provider` / `cloud_model` / `cloud_base_url`). Returns `None` when no
+/// provider is configured.
+fn cloud_cleanup_config(app_handle: &tauri::AppHandle) -> Option<(String, String, String)> {
+    let dir = app_handle.path().app_local_data_dir().ok()?;
+    let content = std::fs::read_to_string(dir.join("config.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let provider = v
+        .get("cloud_provider")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if provider.is_empty() {
+        return None;
+    }
+    let model = v
+        .get("cloud_model")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let base_url = v
+        .get("cloud_base_url")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    Some((provider, model, base_url))
+}
+
+/// D3: optionally run LLM cleanup on a finished transcription. Opt-in; returns
+/// the input unchanged when disabled, when no cloud model/key is configured, or
+/// when the LLM call fails — so it can never lose or mangle the local result.
+async fn maybe_llm_cleanup(app_handle: &tauri::AppHandle, text: String) -> String {
+    if text.trim().is_empty() || !is_llm_cleanup_enabled(app_handle) {
+        return text;
+    }
+    let Some((provider, model, base_url)) = cloud_cleanup_config(app_handle) else {
+        tracing::warn!("[transcribe_audio] llm_cleanup enabled but no cloud model configured");
+        return text;
+    };
+    let key = match get_secure_api_key(provider.clone()) {
+        Ok(k) if !k.trim().is_empty() => k,
+        _ => {
+            tracing::warn!("[transcribe_audio] llm_cleanup: no API key for provider '{provider}'");
+            return text;
+        }
+    };
+    match crate::stt::cloud::cleanup_text(&text, &key, Some(&provider), Some(&model), Some(&base_url))
+        .await
+    {
+        Ok(cleaned) if !cleaned.trim().is_empty() => {
+            tracing::info!(
+                "[transcribe_audio] llm_cleanup applied ({} -> {} chars)",
+                text.len(),
+                cleaned.len()
+            );
+            cleaned
+        }
+        Ok(_) => text,
+        Err(e) => {
+            tracing::warn!("[transcribe_audio] llm_cleanup failed, keeping local text: {e}");
+            text
+        }
+    }
+}
+
 /// Reads `clipboard_only` from config.json (default false): keep the transcription
 /// on the clipboard but skip auto-paste (E2).
 fn is_clipboard_only(app_handle: &tauri::AppHandle) -> bool {
@@ -2123,6 +2207,9 @@ async fn transcribe_audio(
     } else {
         text
     };
+    // D3: optional LLM cleanup (punctuation/casing/typos) via the configured BYOK
+    // cloud model. Opt-in; falls back to the local text on any failure.
+    let text = maybe_llm_cleanup(&app_handle, text).await;
     // Trailing space (last in the chain) so consecutive dictations don't glue words.
     let text = if is_trailing_space_enabled(&app_handle) && !text.trim().is_empty() {
         format!("{} ", text.trim_end())

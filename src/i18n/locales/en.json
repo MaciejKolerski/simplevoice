@@ -105,6 +105,8 @@
     "customWordsDesc": "Comma-separated names/terms to correct in transcriptions (e.g. ChatGPT, Kubernetes).",
     "accurateMode": "Accurate mode (beam search)",
     "accurateModeDesc": "Use Whisper beam search for higher accuracy at the cost of more CPU time.",
+    "llmCleanup": "AI cleanup (LLM)",
+    "llmCleanupDesc": "After transcription, send the text to your configured BYOK cloud model to fix punctuation, capitalization and typos (wording and language are kept). Requires a cloud key set in the Models tab. Note: the text leaves your device.",
     "trailingSpace": "Trailing space",
     "trailingSpaceDesc": "Add a space after each transcription so consecutive dictations don't run together.",
     "modelUnload": "Unload model when idle",
