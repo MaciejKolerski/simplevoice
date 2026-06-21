@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (40 / 52)
+## Done (41 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -123,7 +123,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ✅ **H5** structured logging — `tracing` + daily-rotating `simplevoice.log` under `<app_data>/logs/` + stderr (fault-tolerant init in Tauri setup; all 18 `eprintln!` converted to leveled `tracing::{info,warn,error}`). Verified the file is actually written (ignored test).
 
 ### Deferred (your input needed)
-- ⏸ **D3** optional LLM cleanup + Apple Intelligence — XL, needs your API keys/provider; last, behind a flag
+- ✅ **D3** optional LLM cleanup — `cloud::cleanup_text` (Gemini + OpenAI-compatible + Anthropic) corrects punctuation/casing/typos via the BYOK cloud model, opt-in `llm_cleanup_enabled`, applied in `transcribe_audio` after sentence-case; falls back to local text on any failure; Settings toggle (snapshots BYOK provider/base_url) + en/pl/de. **Verified end-to-end on the user's real Gemini key** (Polish dictation → correct punctuation/capitalization, wording preserved). _Apple Intelligence on-device cleanup sub-part skipped (separate future option)._
 
 ## Needs your verification / assets (running list)
 _(filled as 🚩 items land)_
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 12 — needs your involvement (B2 reverted; autonomous-safe items exhausted)
+## Remaining 11 — needs your involvement (B2 reverted, D3 done; autonomous-safe items exhausted)
 
 **Blocked on an asset / key / data you must provide:**
 - ~~**B2** Silero VAD~~ ❌ REMOVED by user — redundant with the auto-end VAD (B4); see Done section.
