@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (38 / 52)
+## Done (39 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -92,7 +92,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ✅ **C6** idle-unload model (`SttController::unload`/`unload_if_idle` + watcher thread, 5min, `model_unload_enabled` toggle, transparent reload on next transcribe; baseline EXACT)
 - ✅ **C3** remove NeMo per-call sidecar (route to ONNX) — per decision
 - ⏳ **F1** SHA-256 verification of downloads (dep: `sha2`)
-- ⏳ **F2** atomic multi-file install + completeness manifest
+- ✅ **F2** completion manifest for multi-file installs (`.sv-manifest.json` written when all files finish; `detect_format` rejects a dir whose manifest lists a missing file — closes the "hard-killed between files, no `.part`" gap). Backward-compatible (legacy = no manifest). Unit-tested.
 - ⏳ **F3** curated backend model registry (`stt/registry.rs`) — pairs with A6
 - ✅ **F4** connect timeout + retry/backoff loop (capped exp backoff, resumes via `.part`+Range; unit-tested)
 - ✅ **F5** remove on-device converter (backend) — per decision; UI removal → frontend batch
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 14 — needs your involvement (autonomous-safe items exhausted at 35/52)
+## Remaining 13 — needs your involvement (autonomous-safe items exhausted at 35/52)
 
 **Blocked on an asset / key / data you must provide:**
 - ~~**B2** Silero VAD~~ ✅ DONE — model fetched + opt-in outer-silence trim shipped (see Done section).
@@ -150,7 +150,7 @@ _(filled as 🚩 items land)_
 
 **Doable but lower-value / larger — say the word and I'll do them:**
 - **A6** Parakeet-V3 "recommended" badge + calibrated metadata (cosmetic).
-- **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep), **F2** atomic multi-file install, **H5** structured `tracing` logging (large mechanical sweep). _(F4-retry, E2-type ✅ done.)_
+- **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep), **H5** structured `tracing` logging (large mechanical sweep). _(F4-retry, E2-type, F2 ✅ done.)_
 
 **How to unblock fastest:** drop a `silero_vad_v4.onnx`, an API key (for D3), and tell me whether to ship the platform code unverified — and I'll resume the loop on the rest.
 
