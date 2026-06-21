@@ -8,6 +8,7 @@ mod wayland_type;
 #[cfg(target_os = "linux")]
 mod evdev_shortcuts;
 mod media_control;
+mod logging;
 pub mod stt;
 use audio::AudioController;
 use base64::Engine;
@@ -368,7 +369,7 @@ async fn maybe_vad_trim(
         };
         let model_path = dir.join("models").join("silero_vad_v4.onnx");
         if !model_path.exists() {
-            eprintln!(
+            tracing::warn!(
                 "[transcribe_audio] vad_trim enabled but Silero model missing: {}",
                 model_path.display()
             );
@@ -381,7 +382,7 @@ async fn maybe_vad_trim(
         .await;
         match trimmed {
             Ok(Some(t)) if !t.is_empty() => {
-                eprintln!(
+                tracing::info!(
                     "[transcribe_audio] vad_trim: {} -> {} samples",
                     samples.len(),
                     t.len()
@@ -431,7 +432,7 @@ fn spawn_idle_unload_watcher(app_handle: tauri::AppHandle) {
                 continue;
             }
             if app_handle.state::<SttController>().unload_if_idle(IDLE_SECS) {
-                eprintln!("idle-unloaded the ASR model after {}s idle", IDLE_SECS);
+                tracing::info!("idle-unloaded the ASR model after {}s idle", IDLE_SECS);
             }
         }
     });
@@ -1206,7 +1207,7 @@ pub fn rebuild_tray_menu(app_handle: &tauri::AppHandle) -> Result<(), String> {
     app_handle
         .run_on_main_thread(move || {
             if let Err(e) = rebuild_tray_menu_inner(&app_handle_clone) {
-                eprintln!("Error rebuilding tray menu on main thread: {}", e);
+                tracing::warn!("Error rebuilding tray menu on main thread: {}", e);
             }
         })
         .map_err(|e| e.to_string())
@@ -1780,7 +1781,7 @@ async fn load_model(
         let mut s = stt_controller.state.lock().unwrap();
         // Guard: block duplicate concurrent loads of the same model (React StrictMode double mount)
         if s.loading_model_path.as_deref() == Some(&model_path) {
-            eprintln!(
+            tracing::info!(
                 "[load_model] Already loading {}, skipping duplicate",
                 model_path
             );
@@ -2108,7 +2109,7 @@ async fn transcribe_audio(
                         if parts.is_empty() {
                             return Err(e);
                         }
-                        eprintln!(
+                        tracing::warn!(
                             "[transcribe_audio] cloud chunk {}/{} failed: {}",
                             i + 1,
                             total,
@@ -2155,7 +2156,7 @@ async fn transcribe_audio(
             let chunked = result?;
             let mut joined = chunked.text;
             if let Some((secs, err)) = chunked.truncated {
-                eprintln!(
+                tracing::warn!(
                     "[transcribe_audio] transcription truncated at {}s: {}",
                     secs as u32, err
                 );
@@ -2196,7 +2197,7 @@ async fn transcribe_audio(
         text
     };
 
-    eprintln!(
+    tracing::info!(
         "[transcribe_audio] transcription complete (len {}); delivering from backend",
         text.trim().len()
     );
@@ -2237,7 +2238,7 @@ async fn transcribe_audio(
                     paste_text_from_backend(&app_for_out, out_owned)
                 };
                 if let Err(e) = res {
-                    eprintln!("[transcribe_audio] backend auto-output failed: {e}");
+                    tracing::error!("[transcribe_audio] backend auto-output failed: {e}");
                     // Surface the silent failure so the UI can prompt manual paste (E7).
                     let _ = app_for_out.emit("paste-error", format!("{e}"));
                 }
@@ -3222,6 +3223,12 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // H5: structured logging to a rolling file under <app_data>/logs/ +
+            // stderr. Fault-tolerant — never blocks startup.
+            if let Ok(dir) = app.path().app_local_data_dir() {
+                crate::logging::init(&dir);
+            }
+            tracing::info!("SimpleVoice starting up");
             spawn_idle_unload_watcher(app.handle().clone());
             #[cfg(target_os = "macos")]
             {

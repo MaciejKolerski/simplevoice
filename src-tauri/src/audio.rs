@@ -137,7 +137,7 @@ fn auto_stop_recording(
         let saved_path = match save_wav_file(&app_handle_save_clone, &samples, start_time) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("save_wav_file failed: {}", e);
+                tracing::error!("save_wav_file failed: {}", e);
                 let _ = app_handle_save_clone.emit("recording-save-failed", e);
                 None
             }
@@ -255,7 +255,7 @@ impl AudioController {
                 .map_err(|e| e.to_string())?
                 .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
                 .ok_or_else(|| {
-                    eprintln!("Selected microphone '{}' is not available", name);
+                    tracing::warn!("Selected microphone '{}' is not available", name);
                     "errors.mic_unavailable".to_string()
                 })?,
             None => host
@@ -403,7 +403,7 @@ impl AudioController {
 
         let err_app = app_handle.clone();
         let err_fn = move |err| {
-            eprintln!("an error occurred on stream: {}", err);
+            tracing::error!("an error occurred on stream: {}", err);
             let _ = err_app.emit("recording-error", "device_lost");
         };
 
@@ -506,7 +506,7 @@ impl AudioController {
         let save_result = match save_wav_file(app_handle, &samples, start_time) {
             Ok(p) => Ok(p),
             Err(e) => {
-                eprintln!("save_wav_file failed: {}", e);
+                tracing::error!("save_wav_file failed: {}", e);
                 let _ = app_handle.emit("recording-save-failed", e);
                 Ok(None)
             }
@@ -573,7 +573,7 @@ static RING_WARNED: AtomicBool = AtomicBool::new(false);
 fn note_ring_overflow(dropped: usize) {
     RING_DROPPED.fetch_add(dropped, Ordering::Relaxed);
     if !RING_WARNED.swap(true, Ordering::Relaxed) {
-        eprintln!("audio ring buffer overflow: consumer fell behind, dropping samples");
+        tracing::warn!("audio ring buffer overflow: consumer fell behind, dropping samples");
     }
 }
 
@@ -586,7 +586,7 @@ static LIVE_WARNED: AtomicBool = AtomicBool::new(false);
 fn note_live_drop() {
     LIVE_DROPPED.fetch_add(1, Ordering::Relaxed);
     if !LIVE_WARNED.swap(true, Ordering::Relaxed) {
-        eprintln!("live transcription overload: dropping audio chunks (decode too slow)");
+        tracing::warn!("live transcription overload: dropping audio chunks (decode too slow)");
     }
 }
 

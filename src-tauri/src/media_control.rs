@@ -249,7 +249,7 @@ fn platform_resume(paused_apps: &[String]) {
                 }
             }
             if std::time::Instant::now() >= deadline {
-                eprintln!("[media_control] skipping resume: pause verification never finished");
+                tracing::warn!("[media_control] skipping resume: pause verification never finished");
                 return;
             }
             std::thread::sleep(std::time::Duration::from_millis(150));
@@ -260,7 +260,7 @@ fn platform_resume(paused_apps: &[String]) {
             // Now Playing session: either none exists (Play would launch
             // Music.app) or the user paused it themselves before recording
             // (Play would override their choice). Either way, stay silent.
-            eprintln!(
+            tracing::warn!(
                 "[media_control] skipping resume: the pause didn't stop any audio stream \
                  (background audio without a Now Playing session?)"
             );
@@ -287,7 +287,7 @@ fn platform_resume(paused_apps: &[String]) {
                 .unwrap_or(false)
         });
         if !any_alive {
-            eprintln!("[media_control] skipping resume: paused app(s) no longer running");
+            tracing::warn!("[media_control] skipping resume: paused app(s) no longer running");
             return;
         }
 
