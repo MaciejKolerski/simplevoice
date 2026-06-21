@@ -71,6 +71,8 @@ interface RecommendedModel {
   descriptionKey: string;
   format: string;
   size_formatted: string;
+  /** Highlight as a recommended default (best accuracy/speed tradeoff). */
+  recommended?: boolean;
 }
 
 const RECOMMENDED_MODELS: RecommendedModel[] = [
@@ -138,7 +140,8 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     ],
     descriptionKey: "models.desc.parakeetV3",
     format: "onnx",
-    size_formatted: "639 MB"
+    size_formatted: "639 MB",
+    recommended: true
   },
   {
     name: "Whisper Medium (GGML)",
@@ -154,7 +157,8 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     files: ["ggml-large-v3-turbo.bin"],
     descriptionKey: "models.desc.whisperLargeV3Turbo",
     format: "ggml_bin",
-    size_formatted: "1.5 GB"
+    size_formatted: "1.5 GB",
+    recommended: true
   },
   {
     name: "Whisper Large v2 (GGML)",
@@ -677,6 +681,7 @@ export function ModelsView() {
     subtitle?: React.ReactNode,
     isLast?: boolean,
     onDelete?: () => void,
+    recommended?: boolean,
   ) => (
     <div
       key={key}
@@ -693,6 +698,14 @@ export function ModelsView() {
           >
             {formatLabel}
           </Badge>
+          {recommended && (
+            <Badge
+              variant="outline"
+              className="rounded-md border-primary/40 bg-primary/10 text-primary text-[10px] shrink-0"
+            >
+              {t("models.recommended")}
+            </Badge>
+          )}
         </div>
         {subtitle && <div className="mt-0.5">{subtitle}</div>}
       </div>
@@ -976,6 +989,8 @@ export function ModelsView() {
                     action,
                     <p className="text-[11px] text-muted leading-snug m-0 max-w-md">{t(rec.descriptionKey)}</p>,
                     idx === arr.length - 1,
+                    undefined,
+                    rec.recommended,
                   );
                 })}
               </>

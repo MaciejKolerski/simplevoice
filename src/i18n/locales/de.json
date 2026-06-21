@@ -244,6 +244,7 @@
     "deleteConfirmBody": "„{{name}}“ wird dauerhaft von der Festplatte entfernt. Du kannst es später erneut herunterladen.",
     "deleteConfirm": "Löschen",
     "get": "Holen",
+    "recommended": "Empfohlen",
     "availableForDownload": "Zum Download verfügbar",
     "starting": "Wird gestartet…",
     "startingDownload": "Download wird gestartet…",

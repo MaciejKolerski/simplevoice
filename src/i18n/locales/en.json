@@ -244,6 +244,7 @@
     "deleteConfirmBody": "\"{{name}}\" will be permanently removed from disk. You can download it again later.",
     "deleteConfirm": "Delete",
     "get": "Get",
+    "recommended": "Recommended",
     "availableForDownload": "Available for Download",
     "starting": "Starting…",
     "startingDownload": "Starting download…",
