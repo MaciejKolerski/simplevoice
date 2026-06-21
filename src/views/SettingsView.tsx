@@ -145,7 +145,6 @@ export function SettingsView() {
   const [modelUnload, setModelUnload] = useState(false);
   const [clipboardOnly, setClipboardOnly] = useState(false);
   const [typeOutput, setTypeOutput] = useState(false);
-  const [vadTrim, setVadTrim] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -275,7 +274,6 @@ export function SettingsView() {
     setModelUnload(getConfig("model_unload_enabled", false) === true);
     setClipboardOnly(getConfig("clipboard_only", false) === true);
     setTypeOutput(getConfig("type_output", false) === true);
-    setVadTrim(getConfig("vad_trim_enabled", false) === true);
     setVadThreshold(String(getConfig("vad_threshold", 0.008)));
     setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
@@ -625,11 +623,6 @@ export function SettingsView() {
   const handleTypeOutputToggle = (checked: boolean) => {
     setTypeOutput(checked);
     updateConfig("type_output", checked);
-  };
-
-  const handleVadTrimToggle = (checked: boolean) => {
-    setVadTrim(checked);
-    updateConfig("vad_trim_enabled", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -985,10 +978,6 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.accurateMode")} description={t("settings.accurateModeDesc")}>
             <Switch checked={decodeAccurate} onCheckedChange={handleDecodeAccurateToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.vadTrim")} description={t("settings.vadTrimDesc")}>
-            <Switch checked={vadTrim} onCheckedChange={handleVadTrimToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.trailingSpace")} description={t("settings.trailingSpaceDesc")}>

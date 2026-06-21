@@ -105,8 +105,6 @@
     "customWordsDesc": "Comma-separated names/terms to correct in transcriptions (e.g. ChatGPT, Kubernetes).",
     "accurateMode": "Accurate mode (beam search)",
     "accurateModeDesc": "Use Whisper beam search for higher accuracy at the cost of more CPU time.",
-    "vadTrim": "Trim silence (VAD)",
-    "vadTrimDesc": "Use Silero voice-activity detection to cut leading/trailing silence before transcription. Faster and avoids stray words in dead air; speech (and pauses between words) is kept intact.",
     "trailingSpace": "Trailing space",
     "trailingSpaceDesc": "Add a space after each transcription so consecutive dictations don't run together.",
     "modelUnload": "Unload model when idle",

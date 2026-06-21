@@ -105,8 +105,6 @@
     "customWordsDesc": "Durch Kommas getrennte Namen/Begriffe, die in Transkriptionen korrigiert werden (z. B. ChatGPT, Kubernetes).",
     "accurateMode": "Genauer Modus (Beam-Search)",
     "accurateModeDesc": "Whisper-Beam-Search für höhere Genauigkeit auf Kosten von mehr CPU-Zeit verwenden.",
-    "vadTrim": "Stille kürzen (VAD)",
-    "vadTrimDesc": "Silero-Sprachaktivitätserkennung nutzen, um Stille am Anfang und Ende vor der Transkription zu entfernen. Schneller und ohne Geisterwörter in toter Luft; Sprache (und Pausen zwischen Wörtern) bleiben erhalten.",
     "trailingSpace": "Leerzeichen am Ende",
     "trailingSpaceDesc": "Nach jeder Transkription ein Leerzeichen anhängen, damit aufeinanderfolgende Diktate nicht zusammenlaufen.",
     "modelUnload": "Modell bei Inaktivität entladen",

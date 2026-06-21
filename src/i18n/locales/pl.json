@@ -105,8 +105,6 @@
     "customWordsDesc": "Nazwy/terminy oddzielone przecinkami, poprawiane w transkrypcji (np. ChatGPT, Kubernetes).",
     "accurateMode": "Tryb dokładny (beam search)",
     "accurateModeDesc": "Używaj beam search w Whisperze dla wyższej dokładności kosztem większego zużycia CPU.",
-    "vadTrim": "Przycinaj ciszę (VAD)",
-    "vadTrimDesc": "Użyj detekcji mowy Silero, by przed transkrypcją odciąć ciszę na początku i końcu. Szybciej i bez przypadkowych słów w martwym dźwięku; mowa (i pauzy między słowami) pozostają nienaruszone.",
     "trailingSpace": "Spacja na końcu",
     "trailingSpaceDesc": "Dodawaj spację po każdej transkrypcji, by kolejne dyktanda się nie sklejały.",
     "modelUnload": "Zwalniaj model przy bezczynności",

@@ -335,69 +335,6 @@ fn is_type_output_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Reads `vad_trim_enabled` from config.json (default false): run Silero VAD over
-/// a finished recording and keep only detected speech before transcription (B2).
-fn is_vad_trim_enabled(app_handle: &tauri::AppHandle) -> bool {
-    let Ok(dir) = app_handle.path().app_local_data_dir() else {
-        return false;
-    };
-    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
-        return false;
-    };
-    serde_json::from_str::<serde_json::Value>(&content)
-        .ok()
-        .and_then(|v| v.get("vad_trim_enabled").and_then(|b| b.as_bool()))
-        .unwrap_or(false)
-}
-
-/// When `vad_trim_enabled` is set (and the `onnx` feature + Silero model are
-/// present), drop leading/trailing silence and non-speech gaps from `samples`
-/// before transcription (B2). Opt-in; returns the input unchanged when disabled,
-/// when the model file is missing, or when the VAD finds no speech — so it can
-/// never silently lose a recording.
-async fn maybe_vad_trim(
-    app_handle: &tauri::AppHandle,
-    samples: std::sync::Arc<Vec<f32>>,
-) -> std::sync::Arc<Vec<f32>> {
-    if !is_vad_trim_enabled(app_handle) {
-        return samples;
-    }
-    #[cfg(feature = "onnx")]
-    {
-        let Ok(dir) = app_handle.path().app_local_data_dir() else {
-            return samples;
-        };
-        let model_path = dir.join("models").join("silero_vad_v4.onnx");
-        if !model_path.exists() {
-            tracing::warn!(
-                "[transcribe_audio] vad_trim enabled but Silero model missing: {}",
-                model_path.display()
-            );
-            return samples;
-        }
-        let input = std::sync::Arc::clone(&samples);
-        let trimmed = tauri::async_runtime::spawn_blocking(move || {
-            crate::stt::vad::trim_to_speech(&input, &model_path)
-        })
-        .await;
-        match trimmed {
-            Ok(Some(t)) if !t.is_empty() => {
-                tracing::info!(
-                    "[transcribe_audio] vad_trim: {} -> {} samples",
-                    samples.len(),
-                    t.len()
-                );
-                std::sync::Arc::new(t)
-            }
-            _ => samples,
-        }
-    }
-    #[cfg(not(feature = "onnx"))]
-    {
-        samples
-    }
-}
-
 /// Reads `model_unload_enabled` from config.json (default false).
 fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
@@ -2059,10 +1996,6 @@ async fn transcribe_audio(
             std::sync::Arc::clone(&s.last_samples)
         }
     };
-
-    // B2: optional Silero-VAD silence/noise trim before transcription (opt-in,
-    // default off). No-op unless `vad_trim_enabled` and the model are present.
-    let final_samples = maybe_vad_trim(&app_handle, final_samples).await;
 
     let text = {
         if engine == "openai-cloud" {
