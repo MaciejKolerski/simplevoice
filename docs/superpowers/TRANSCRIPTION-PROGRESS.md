@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (45 / 52)
+## Done (46 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -111,7 +111,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 ### Batch G-streaming (live mode hardening)
 - ✅ **G5** thread user ASR language into live session (`asr_language` mirrored to config.json from frontend; `begin_live_session` reads it)
 - ✅ **G2** bounded timeout on `finish()`
-- ⏳ **G1** committed-prefix trimming (fix O(n²))
+- ✅ **G1** committed-prefix O(n²)→O(n) — LocalAgreement keeps `session_text` (incremental String via new `join_onto` helper) instead of cloning+re-joining the whole session Vec every decode. `full_text` now O(current utterance). 4 existing streaming tests pass unchanged; `join_onto` equivalence unit-tested (latin/CJK seams).
 - ✅ **G3** coalesce + live drop-counter (warn-once); `transcription-buffering` UI event → frontend batch
 - ⏳ **G4** decouple ingest from decode (skip-stale)
 - ✅ **G7** CJK character-mode units + configurable `live_buffer_cap_s` (config). _LocalAgreement-n (>2) needs a Stabilizer algorithm change — deferred._
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 7 — needs your involvement (B2 reverted; D3 + C2 + E1 + E6 + A7-hotwords done)
+## Remaining 6 — needs your involvement (B2 reverted; D3 + C2 + E1 + E6 + A7-hotwords + G1 done)
 
 **Blocked on an asset / key / data you must provide:**
 - ~~**B2** Silero VAD~~ ❌ REMOVED by user — redundant with the auto-end VAD (B4); see Done section.
@@ -145,7 +145,7 @@ _(filled as 🚩 items land)_
 **Critical-path changes I can't runtime-verify here (real recording / live mic / paste / cloud key) — merging blind risks regressions on your working app:**
 - **B1** rubato anti-aliasing resampler (capture rewrite), **B3** pre-roll buffer (needs always-on capture), **B6** chunker VAD-driven cuts + overlap.
 - ~~**C2** push-to-talk~~ ✅, ~~**E1** clipboard save/restore~~ ✅, ~~**E6** paste delays~~ ✅ (live-test the first two), **C5** cloud chunk parallelism (needs a cloud API key).
-- **G1** committed-prefix O(n²) trim, **G4** decouple ingest/decode, **G6** native transducer streaming (XL).
+- ~~**G1** committed-prefix O(n²) trim~~ ✅ done, **G4** decouple ingest/decode, **G6** native transducer streaming (XL).
 - ~~**A3-onnx / A7-hotwords** ONNX hotwords~~ ✅ done (bpe.vocab derived from bpe.model in Rust; gigaspeech model added).
 
 **Doable but lower-value / larger — say the word and I'll do them:**
