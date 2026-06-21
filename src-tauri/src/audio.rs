@@ -269,7 +269,7 @@ impl AudioController {
             s.paused_media_apps = Vec::new();
         }
 
-        let config = device.default_input_config().map_err(|e| e.to_string())?;
+        let config = choose_input_config(&device)?;
         let sample_format = config.sample_format();
         let stream_config: cpal::StreamConfig = config.into();
 
@@ -511,6 +511,28 @@ impl AudioController {
     pub fn set_transcribing(&self, value: bool) {
         self.state.lock().unwrap().is_transcribing = value;
     }
+}
+
+/// Prefer a native 16 kHz input config so the resampler runs in passthrough (no
+/// decimation, no aliasing). Picks the lowest-channel supported range that covers
+/// 16 kHz; falls back to the device default (current behavior) when none does.
+fn choose_input_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, String> {
+    const TARGET: u32 = 16_000;
+    if let Ok(ranges) = device.supported_input_configs() {
+        let mut best: Option<cpal::SupportedStreamConfigRange> = None;
+        for r in ranges {
+            if r.min_sample_rate().0 <= TARGET && TARGET <= r.max_sample_rate().0 {
+                let better = best.as_ref().map_or(true, |b| r.channels() < b.channels());
+                if better {
+                    best = Some(r);
+                }
+            }
+        }
+        if let Some(r) = best {
+            return Ok(r.with_sample_rate(cpal::SampleRate(TARGET)));
+        }
+    }
+    device.default_input_config().map_err(|e| e.to_string())
 }
 
 fn downmix(data: &[f32], channels: u16) -> Vec<f32> {
