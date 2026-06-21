@@ -112,7 +112,18 @@ impl StreamingController {
         s.stop.store(true, Ordering::Relaxed);
         drop(s.audio_tx);
         if let Some(h) = s.handle.take() {
-            let _ = h.join();
+            // Bounded join: a long final re-decode must not block shutdown or the
+            // next recording indefinitely. Wait up to ~5 s for the worker; if it is
+            // still running, detach it (it emits its Final via AppHandle, so the
+            // result still arrives) instead of blocking forever.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !h.is_finished() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            if h.is_finished() {
+                let _ = h.join();
+            }
+            // else: detach — drop the handle without joining.
         }
     }
 }
