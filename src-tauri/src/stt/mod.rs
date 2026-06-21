@@ -92,6 +92,9 @@ pub struct SttState {
     pub active_model_path: Option<String>,
     pub loading_model_path: Option<String>,
     pub engine: Option<std::sync::Arc<dyn traits::AsrEngine>>,
+    /// False after a model load; set true once the engine has been warmed (first
+    /// real or dummy decode), so warm-up runs at most once per loaded model.
+    pub warmed: bool,
 }
 
 #[derive(Clone)]
@@ -106,6 +109,7 @@ impl SttController {
                 active_model_path: None,
                 loading_model_path: None,
                 engine: None,
+                warmed: false,
             })),
         }
     }
@@ -118,9 +122,26 @@ impl SttController {
         let mut s = self.state.lock().unwrap();
         s.engine = Some(std::sync::Arc::from(engine));
         s.active_model_path = Some(model_path.to_string());
+        s.warmed = false;
 
         println!("Successfully loaded ASR model: {}", model_path);
         Ok(())
+    }
+
+    /// Returns the active engine for a one-time warm-up the first time it is called
+    /// after a model load (marking it warmed so later calls return None). Returns
+    /// None when there is no local engine (e.g. a cloud provider) or it is already
+    /// warmed.
+    pub fn take_engine_to_warm(&self) -> Option<std::sync::Arc<dyn traits::AsrEngine>> {
+        let mut s = self.state.lock().unwrap();
+        if s.warmed {
+            return None;
+        }
+        let engine = s.engine.clone();
+        if engine.is_some() {
+            s.warmed = true;
+        }
+        engine
     }
 
     pub fn transcribe(&self, samples: &[f32], language: Option<&str>) -> Result<String, String> {

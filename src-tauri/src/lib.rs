@@ -760,6 +760,18 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
     }
 }
 
+/// Warms the loaded local engine off the record-start path so the first real
+/// transcription does not pay GPU-kernel / session-init latency. Runs at most once
+/// per loaded model; a no-op for cloud (no local engine in SttController).
+fn warm_up_engine(app: &tauri::AppHandle) {
+    let stt = app.state::<SttController>();
+    if let Some(engine) = stt.take_engine_to_warm() {
+        tauri::async_runtime::spawn_blocking(move || {
+            let _ = engine.transcribe(&vec![0.0f32; 4800], None);
+        });
+    }
+}
+
 #[tauri::command]
 fn start_recording(
     controller: tauri::State<'_, AudioController>,
@@ -774,6 +786,7 @@ fn start_recording(
     let _ = rebuild_tray_menu(&app_handle);
     update_recording_window_visibility(&app_handle);
     begin_live_session(&app_handle);
+    warm_up_engine(&app_handle);
     Ok(())
 }
 
@@ -1150,6 +1163,7 @@ fn toggle_recording(app: &tauri::AppHandle) {
                         let _ = app.emit("recording-started", ());
                         update_recording_window_visibility(app);
                         begin_live_session(app);
+                        warm_up_engine(app);
                     }
                     Err(reason) => {
                         if let Some(window) = app.get_webview_window("main") {
