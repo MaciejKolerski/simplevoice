@@ -198,7 +198,7 @@ const modelKey = (model: RecommendedModel) =>
 const FALLBACK_CLOUD_MODELS: Record<string, string[]> = {
   openai: ["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
   openrouter: ["openai/whisper-large-v3"],
-  gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
+  gemini: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"],
   custom: [],
 };
 
@@ -422,8 +422,8 @@ export function ModelsView() {
       setAsrBaseUrl("https://api.anthropic.com/v1");
       localStorage.setItem("asr_base_url", "https://api.anthropic.com/v1");
     } else if (provider === "gemini") {
-      setAsrModel("gemini-1.5-flash");
-      localStorage.setItem("asr_model", "gemini-1.5-flash");
+      setAsrModel("gemini-flash-latest");
+      localStorage.setItem("asr_model", "gemini-flash-latest");
       setAsrBaseUrl("https://generativelanguage.googleapis.com/v1beta");
       localStorage.setItem(
         "asr_base_url",
@@ -663,7 +663,7 @@ export function ModelsView() {
     "openai/whisper-large-v3", "meta-llama/llama-3.2-11b-vision-instruct:free",
     "deepseek/deepseek-chat", "google/gemini-2.0-flash-exp:free",
     "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229",
-    "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp",
+    "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash",
   ]);
   const modelOptions =
     cloudModels.length > 0 ? cloudModels : FALLBACK_CLOUD_MODELS[asrProvider] || [];

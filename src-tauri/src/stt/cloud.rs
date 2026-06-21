@@ -137,7 +137,7 @@ pub async fn transcribe_cloud(
         };
         let model_name = model.unwrap_or("").trim();
         let model_str = if model_name.is_empty() {
-            "gemini-1.5-flash"
+            "gemini-flash-latest"
         } else {
             model_name
         };
