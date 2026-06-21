@@ -705,4 +705,31 @@ mod tests {
         assert!(extract_openai_text(&json!({})).is_none());
         assert!(extract_anthropic_text(&json!({"content":[]})).is_none());
     }
+
+    /// Real Gemini audio transcription, proving the cloud path the C5 parallel
+    /// loop drives actually works. Ignored (needs a key + network); run with:
+    ///   SV_GEMINI_KEY=… cargo test --lib cloud_gemini -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore = "needs a Gemini key + network"]
+    async fn cloud_gemini_transcribes_real_clip() {
+        let key = std::env::var("SV_GEMINI_KEY").expect("SV_GEMINI_KEY");
+        let reader = hound::WavReader::open("/Users/woro/Documents/Simple/test/output.wav")
+            .expect("open clip");
+        let samples: Vec<f32> = reader
+            .into_samples::<i16>()
+            .map(|s| s.expect("sample") as f32 / 32768.0)
+            .collect();
+        let text = transcribe_cloud(
+            &samples,
+            &key,
+            Some("gemini"),
+            Some("gemini-flash-latest"),
+            None,
+            Some("pl"),
+        )
+        .await
+        .expect("transcription");
+        eprintln!("gemini transcription: {text}");
+        assert!(!text.trim().is_empty());
+    }
 }

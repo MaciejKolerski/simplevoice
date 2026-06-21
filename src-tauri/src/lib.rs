@@ -698,6 +698,38 @@ fn marker_for(lang: &str, secs: f32) -> String {
     }
 }
 
+/// Fold cloud chunk results (already in chunk order) into the kept transcript
+/// parts plus an optional truncation point (C5). Mirrors the sequential rule:
+/// keep every part before the first failed chunk; if the failure precedes any
+/// kept text, propagate the error; an empty `Ok` part is dropped.
+fn join_cloud_results(
+    results: Vec<Result<String, String>>,
+    chunks: &[std::ops::Range<usize>],
+) -> Result<(Vec<String>, Option<f32>), String> {
+    let total = results.len();
+    let mut parts = Vec::with_capacity(total);
+    let mut truncated_at = None;
+    for (i, r) in results.into_iter().enumerate() {
+        match r {
+            Ok(part) => {
+                if !part.is_empty() {
+                    parts.push(part);
+                }
+            }
+            Err(e) => {
+                if parts.is_empty() {
+                    return Err(e);
+                }
+                tracing::warn!("[transcribe_audio] cloud chunk {}/{} failed: {}", i + 1, total, e);
+                truncated_at =
+                    Some(chunks[i].start as f32 / crate::stt::chunker::SAMPLE_RATE as f32);
+                break;
+            }
+        }
+    }
+    Ok((parts, truncated_at))
+}
+
 pub(crate) fn is_recording_window_locked(app_handle: &tauri::AppHandle) -> bool {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -2197,48 +2229,52 @@ async fn transcribe_audio(
             .await
             .map_err(|e| e.to_string())?;
             let total = chunks.len();
-            let mut parts: Vec<String> = Vec::with_capacity(total);
-            let mut truncated_at: Option<f32> = None;
-            for (i, range) in chunks.iter().enumerate() {
-                match crate::stt::cloud::transcribe_cloud(
-                    &prepared[range.clone()],
-                    &key,
-                    Some(&provider_name),
-                    model.as_deref(),
-                    base_url.as_deref(),
-                    language.as_deref(),
-                )
-                .await
-                {
-                    Ok(part) => {
-                        let part = part.trim().to_string();
-                        if !part.is_empty() {
-                            parts.push(part);
+
+            // C5: transcribe chunks with bounded concurrency instead of strictly
+            // one-at-a-time, but collect results IN ORDER (buffered) so the joined
+            // transcript stays correct. Error semantics match the sequential path:
+            // keep everything before the first failed chunk and mark a truncation
+            // there; if no kept text precedes the failure, propagate the error.
+            use futures::StreamExt;
+            const CLOUD_CONCURRENCY: usize = 4;
+            let prepared_ref = &prepared;
+            let key_ref = key.as_str();
+            let provider_ref = provider_name.as_str();
+            let model_ref = model.as_deref();
+            let base_url_ref = base_url.as_deref();
+            let language_ref = language.as_deref();
+            let app_ref = &app_handle;
+            let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let results: Vec<Result<String, String>> = futures::stream::iter(
+                chunks.iter().cloned().map(|range| {
+                    let done = done.clone();
+                    async move {
+                        let r = crate::stt::cloud::transcribe_cloud(
+                            &prepared_ref[range],
+                            key_ref,
+                            Some(provider_ref),
+                            model_ref,
+                            base_url_ref,
+                            language_ref,
+                        )
+                        .await
+                        .map(|p| p.trim().to_string());
+                        if total > 1 {
+                            let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            let _ = app_ref.emit(
+                                "transcription-progress",
+                                serde_json::json!({ "done": d, "total": total }),
+                            );
                         }
+                        r
                     }
-                    Err(e) => {
-                        // Same rule as transcribe_with_progress: only return a
-                        // partial result when there is actual text to keep.
-                        if parts.is_empty() {
-                            return Err(e);
-                        }
-                        tracing::warn!(
-                            "[transcribe_audio] cloud chunk {}/{} failed: {}",
-                            i + 1,
-                            total,
-                            e
-                        );
-                        truncated_at = Some(range.start as f32 / crate::stt::chunker::SAMPLE_RATE as f32);
-                        break;
-                    }
-                }
-                if total > 1 {
-                    let _ = app_handle.emit(
-                        "transcription-progress",
-                        serde_json::json!({ "done": i + 1, "total": total }),
-                    );
-                }
-            }
+                }),
+            )
+            .buffered(CLOUD_CONCURRENCY)
+            .collect()
+            .await;
+
+            let (parts, truncated_at) = join_cloud_results(results, &chunks)?;
             let mut joined =
                 crate::stt::text::collapse_repeats(&crate::stt::sanitize_output(&parts.join(" ")));
             if let Some(secs) = truncated_at {
@@ -3630,5 +3666,34 @@ mod tests {
         assert_eq!(marker_for("de", 305.0), " [Transkription abgebrochen bei 5:05]");
         assert_eq!(marker_for("en", 3661.0), " [transcription stopped at 61:01]");
         assert_eq!(marker_for("", -1.0), " [transcription stopped at 0:00]");
+    }
+
+    #[test]
+    fn cloud_results_join_in_order_skipping_empty() {
+        let chunks = vec![0..100, 100..200, 200..300];
+        let r = vec![Ok("a".into()), Ok("".into()), Ok("c".into())];
+        let (parts, trunc) = super::join_cloud_results(r, &chunks).unwrap();
+        assert_eq!(parts, vec!["a".to_string(), "c".to_string()]);
+        assert_eq!(trunc, None);
+    }
+
+    #[test]
+    fn cloud_results_truncate_at_first_failure_keeping_earlier() {
+        // Chunk 2 (start 200) fails after 0,1 succeeded: keep [a,b], truncate at 200.
+        let chunks = vec![0..100, 100..200, 200..300, 300..400];
+        let r = vec![Ok("a".into()), Ok("b".into()), Err("boom".into()), Ok("d".into())];
+        let (parts, trunc) = super::join_cloud_results(r, &chunks).unwrap();
+        assert_eq!(parts, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(trunc, Some(200.0 / crate::stt::chunker::SAMPLE_RATE as f32));
+    }
+
+    #[test]
+    fn cloud_results_error_before_any_text_propagates() {
+        let chunks = vec![0..100, 100..200];
+        let r = vec![Ok("".into()), Err("boom".into())];
+        assert_eq!(
+            super::join_cloud_results(r, &chunks),
+            Err("boom".to_string())
+        );
     }
 }
