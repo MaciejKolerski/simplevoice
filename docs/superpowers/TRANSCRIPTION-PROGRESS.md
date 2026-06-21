@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (8 / 52)
+## Done (10 / 52)
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
 - ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
@@ -33,8 +33,16 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ✅ **D2-core** repetition/loop collapse (`stt::text::collapse_repeats`, local + cloud). _Filler-word lists (uh/um, per-language, tri-state) still pending — needs the config-threading batch (see D2-fillers below)._
 - ✅ **C4** shared cloud `reqwest::Client` (OnceLock) with connect(10s)/read(120s) timeouts
 - ✅ **H4** `save_wav_file` returns Err on write failure (not silent `Ok(None)`); emits `recording-save-failed`, transcription still proceeds. _Frontend toast pending → folds into E7._
+- ✅ **B5-downmix** `downmix` keeps the trailing partial frame (was `chunks_exact`, silently dropped). _Ring-overflow signal (the other half of B5) still pending → folds into the H5 observability pass._
+- ✅ **G2** bounded timed-join on streaming `finish()` (5s budget then detach) — no longer blocks shutdown / next recording.
 
-## Planned sequencing of the remaining 44 (verifiable-first)
+## Planned sequencing of the remaining 42 (verifiable-first)
+
+> **G5 reclassified → frontend batch.** The ASR language lives in frontend
+> `localStorage` (`asr_language`), not `config.json`, so the backend cannot read it
+> for the live session. G5 needs the frontend to also persist `asr_language` to
+> `config.json` (then `begin_live_session` reads it like `live_min_chunk_ms`).
+> Forcing `ui_language` would be wrong (user dictates pl, UI is en).
 
 ### Batch D-text (pure logic, fully macOS-verifiable, high value)
 - ⏳ **D2-fillers** per-language filler-word removal (uh/um/eh…), config tri-state — needs `TranscribeOptions` config threading
@@ -76,7 +84,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - 🚩 **F6** ONNX GPU provider selector — UNVERIFIED (CoreML/DirectML/CUDA)
 
 ### Batch B-audio (input quality)
-- ⏳ **B5** ring-overflow signal + downmix remainder fix
+- 🔶 **B5** downmix remainder ✅ done; ring-overflow signal still pending (→ H5 pass)
 - ⏳ **B8** DC-block + clipping detect + peak-aware normalize
 - ⏳ **B1** rubato anti-aliasing resampler (dep: `rubato`)
 - ⏳ **B3** pre-roll / look-back buffer
@@ -86,8 +94,8 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ⏳ **B6** chunker: VAD-driven cuts + overlap
 
 ### Batch G-streaming (live mode hardening)
-- ⏳ **G5** thread user language into live session
-- ⏳ **G2** bounded timeout on `finish()`
+- 🚩 **G5** thread user language into live session — needs frontend to persist `asr_language` to `config.json` (→ frontend batch; see note above)
+- ✅ **G2** bounded timeout on `finish()`
 - ⏳ **G1** committed-prefix trimming (fix O(n²))
 - ⏳ **G3** surface dropped live audio + coalesce
 - ⏳ **G4** decouple ingest from decode (skip-stale)
