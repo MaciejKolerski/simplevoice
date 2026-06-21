@@ -109,6 +109,17 @@
     "accurateModeDesc": "Use Whisper beam search for higher accuracy at the cost of more CPU time.",
     "llmCleanup": "AI cleanup (LLM)",
     "llmCleanupDesc": "After transcription, send the text to your configured BYOK cloud model to fix punctuation, capitalization and typos (wording and language are kept). Requires a cloud key set in the Models tab. Note: the text leaves your device.",
+    "opencc": "Chinese conversion (OpenCC)",
+    "openccDesc": "Convert Chinese transcriptions between Simplified and Traditional script.",
+    "openccOptions": {
+      "off": "Off",
+      "s2t": "Simplified → Traditional",
+      "t2s": "Traditional → Simplified",
+      "s2tw": "Simplified → Traditional (Taiwan)",
+      "tw2s": "Traditional (Taiwan) → Simplified",
+      "s2hk": "Simplified → Traditional (Hong Kong)",
+      "hk2s": "Traditional (Hong Kong) → Simplified"
+    },
     "trailingSpace": "Trailing space",
     "trailingSpaceDesc": "Add a space after each transcription so consecutive dictations don't run together.",
     "modelUnload": "Unload model when idle",

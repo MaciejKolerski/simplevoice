@@ -150,6 +150,7 @@ export function SettingsView() {
   const [restoreClipboard, setRestoreClipboard] = useState(false);
   const [pasteDelay, setPasteDelay] = useState("100");
   const [pasteKeyHold, setPasteKeyHold] = useState("0");
+  const [opencc, setOpencc] = useState("off");
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -284,6 +285,7 @@ export function SettingsView() {
     setRestoreClipboard(getConfig("restore_clipboard", false) === true);
     setPasteDelay(String(getConfig("paste_delay_ms", 100)));
     setPasteKeyHold(String(getConfig("paste_key_hold_ms", 0)));
+    setOpencc(String(getConfig("opencc_config", "off")));
     setVadThreshold(String(getConfig("vad_threshold", 0.008)));
     setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
@@ -655,6 +657,11 @@ export function SettingsView() {
     setPasteKeyHold(value);
     const n = parseInt(value, 10);
     if (!isNaN(n)) updateConfig("paste_key_hold_ms", n);
+  };
+
+  const handleOpenccChange = (value: string) => {
+    setOpencc(value);
+    updateConfig("opencc_config", value);
   };
 
   const handleLlmCleanupToggle = (checked: boolean) => {
@@ -1032,6 +1039,30 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.llmCleanup")} description={t("settings.llmCleanupDesc")}>
             <Switch checked={llmCleanup} onCheckedChange={handleLlmCleanupToggle} />
+          </SettingRow>
+
+          <SettingRow layout="column" title={t("settings.opencc")} description={t("settings.openccDesc")}>
+            <Select
+              value={opencc}
+              onValueChange={(v) => handleOpenccChange(v ?? "off")}
+              items={Object.fromEntries(
+                ["off", "s2t", "t2s", "s2tw", "tw2s", "s2hk", "hk2s"].map((o) => [
+                  o,
+                  t(`settings.openccOptions.${o}`),
+                ]),
+              )}
+            >
+              <SelectTrigger className="w-full bg-black">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["off", "s2t", "t2s", "s2tw", "tw2s", "s2hk", "hk2s"].map((o) => (
+                  <SelectItem key={o} value={o}>
+                    {t(`settings.openccOptions.${o}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </SettingRow>
 
           <SettingRow title={t("settings.trailingSpace")} description={t("settings.trailingSpaceDesc")}>

@@ -109,6 +109,17 @@
     "accurateModeDesc": "Używaj beam search w Whisperze dla wyższej dokładności kosztem większego zużycia CPU.",
     "llmCleanup": "Czyszczenie AI (LLM)",
     "llmCleanupDesc": "Po transkrypcji wysyła tekst do skonfigurowanego modelu BYOK (chmura), by poprawić interpunkcję, wielkość liter i literówki (treść i język bez zmian). Wymaga klucza chmury w zakładce Modele. Uwaga: tekst opuszcza urządzenie.",
+    "opencc": "Konwersja chińskiego (OpenCC)",
+    "openccDesc": "Konwertuj chińskie transkrypcje między pismem uproszczonym a tradycyjnym.",
+    "openccOptions": {
+      "off": "Wyłączone",
+      "s2t": "Uproszczony → Tradycyjny",
+      "t2s": "Tradycyjny → Uproszczony",
+      "s2tw": "Uproszczony → Tradycyjny (Tajwan)",
+      "tw2s": "Tradycyjny (Tajwan) → Uproszczony",
+      "s2hk": "Uproszczony → Tradycyjny (Hongkong)",
+      "hk2s": "Tradycyjny (Hongkong) → Uproszczony"
+    },
     "trailingSpace": "Spacja na końcu",
     "trailingSpaceDesc": "Dodawaj spację po każdej transkrypcji, by kolejne dyktanda się nie sklejały.",
     "modelUnload": "Zwalniaj model przy bezczynności",

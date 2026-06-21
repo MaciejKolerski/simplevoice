@@ -109,6 +109,17 @@
     "accurateModeDesc": "Whisper-Beam-Search für höhere Genauigkeit auf Kosten von mehr CPU-Zeit verwenden.",
     "llmCleanup": "KI-Bereinigung (LLM)",
     "llmCleanupDesc": "Sendet den Text nach der Transkription an dein konfiguriertes BYOK-Cloud-Modell, um Zeichensetzung, Großschreibung und Tippfehler zu korrigieren (Wortlaut und Sprache bleiben erhalten). Erfordert einen Cloud-Schlüssel im Modelle-Tab. Hinweis: Der Text verlässt dein Gerät.",
+    "opencc": "Chinesisch-Konvertierung (OpenCC)",
+    "openccDesc": "Chinesische Transkriptionen zwischen vereinfachter und traditioneller Schrift umwandeln.",
+    "openccOptions": {
+      "off": "Aus",
+      "s2t": "Vereinfacht → Traditionell",
+      "t2s": "Traditionell → Vereinfacht",
+      "s2tw": "Vereinfacht → Traditionell (Taiwan)",
+      "tw2s": "Traditionell (Taiwan) → Vereinfacht",
+      "s2hk": "Vereinfacht → Traditionell (Hongkong)",
+      "hk2s": "Traditionell (Hongkong) → Vereinfacht"
+    },
     "trailingSpace": "Leerzeichen am Ende",
     "trailingSpaceDesc": "Nach jeder Transkription ein Leerzeichen anhängen, damit aufeinanderfolgende Diktate nicht zusammenlaufen.",
     "modelUnload": "Modell bei Inaktivität entladen",

@@ -730,6 +730,46 @@ fn join_cloud_results(
     Ok((parts, truncated_at))
 }
 
+/// Reads `opencc_config` from config.json (default "off"): which OpenCC
+/// Simplified/Traditional Chinese conversion to apply to the transcription (D4).
+fn opencc_config(app_handle: &tauri::AppHandle) -> String {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return "off".to_string();
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return "off".to_string();
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| {
+            v.get("opencc_config")
+                .and_then(|s| s.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "off".to_string())
+}
+
+/// D4: convert Chinese between Simplified/Traditional via OpenCC per `config`
+/// (`off` | `s2t` | `t2s` | `s2tw` | `tw2s` | `s2hk` | `hk2s`). Returns the text
+/// unchanged when off/unknown or on any error, so it never loses or corrupts a
+/// transcription. The OpenCC dictionaries are embedded in the binary (no assets).
+fn apply_opencc(config: &str, text: &str) -> String {
+    use ferrous_opencc::config::BuiltinConfig;
+    let builtin = match config {
+        "s2t" => BuiltinConfig::S2t,
+        "t2s" => BuiltinConfig::T2s,
+        "s2tw" => BuiltinConfig::S2tw,
+        "tw2s" => BuiltinConfig::Tw2s,
+        "s2hk" => BuiltinConfig::S2hk,
+        "hk2s" => BuiltinConfig::Hk2s,
+        _ => return text.to_string(),
+    };
+    match ferrous_opencc::OpenCC::from_config(builtin) {
+        Ok(cc) => cc.convert(text),
+        Err(_) => text.to_string(),
+    }
+}
+
 pub(crate) fn is_recording_window_locked(app_handle: &tauri::AppHandle) -> bool {
     let app_local_data = match app_handle.path().app_local_data_dir() {
         Ok(dir) => dir,
@@ -2316,8 +2356,11 @@ async fn transcribe_audio(
     };
 
     // Delivery-layer post-processing (config-gated; the eval-harness path through
-    // transcribe_with_progress is not affected). Filler removal is the first such
-    // step; custom-words / OpenCC / formatting commands will land here too.
+    // transcribe_with_progress is not affected).
+    // D4: OpenCC Simplified/Traditional Chinese conversion first, so later steps
+    // operate on the converted script. Opt-in; no-op (returns input) when "off".
+    let text = apply_opencc(&opencc_config(&app_handle), &text);
+    // Filler removal is the next step; custom-words / formatting commands follow.
     let text = if is_filler_removal_enabled(&app_handle) {
         crate::stt::text::remove_fillers(&text, language.as_deref())
     } else {
@@ -3695,5 +3738,14 @@ mod tests {
             super::join_cloud_results(r, &chunks),
             Err("boom".to_string())
         );
+    }
+
+    #[test]
+    fn opencc_converts_and_passes_through() {
+        // 汉 (simplified) <-> 漢 (traditional); 字 is identical in both scripts.
+        assert_eq!(super::apply_opencc("s2t", "汉字"), "漢字");
+        assert_eq!(super::apply_opencc("t2s", "漢字"), "汉字");
+        assert_eq!(super::apply_opencc("off", "汉字"), "汉字");
+        assert_eq!(super::apply_opencc("nonsense", "abc"), "abc");
     }
 }
