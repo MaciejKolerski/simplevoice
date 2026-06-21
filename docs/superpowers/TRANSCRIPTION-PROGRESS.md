@@ -24,7 +24,8 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (17 / 52)
+## Done (18 / 52)
+_B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and live-drop counter (`note_live_drop`) merged on top of the earlier downmix/coalesce halves. The `transcription-buffering` UI event stays for the frontend batch._
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
 - ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
@@ -90,7 +91,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - 🚩 **F6** ONNX GPU provider selector — UNVERIFIED (CoreML/DirectML/CUDA)
 
 ### Batch B-audio (input quality)
-- 🔶 **B5** downmix remainder ✅ done; ring-overflow signal still pending (→ H5 pass)
+- ✅ **B5** downmix remainder + ring-overflow counter (warn-once)
 - ⏳ **B8** DC-block + clipping detect + peak-aware normalize
 - ⏳ **B1** rubato anti-aliasing resampler (dep: `rubato`)
 - ⏳ **B3** pre-roll / look-back buffer
@@ -103,7 +104,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - 🚩 **G5** thread user language into live session — needs frontend to persist `asr_language` to `config.json` (→ frontend batch; see note above)
 - ✅ **G2** bounded timeout on `finish()`
 - ⏳ **G1** committed-prefix trimming (fix O(n²))
-- 🔶 **G3** coalesce ✅ done; drop-counter + `transcription-buffering` event still pending (→ H5)
+- ✅ **G3** coalesce + live drop-counter (warn-once); `transcription-buffering` UI event → frontend batch
 - ⏳ **G4** decouple ingest from decode (skip-stale)
 - ⏳ **G7** configurable knobs + CJK character mode
 - ⏸ **G6** native transducer streaming (sherpa OnlineRecognizer) — XL/High risk, last
