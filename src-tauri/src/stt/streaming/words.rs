@@ -3,9 +3,42 @@
 //! needs the *sequence* of words from each decode, and the audio buffer is only
 //! ever cut at whole-buffer (silence) boundaries, never mid-word.
 
-/// Whitespace-split a transcript into words.
+/// True for scripts written without spaces between words (CJK, Hangul, Thai),
+/// where the agreement unit must be a single character rather than a whole word.
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32,
+        0x3040..=0x30FF |   // Hiragana + Katakana
+        0x3400..=0x4DBF |   // CJK Extension A
+        0x4E00..=0x9FFF |   // CJK Unified Ideographs
+        0xAC00..=0xD7AF |   // Hangul syllables
+        0x0E00..=0x0E7F)    // Thai
+}
+
+/// Split a transcript into agreement units. Whitespace-separated runs of
+/// non-CJK text are words (as before); each CJK character is its own unit, so
+/// LocalAgreement can commit space-less scripts character-by-character instead of
+/// degrading to one giant token (G7).
 pub fn split_words(text: &str) -> Vec<String> {
-    text.split_whitespace().map(|s| s.to_string()).collect()
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for c in text.chars() {
+        if is_cjk(c) {
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+            out.push(c.to_string());
+        } else if c.is_whitespace() {
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+        } else {
+            cur.push(c);
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 /// Normalized form used to compare words for stability: lowercased with leading
@@ -25,9 +58,21 @@ pub fn lcp_words(a: &[String], b: &[String]) -> usize {
     i
 }
 
-/// Join words with single spaces.
+/// Join units back into text. Latin words get single spaces; consecutive CJK
+/// characters are joined with no space, matching how those scripts are written.
 pub fn join_words(words: &[String]) -> String {
-    words.join(" ")
+    let mut out = String::new();
+    for w in words {
+        if !out.is_empty() {
+            let prev_cjk = out.chars().last().map_or(false, is_cjk);
+            let next_cjk = w.chars().next().map_or(false, is_cjk);
+            if !(prev_cjk && next_cjk) {
+                out.push(' ');
+            }
+        }
+        out.push_str(w);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -62,5 +107,18 @@ mod tests {
     fn join_uses_single_spaces() {
         assert_eq!(join_words(&v(&["a", "b", "c"])), "a b c");
         assert_eq!(join_words(&[]), "");
+    }
+
+    #[test]
+    fn split_breaks_cjk_into_characters() {
+        assert_eq!(split_words("你好世界"), v(&["你", "好", "世", "界"]));
+        assert_eq!(split_words("你好 world"), v(&["你", "好", "world"]));
+    }
+
+    #[test]
+    fn join_omits_spaces_between_cjk() {
+        assert_eq!(join_words(&v(&["你", "好"])), "你好");
+        assert_eq!(join_words(&v(&["你", "world"])), "你 world");
+        assert_eq!(join_words(&v(&["hello", "world"])), "hello world");
     }
 }
