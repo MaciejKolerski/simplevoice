@@ -101,12 +101,12 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 ### Batch B-audio (input quality)
 - ✅ **B5** downmix remainder + ring-overflow counter (warn-once)
 - 🔶 **B8** DC-block ✅ done (`DcBlocker` one-pole HPF in capture, unit-tested) 🚩 needs real-recording check; clipping detect + peak-aware normalize still pending
-- ⏳ **B1** rubato anti-aliasing resampler (dep: `rubato`)
-- ⏳ **B3** pre-roll / look-back buffer
+- ⏸ **B1** rubato anti-aliasing resampler — SKIPPED by user (2026-06-21): imperceptible gain (recordings already transcribe EXACT with the linear resampler) vs the risk of a real-time-callback rewrite that can't be verified without a mic.
+- ⏸ **B3** pre-roll / look-back buffer — SKIPPED by user: requires an always-on mic (continuous rolling buffer) for privacy-sensitive capture; user declined that tradeoff.
 - 🔶 **B4** configurable VAD threshold + silence ✅ done (`apply_vad_config` reads config at record start + Settings number inputs) 🚩 needs real-recording check; consumer-latency reduction (50ms→10ms) still pending
 - ✅ **B7** request/enumerate 16 kHz on device (🚩 needs real-recording check)
 - ❌ **B2** Silero VAD silence-trim — implemented then **REMOVED at user's request** (2026-06-21). A "Trim silence (VAD)" toggle was redundant with the existing auto-end VAD (B4): if recording already auto-ends on silence, pre-trimming buys nothing. (Also: segment-concat trimming actively hurt Whisper — WER 0→0.267 — and even outer-trim adds no real value here.) Fully reverted: `stt/vad.rs`, wiring, toggle, eval `SV_VAD_TRIM` instrumentation, and the downloaded model all deleted. **Lesson: VAD belongs in endpointing (B4), not as a separate pre-transcription trim — don't add a second VAD feature.**
-- ⏳ **B6** chunker: VAD-driven cuts + overlap
+- ⏸ **B6** chunker VAD cuts + overlap — SKIPPED by user: marginal (cuts already land in silences, so words aren't bisected) + overlap breaks the non-overlapping range contract and needs dedup.
 
 ### Batch G-streaming (live mode hardening)
 - ✅ **G5** thread user ASR language into live session (`asr_language` mirrored to config.json from frontend; `begin_live_session` reads it)
@@ -143,7 +143,7 @@ _(filled as 🚩 items land)_
 - **F6** ONNX GPU provider selector (CoreML/DirectML/CUDA).
 
 **Critical-path changes I can't runtime-verify here (real recording / live mic / paste / cloud key) — merging blind risks regressions on your working app:**
-- **B1** rubato anti-aliasing resampler (capture rewrite), **B3** pre-roll buffer (needs always-on capture), **B6** chunker VAD-driven cuts + overlap.
+- ~~**B1** rubato resampler, **B3** pre-roll buffer, **B6** chunker overlap~~ ❌ SKIPPED by user — marginal gain vs capture-rewrite risk / always-on-mic privacy (see Done section).
 - ~~**C2** push-to-talk~~ ✅, ~~**E1** clipboard save/restore~~ ✅, ~~**E6** paste delays~~ ✅, ~~**C5** cloud chunk parallelism~~ ✅ (live-test C2/E1).
 - ~~**G1** committed-prefix O(n²) trim~~ ✅ done, **G4** decouple ingest/decode, **G6** native transducer streaming (XL).
 - ~~**A3-onnx / A7-hotwords** ONNX hotwords~~ ✅ done (bpe.vocab derived from bpe.model in Rust; gigaspeech model added).
