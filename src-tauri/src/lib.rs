@@ -286,6 +286,21 @@ fn is_trailing_space_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads `clipboard_only` from config.json (default false): keep the transcription
+/// on the clipboard but skip auto-paste (E2).
+fn is_clipboard_only(app_handle: &tauri::AppHandle) -> bool {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return false;
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("clipboard_only").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
+}
+
 /// Reads `model_unload_enabled` from config.json (default false).
 fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
@@ -2065,19 +2080,23 @@ async fn transcribe_audio(
         // Auto-paste off the async runtime (the pre-paste settle sleep must not
         // block it); the enigo keystroke itself is routed through
         // paste_text_from_backend, which on macOS hops to the main thread.
-        let paste_owned = text.clone();
-        let app_for_paste = app_handle.clone();
-        let _ = tauri::async_runtime::spawn_blocking(move || {
-            // Let the just-set clipboard propagate and the previously focused app
-            // settle before simulating the paste keystroke.
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            if let Err(e) = paste_text_from_backend(&app_for_paste, paste_owned) {
-                eprintln!("[transcribe_audio] backend auto-paste failed: {e}");
-                // Surface the silent failure so the UI can prompt manual paste (E7).
-                let _ = app_for_paste.emit("paste-error", format!("{e}"));
-            }
-        })
-        .await;
+        // Output mode (E2): "clipboard only" keeps the text on the clipboard and
+        // skips auto-paste; otherwise auto-paste as usual.
+        if !is_clipboard_only(&app_handle) {
+            let paste_owned = text.clone();
+            let app_for_paste = app_handle.clone();
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                // Let the just-set clipboard propagate and the previously focused app
+                // settle before simulating the paste keystroke.
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if let Err(e) = paste_text_from_backend(&app_for_paste, paste_owned) {
+                    eprintln!("[transcribe_audio] backend auto-paste failed: {e}");
+                    // Surface the silent failure so the UI can prompt manual paste (E7).
+                    let _ = app_for_paste.emit("paste-error", format!("{e}"));
+                }
+            })
+            .await;
+        }
         play_backend_sound(&app_handle, "done");
     }
 

@@ -141,6 +141,7 @@ export function SettingsView() {
   const [decodeAccurate, setDecodeAccurate] = useState(false);
   const [trailingSpace, setTrailingSpace] = useState(false);
   const [modelUnload, setModelUnload] = useState(false);
+  const [clipboardOnly, setClipboardOnly] = useState(false);
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -266,6 +267,7 @@ export function SettingsView() {
     setDecodeAccurate(getConfig("decode_accurate", false) === true);
     setTrailingSpace(getConfig("append_trailing_space", false) === true);
     setModelUnload(getConfig("model_unload_enabled", false) === true);
+    setClipboardOnly(getConfig("clipboard_only", false) === true);
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
     const chunkMs = getConfig("live_min_chunk_ms", null);
     const speed = Object.entries(LIVE_SPEED_MS).find(([, ms]) => ms === chunkMs)?.[0];
@@ -591,6 +593,11 @@ export function SettingsView() {
   const handleModelUnloadToggle = (checked: boolean) => {
     setModelUnload(checked);
     updateConfig("model_unload_enabled", checked);
+  };
+
+  const handleClipboardOnlyToggle = (checked: boolean) => {
+    setClipboardOnly(checked);
+    updateConfig("clipboard_only", checked);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -929,6 +936,10 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.modelUnload")} description={t("settings.modelUnloadDesc")}>
             <Switch checked={modelUnload} onCheckedChange={handleModelUnloadToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.clipboardOnly")} description={t("settings.clipboardOnlyDesc")}>
+            <Switch checked={clipboardOnly} onCheckedChange={handleClipboardOnlyToggle} />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>

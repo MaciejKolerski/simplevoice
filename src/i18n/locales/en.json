@@ -105,6 +105,8 @@
     "trailingSpaceDesc": "Add a space after each transcription so consecutive dictations don't run together.",
     "modelUnload": "Unload model when idle",
     "modelUnloadDesc": "Free memory by unloading the speech model after 5 minutes of inactivity; it reloads on the next transcription.",
+    "clipboardOnly": "Clipboard only (no auto-paste)",
+    "clipboardOnlyDesc": "Copy the transcription to the clipboard without pressing paste for you.",
     "pauseSystemAudio": "Pause System Audio",
     "pauseSystemAudioDesc": "Automatically pause music or videos while recording and resume afterwards.",
     "recordingOverlayWindow": "Recording Overlay Window",

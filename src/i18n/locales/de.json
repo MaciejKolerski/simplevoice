@@ -105,6 +105,8 @@
     "trailingSpaceDesc": "Nach jeder Transkription ein Leerzeichen anhängen, damit aufeinanderfolgende Diktate nicht zusammenlaufen.",
     "modelUnload": "Modell bei Inaktivität entladen",
     "modelUnloadDesc": "Speicher freigeben, indem das Sprachmodell nach 5 Minuten Inaktivität entladen wird; es wird bei der nächsten Transkription neu geladen.",
+    "clipboardOnly": "Nur Zwischenablage (kein Auto-Einfügen)",
+    "clipboardOnlyDesc": "Die Transkription in die Zwischenablage kopieren, ohne automatisch einzufügen.",
     "pauseSystemAudio": "Systemaudio pausieren",
     "pauseSystemAudioDesc": "Musik oder Videos während der Aufnahme automatisch pausieren und danach fortsetzen.",
     "recordingOverlayWindow": "Aufnahme-Overlay-Fenster",
