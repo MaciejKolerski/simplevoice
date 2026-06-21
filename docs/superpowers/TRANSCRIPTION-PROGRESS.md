@@ -172,3 +172,11 @@ _(filled as 🚩 items land)_
 - User is on **Whisper V3 Turbo** (so A3 initial_prompt + A2 beam already apply).
 - Still wanted from user: a few hard PL clips in `/Users/woro/Documents/Simple/test/`
   for real WER-gain measurement (harness currently proves no-regression only).
+
+### D3 key status (2026-06-21)
+- Gemini key STORED in OS keychain (`simplevoice` / `api_key_gemini`) — readable by
+  `get_secure_api_key("gemini")`. Key no longer needed in conversation context.
+- ⚠️ Format does NOT match a standard Google AI Studio key (`AIzaSy…`); looks OAuth-ish.
+  Verify it actually authenticates when D3 is first tested; ask user for the real key if it 401s.
+- D3 implementation: reuse the existing Gemini client in `stt/cloud.rs` + keyring; keep it a
+  deliberate cycle (sends text to Google) — NOT folded into the blind autonomous loop.
