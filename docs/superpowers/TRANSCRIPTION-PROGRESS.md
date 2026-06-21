@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (19 / 52)
+## Done (20 / 52)
 _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and live-drop counter (`note_live_drop`) merged on top of the earlier downmix/coalesce halves. The `transcription-buffering` UI event stays for the frontend batch._
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
@@ -106,7 +106,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ⏳ **G1** committed-prefix trimming (fix O(n²))
 - ✅ **G3** coalesce + live drop-counter (warn-once); `transcription-buffering` UI event → frontend batch
 - ⏳ **G4** decouple ingest from decode (skip-stale)
-- ⏳ **G7** configurable knobs + CJK character mode
+- 🔶 **G7** CJK character-mode units ✅ done (`words.rs`); configurable cap/agreement-n knobs → config/frontend batch
 - ⏸ **G6** native transducer streaming (sherpa OnlineRecognizer) — XL/High risk, last
 
 ### Batch H-foundation (observability)
