@@ -94,6 +94,8 @@
     "sentenceCaseDesc": "Capitalize the first letter of each sentence (for lowercase models).",
     "formattingCommands": "Voice formatting commands",
     "formattingCommandsDesc": "Turn spoken commands (\"new line\", \"comma\") into formatting.",
+    "customWords": "Custom dictionary",
+    "customWordsDesc": "Comma-separated names/terms to correct in transcriptions (e.g. ChatGPT, Kubernetes).",
     "pauseSystemAudio": "Pause System Audio",
     "pauseSystemAudioDesc": "Automatically pause music or videos while recording and resume afterwards.",
     "recordingOverlayWindow": "Recording Overlay Window",

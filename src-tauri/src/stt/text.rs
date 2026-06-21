@@ -156,6 +156,54 @@ pub(crate) fn apply_formatting_commands(text: &str, lang: Option<&str>) -> Strin
     out
 }
 
+/// Corrects transcribed words toward a user dictionary (names, brands, jargon).
+/// An exact case-insensitive match is renormalized to the configured casing
+/// ("chatgpt" -> "ChatGPT"); otherwise a strict fuzzy match (normalized edit
+/// distance <= 0.25, length within 2, core >= 4 chars) snaps near-misses
+/// ("kubernetis" -> "Kubernetes"). Reuses `eval::edit_distance` (no new dependency).
+/// Off by default; the caller passes an empty slice to disable.
+pub(crate) fn apply_custom_words(text: &str, custom: &[String]) -> String {
+    if custom.is_empty() {
+        return text.to_string();
+    }
+    let lowers: Vec<Vec<char>> = custom.iter().map(|c| c.to_lowercase().chars().collect()).collect();
+    text.split_whitespace()
+        .map(|w| {
+            let core = w.trim_matches(|c: char| !c.is_alphanumeric());
+            if core.is_empty() {
+                return w.to_string();
+            }
+            let core_chars: Vec<char> = core.to_lowercase().chars().collect();
+            for (i, lw) in lowers.iter().enumerate() {
+                if *lw == core_chars {
+                    return w.replace(core, &custom[i]);
+                }
+            }
+            if core_chars.len() >= 4 {
+                let mut best: Option<(usize, f64)> = None;
+                for (i, lw) in lowers.iter().enumerate() {
+                    if (core_chars.len() as i64 - lw.len() as i64).abs() > 2 {
+                        continue;
+                    }
+                    let dist = crate::eval::edit_distance(&core_chars, lw);
+                    let maxlen = core_chars.len().max(lw.len());
+                    let norm = dist as f64 / maxlen as f64;
+                    if best.map_or(true, |(_, b)| norm < b) {
+                        best = Some((i, norm));
+                    }
+                }
+                if let Some((i, norm)) = best {
+                    if norm > 0.0 && norm <= 0.25 {
+                        return w.replace(core, &custom[i]);
+                    }
+                }
+            }
+            w.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,5 +279,24 @@ mod tests {
     #[test]
     fn formatting_leaves_normal_text() {
         assert_eq!(apply_formatting_commands("just normal words", Some("en")), "just normal words");
+    }
+
+    #[test]
+    fn custom_words_exact_casing() {
+        let cw = vec!["ChatGPT".to_string()];
+        assert_eq!(apply_custom_words("i use chatgpt daily", &cw), "i use ChatGPT daily");
+    }
+
+    #[test]
+    fn custom_words_fuzzy_snaps_near_misses() {
+        let cw = vec!["Kubernetes".to_string()];
+        assert_eq!(apply_custom_words("deploy kubernetis today", &cw), "deploy Kubernetes today");
+    }
+
+    #[test]
+    fn custom_words_no_false_positives() {
+        let cw = vec!["ChatGPT".to_string()];
+        assert_eq!(apply_custom_words("the cat sat down", &cw), "the cat sat down");
+        assert_eq!(apply_custom_words("anything", &[]), "anything");
     }
 }

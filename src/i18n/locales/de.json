@@ -94,6 +94,8 @@
     "sentenceCaseDesc": "Den ersten Buchstaben jedes Satzes großschreiben (für Modelle ohne Großschreibung).",
     "formattingCommands": "Sprachbefehle zur Formatierung",
     "formattingCommandsDesc": "Gesprochene Befehle (\"neue Zeile\", \"Komma\") in Formatierung umwandeln.",
+    "customWords": "Eigenes Wörterbuch",
+    "customWordsDesc": "Durch Kommas getrennte Namen/Begriffe, die in Transkriptionen korrigiert werden (z. B. ChatGPT, Kubernetes).",
     "pauseSystemAudio": "Systemaudio pausieren",
     "pauseSystemAudioDesc": "Musik oder Videos während der Aufnahme automatisch pausieren und danach fortsetzen.",
     "recordingOverlayWindow": "Aufnahme-Overlay-Fenster",

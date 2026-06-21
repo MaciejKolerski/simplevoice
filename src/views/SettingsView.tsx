@@ -10,6 +10,7 @@ import { changeLanguage } from "@/i18n/language";
 import { SUPPORTED_LANGUAGES, Language } from "@/i18n/detect";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { SettingRow } from "@/components/ui/setting-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -136,6 +137,7 @@ export function SettingsView() {
   const [fillerRemovalEnabled, setFillerRemovalEnabled] = useState(false);
   const [sentenceCaseEnabled, setSentenceCaseEnabled] = useState(false);
   const [formattingCommandsEnabled, setFormattingCommandsEnabled] = useState(false);
+  const [customWords, setCustomWords] = useState("");
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -257,6 +259,7 @@ export function SettingsView() {
     setFillerRemovalEnabled(getConfig("filler_removal_enabled", false) === true);
     setSentenceCaseEnabled(getConfig("sentence_case_enabled", false) === true);
     setFormattingCommandsEnabled(getConfig("formatting_commands_enabled", false) === true);
+    setCustomWords(((getConfig("custom_words", []) as string[]) || []).join(", "));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
     const chunkMs = getConfig("live_min_chunk_ms", null);
     const speed = Object.entries(LIVE_SPEED_MS).find(([, ms]) => ms === chunkMs)?.[0];
@@ -561,6 +564,12 @@ export function SettingsView() {
   const handleFormattingCommandsToggle = (checked: boolean) => {
     setFormattingCommandsEnabled(checked);
     updateConfig("formatting_commands_enabled", checked);
+  };
+
+  const handleCustomWordsChange = (value: string) => {
+    setCustomWords(value);
+    const words = value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+    updateConfig("custom_words", words);
   };
 
   const handlePauseAudioToggle = (checked: boolean) => {
@@ -878,6 +887,15 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.formattingCommands")} description={t("settings.formattingCommandsDesc")}>
             <Switch checked={formattingCommandsEnabled} onCheckedChange={handleFormattingCommandsToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.customWords")} description={t("settings.customWordsDesc")}>
+            <Input
+              value={customWords}
+              onChange={(e) => handleCustomWordsChange(e.target.value)}
+              placeholder="ChatGPT, Kubernetes"
+              className="w-64"
+            />
           </SettingRow>
 
           <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>

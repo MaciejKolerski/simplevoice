@@ -286,6 +286,24 @@ fn is_formatting_commands_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads the `custom_words` string array from config.json (empty by default).
+fn custom_words(app_handle: &tauri::AppHandle) -> Vec<String> {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return Vec::new();
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| {
+            v.get("custom_words").and_then(|a| a.as_array()).map(|arr| {
+                arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()
+            })
+        })
+        .unwrap_or_default()
+}
+
 fn begin_live_session(app: &tauri::AppHandle) {
     if !is_live_transcription_enabled(app) {
         return;
@@ -1920,6 +1938,12 @@ async fn transcribe_audio(
     // step; custom-words / OpenCC / formatting commands will land here too.
     let text = if is_filler_removal_enabled(&app_handle) {
         crate::stt::text::remove_fillers(&text, language.as_deref())
+    } else {
+        text
+    };
+    let custom = custom_words(&app_handle);
+    let text = if !custom.is_empty() {
+        crate::stt::text::apply_custom_words(&text, &custom)
     } else {
         text
     };
