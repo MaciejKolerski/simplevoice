@@ -83,6 +83,56 @@ fn write_completion_manifest(model_dir: &Path, files: &[String]) {
     }
 }
 
+/// Streaming SHA-256 of a file as lowercase hex, or `None` on an I/O error (so a
+/// transient read failure never blocks a download — verification is skipped).
+fn sha256_of_file(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = file.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let digest = hasher.finalize();
+    Some(digest.iter().map(|b| format!("{:02x}", b)).collect())
+}
+
+/// Fetch HuggingFace's published SHA-256 per file (the LFS `sha256`) for
+/// `repo_id`, keyed by repo-relative filename (F1). Only LFS-tracked files (the
+/// large model weights) carry a content SHA-256; small git-blob files are absent.
+/// Best-effort: any API/parse error yields an empty map, so verification is
+/// simply skipped.
+async fn fetch_expected_sha256(client: &reqwest::Client, repo_id: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let url = format!("https://huggingface.co/api/models/{}?blobs=true", repo_id);
+    let resp = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return map,
+    };
+    let json: serde_json::Value = match resp.json().await {
+        Ok(j) => j,
+        Err(_) => return map,
+    };
+    if let Some(siblings) = json.get("siblings").and_then(|s| s.as_array()) {
+        for s in siblings {
+            let name = s.get("rfilename").and_then(|n| n.as_str());
+            let sha = s
+                .get("lfs")
+                .and_then(|l| l.get("sha256"))
+                .and_then(|o| o.as_str());
+            if let (Some(name), Some(sha)) = (name, sha) {
+                map.insert(name.to_string(), sha.to_lowercase());
+            }
+        }
+    }
+    map
+}
+
 /// Partial files are downloaded to `<name>.part` and renamed to their final
 /// name only once complete, so a half-finished download is never picked up as
 /// an installed model by `scan_models`.
@@ -190,6 +240,10 @@ async fn run_download(
         .unwrap_or_else(|_| reqwest::Client::new());
     let total_files = files.len();
 
+    // F1: HuggingFace's published SHA-256 (LFS oid) per file, for post-download
+    // integrity verification. Best-effort: empty when the API is unreachable.
+    let expected = fetch_expected_sha256(&client, repo_id).await;
+
     for (index, file_path) in files.iter().enumerate() {
         if !is_safe_relative(file_path) {
             return Err(format!("Refusing unsafe file path: {}", file_path));
@@ -224,44 +278,61 @@ async fn run_download(
             );
         };
 
-        // Already finished on a previous run.
+        // Already finished on a previous run; otherwise download with retries.
         if dest_path.exists() {
             emit_progress(100.0);
-            continue;
+        } else {
+            // Retry transient failures with capped exponential backoff. The `.part`
+            // file plus HTTP Range resume mean each retry continues where it left
+            // off rather than restarting the transfer (F4).
+            let mut attempt = 0u32;
+            loop {
+                match download_one_file_attempt(
+                    &client,
+                    &file_url,
+                    file_path,
+                    &part_path,
+                    &dest_path,
+                    control,
+                    is_single_file,
+                    &model_dir,
+                    &emit_progress,
+                )
+                .await
+                {
+                    Ok(FileOutcome::Completed) => break,
+                    Ok(FileOutcome::Paused) => return Ok("paused".to_string()),
+                    Ok(FileOutcome::Cancelled) => return Ok("cancelled".to_string()),
+                    Err(e) => {
+                        let may_retry = e.retryable
+                            && attempt < MAX_RETRIES
+                            && !control.cancelled.load(Ordering::Relaxed)
+                            && !control.paused.load(Ordering::Relaxed);
+                        if !may_retry {
+                            return Err(e.msg);
+                        }
+                        attempt += 1;
+                        tokio::time::sleep(backoff_delay(attempt)).await;
+                    }
+                }
+            }
         }
 
-        // Retry transient failures with capped exponential backoff. The `.part`
-        // file plus HTTP Range resume mean each retry continues where it left
-        // off rather than restarting the transfer (F4).
-        let mut attempt = 0u32;
-        loop {
-            match download_one_file_attempt(
-                &client,
-                &file_url,
-                file_path,
-                &part_path,
-                &dest_path,
-                control,
-                is_single_file,
-                &model_dir,
-                &emit_progress,
-            )
-            .await
-            {
-                Ok(FileOutcome::Completed) => break,
-                Ok(FileOutcome::Paused) => return Ok("paused".to_string()),
-                Ok(FileOutcome::Cancelled) => return Ok("cancelled".to_string()),
-                Err(e) => {
-                    let may_retry = e.retryable
-                        && attempt < MAX_RETRIES
-                        && !control.cancelled.load(Ordering::Relaxed)
-                        && !control.paused.load(Ordering::Relaxed);
-                    if !may_retry {
-                        return Err(e.msg);
-                    }
-                    attempt += 1;
-                    tokio::time::sleep(backoff_delay(attempt)).await;
+        // F1: verify the finished file against HF's published SHA-256 when known.
+        // A mismatch means a corrupt or tampered download — delete it and fail so
+        // the user re-downloads rather than loading bad weights. Non-LFS files
+        // have no hash and are skipped.
+        if let Some(expected_hash) = expected.get(file_path) {
+            match sha256_of_file(&dest_path) {
+                Some(actual) if &actual == expected_hash => {}
+                Some(actual) => {
+                    let _ = fs::remove_file(&dest_path);
+                    return Err(format!(
+                        "Integrity check failed for {}: expected SHA-256 {}, got {}",
+                        file_path, expected_hash, actual
+                    ));
                 }
+                None => {} // couldn't re-read the file to hash it; don't block here
             }
         }
     }
@@ -500,5 +571,17 @@ mod tests {
         assert!(!is_safe_relative("../escape"));
         assert!(!is_safe_relative("/abs/path"));
         assert!(!is_safe_relative(""));
+    }
+
+    #[test]
+    fn sha256_of_file_matches_known_vector() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("f");
+        fs::write(&p, b"abc").unwrap();
+        assert_eq!(
+            sha256_of_file(&p).as_deref(),
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        );
+        assert!(sha256_of_file(&d.path().join("missing")).is_none());
     }
 }
