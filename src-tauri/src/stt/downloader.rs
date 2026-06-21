@@ -69,6 +69,20 @@ fn is_retryable_status(status: reqwest::StatusCode) -> bool {
         || status == reqwest::StatusCode::TOO_MANY_REQUESTS
 }
 
+/// Filename of the per-model completion manifest written once every file of a
+/// multi-file download finishes (F2). `AsrFactory::detect_format` uses it to
+/// reject an install interrupted between files (which leaves no `.part`).
+pub(crate) const COMPLETION_MANIFEST: &str = ".sv-manifest.json";
+
+/// Record which files a multi-file model needs, marking the install complete.
+/// Best-effort: a write failure just means no manifest (treated as legacy).
+fn write_completion_manifest(model_dir: &Path, files: &[String]) {
+    let manifest = serde_json::json!({ "files": files });
+    if let Ok(text) = serde_json::to_string(&manifest) {
+        let _ = fs::write(model_dir.join(COMPLETION_MANIFEST), text);
+    }
+}
+
 /// Partial files are downloaded to `<name>.part` and renamed to their final
 /// name only once complete, so a half-finished download is never picked up as
 /// an installed model by `scan_models`.
@@ -250,6 +264,13 @@ async fn run_download(
                 }
             }
         }
+    }
+
+    // F2: record a completion manifest for multi-file installs so a download
+    // interrupted between files (no `.part` left behind) is detected as
+    // incomplete rather than half-installed.
+    if !is_single_file {
+        write_completion_manifest(&model_dir, files);
     }
 
     Ok("completed".to_string())

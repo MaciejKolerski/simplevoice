@@ -3,6 +3,25 @@ use crate::error::AppError;
 use crate::stt::traits::{AsrEngine, ModelFormat, ModelInfo};
 use crate::stt::ggml_whisper::GgmlWhisperEngine;
 
+/// If `dir` holds a download completion manifest (F2), return the comma-joined
+/// list of required files that are missing — or `None` when there is no manifest
+/// (legacy install) or every listed file is present.
+fn manifest_missing_files(dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join(super::downloader::COMPLETION_MANIFEST)).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let files = v.get("files")?.as_array()?;
+    let missing: Vec<&str> = files
+        .iter()
+        .filter_map(|f| f.as_str())
+        .filter(|f| !dir.join(f).exists())
+        .collect();
+    if missing.is_empty() {
+        None
+    } else {
+        Some(missing.join(", "))
+    }
+}
+
 pub struct AsrFactory;
 
 impl AsrFactory {
@@ -86,6 +105,17 @@ impl AsrFactory {
                 return Err(AppError::Model(format!(
                     "Incomplete download at: {}",
                     path.display()
+                )));
+            }
+            // F2: a completion manifest lists the files a multi-file install
+            // needs. If present and any are missing, the download was interrupted
+            // between files (no `.part` left). Legacy installs have no manifest
+            // and fall through to format sniffing.
+            if let Some(missing) = manifest_missing_files(path) {
+                return Err(AppError::Model(format!(
+                    "Incomplete model install at {} (missing {})",
+                    path.display(),
+                    missing
                 )));
             }
             if path.join("model.safetensors").exists()
@@ -320,5 +350,37 @@ mod tests {
         let dir = d.path().join("empty");
         fs::create_dir(&dir).unwrap();
         assert!(AsrFactory::detect_format(&dir).is_err());
+    }
+
+    #[test]
+    fn manifest_complete_install_detects_format() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().join("multi");
+        fs::create_dir(&dir).unwrap();
+        File::create(dir.join("encoder.onnx")).unwrap();
+        File::create(dir.join("decoder.onnx")).unwrap();
+        fs::write(
+            dir.join(crate::stt::downloader::COMPLETION_MANIFEST),
+            r#"{"files":["encoder.onnx","decoder.onnx"]}"#,
+        )
+        .unwrap();
+        assert_eq!(AsrFactory::detect_format(&dir).unwrap(), ModelFormat::Onnx);
+    }
+
+    #[test]
+    fn manifest_missing_file_is_incomplete() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().join("multi");
+        fs::create_dir(&dir).unwrap();
+        File::create(dir.join("encoder.onnx")).unwrap();
+        // decoder.onnx is listed in the manifest but never finished downloading.
+        fs::write(
+            dir.join(crate::stt::downloader::COMPLETION_MANIFEST),
+            r#"{"files":["encoder.onnx","decoder.onnx"]}"#,
+        )
+        .unwrap();
+        let err = AsrFactory::detect_format(&dir).unwrap_err();
+        assert!(format!("{}", err).contains("Incomplete model install"));
+        assert!(format!("{}", err).contains("decoder.onnx"));
     }
 }
