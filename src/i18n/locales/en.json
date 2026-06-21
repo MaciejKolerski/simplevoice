@@ -345,7 +345,10 @@
     "actionText": "Text",
     "actionTime": "Current time",
     "actionDate": "Current date",
-    "empty": "No rules yet. Add one to get started."
+    "empty": "No rules yet. Add one to get started.",
+    "colTrigger": "Trigger",
+    "colAction": "Action",
+    "colValue": "Replacement"
   },
   "onboarding": {
     "stepCounter": "Step {{current}} / {{total}}",

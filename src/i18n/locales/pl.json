@@ -345,7 +345,10 @@
     "actionText": "Tekst",
     "actionTime": "Aktualna godzina",
     "actionDate": "Aktualna data",
-    "empty": "Brak reguł. Dodaj pierwszą, aby zacząć."
+    "empty": "Brak reguł. Dodaj pierwszą, aby zacząć.",
+    "colTrigger": "Fraza",
+    "colAction": "Typ",
+    "colValue": "Zamiana"
   },
   "onboarding": {
     "stepCounter": "Krok {{current}} / {{total}}",

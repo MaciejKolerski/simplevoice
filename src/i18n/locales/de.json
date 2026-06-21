@@ -345,7 +345,10 @@
     "actionText": "Text",
     "actionTime": "Aktuelle Uhrzeit",
     "actionDate": "Aktuelles Datum",
-    "empty": "Noch keine Regeln. Füge eine hinzu, um zu starten."
+    "empty": "Noch keine Regeln. Füge eine hinzu, um zu starten.",
+    "colTrigger": "Auslöser",
+    "colAction": "Aktion",
+    "colValue": "Ersetzung"
   },
   "onboarding": {
     "stepCounter": "Schritt {{current}} / {{total}}",
