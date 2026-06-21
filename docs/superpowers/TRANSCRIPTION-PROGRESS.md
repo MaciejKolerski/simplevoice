@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (31 / 52)
+## Done (32 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -100,7 +100,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 
 ### Batch B-audio (input quality)
 - ✅ **B5** downmix remainder + ring-overflow counter (warn-once)
-- ⏳ **B8** DC-block + clipping detect + peak-aware normalize
+- 🔶 **B8** DC-block ✅ done (`DcBlocker` one-pole HPF in capture, unit-tested) 🚩 needs real-recording check; clipping detect + peak-aware normalize still pending
 - ⏳ **B1** rubato anti-aliasing resampler (dep: `rubato`)
 - ⏳ **B3** pre-roll / look-back buffer
 - ⏳ **B4** configurable VAD threshold/silence + lower consumer latency
