@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (10 / 52)
+## Done (11 / 52)
 - ✅ **H1** offline eval harness (WER/CER/latency/RTF + hypothesis/exact-match)
 - ✅ **H2** golden tests: `detect_format`, `detect_onnx_layout`, `find_file_with_keywords`, smoke test
 - ✅ **A1** Whisper temperature-fallback (`best_of:2` + `set_temperature_inc(0.2)`)
@@ -35,6 +35,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 - ✅ **H4** `save_wav_file` returns Err on write failure (not silent `Ok(None)`); emits `recording-save-failed`, transcription still proceeds. _Frontend toast pending → folds into E7._
 - ✅ **B5-downmix** `downmix` keeps the trailing partial frame (was `chunks_exact`, silently dropped). _Ring-overflow signal (the other half of B5) still pending → folds into the H5 observability pass._
 - ✅ **G2** bounded timed-join on streaming `finish()` (5s budget then detach) — no longer blocks shutdown / next recording.
+- ✅ **C1** engine warm-up on record start (`SttController::take_engine_to_warm` + dummy decode off the start path; once per loaded model, no-op for cloud) — cuts first-dictation GPU/session-init latency.
 
 ## Planned sequencing of the remaining 42 (verifiable-first)
 
@@ -72,7 +73,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ### Batch C-perf + F-models (reliability)
 - ✅ **C4** cloud: shared `reqwest::Client` + timeout
 - ⏳ **C5** cloud: bounded chunk parallelism
-- ⏳ **C1** model warm-up on record start
+- ✅ **C1** model warm-up on record start
 - ⏳ **C2** push-to-talk mode
 - ⏳ **C6** idle-unload model
 - ⏳ **C3** remove NeMo per-call sidecar (route to ONNX) — per decision
