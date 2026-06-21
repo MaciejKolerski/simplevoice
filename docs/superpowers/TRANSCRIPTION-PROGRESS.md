@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (47 / 52)
+## Done (48 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -91,7 +91,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ✅ **C2** push-to-talk mode — opt-in `push_to_talk_enabled` (default off): the record shortcut records while held, stops on release. Shortcut handler processes Pressed/Released; `toggle_recording` split into idempotent `start_recording_action`/`stop_recording_action`. Settings toggle + en/pl/de. 🚩 _needs user's live key-hold/release test (global-shortcut Released delivery)._
 - ✅ **C6** idle-unload model (`SttController::unload`/`unload_if_idle` + watcher thread, 5min, `model_unload_enabled` toggle, transparent reload on next transcribe; baseline EXACT)
 - ✅ **C3** remove NeMo per-call sidecar (route to ONNX) — per decision
-- ⏳ **F1** SHA-256 verification of downloads (dep: `sha2`)
+- ✅ **F1** SHA-256 verification of downloads — after each file downloads, verify against HF's published `lfs.sha256` (fetched from `/api/models/<repo>?blobs=true`); mismatch → delete + error. Best-effort (skips non-LFS / API-down). `sha2` dep. Verified: sha256_of_file unit-tested + HF's hash matches the real gigaspeech encoder.
 - ✅ **F2** completion manifest for multi-file installs (`.sv-manifest.json` written when all files finish; `detect_format` rejects a dir whose manifest lists a missing file — closes the "hard-killed between files, no `.part`" gap). Backward-compatible (legacy = no manifest). Unit-tested.
 - ⏳ **F3** curated backend model registry (`stt/registry.rs`) — pairs with A6
 - ✅ **F4** connect timeout + retry/backoff loop (capped exp backoff, resumes via `.part`+Range; unit-tested)
@@ -131,12 +131,12 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 5 — needs your involvement (B2 reverted; D3 + C2 + E1 + E6 + A7-hotwords + G1 + C5 done)
+## Remaining 4 — needs your involvement (… + C5 + F1 done)
 
 **Blocked on an asset / key / data you must provide:**
 - ~~**B2** Silero VAD~~ ❌ REMOVED by user — redundant with the auto-end VAD (B4); see Done section.
 - **D3** LLM cleanup + Apple Intelligence — needs your API keys/provider choice.
-- **F1 / F3** SHA-256 verification + curated registry — needs the real per-model hashes (I can compute hashes only for models you have installed).
+- ~~**F1** SHA-256 verification~~ ✅ done (hashes fetched from HF, no embedding needed). **F3** curated backend registry — lower value, optional.
 
 **Platform code I cannot compile-check or verify on this macOS host (write-then-you-verify, per your decision):**
 - **E4** X11 paste fallback (xdotool/ydotool), **E5** Wayland paste fallback (Linux).
