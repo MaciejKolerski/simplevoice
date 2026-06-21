@@ -132,7 +132,13 @@ async fn run_download(
     fs::create_dir_all(&model_dir)
         .map_err(|e| format!("Failed to create model directory: {}", e))?;
 
-    let client = reqwest::Client::new();
+    // Bound connection establishment so a half-open socket cannot hang a download
+    // forever. No total request timeout: model files are large and a slow-but-
+    // progressing transfer must not be cut off (F4).
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let total_files = files.len();
 
     for (index, file_path) in files.iter().enumerate() {
