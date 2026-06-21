@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (26 / 52)
+## Done (27 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -79,7 +79,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ⏳ **E1** save/restore clipboard after auto-paste
 - ⏳ **E7** surface silent paste failures (event → UI toast)
 - ⏳ **E2** output mode (paste / clipboard-only / type) + paste-method
-- ⏳ **E3** append trailing space + auto-submit (Enter)
+- 🔶 **E3** trailing space ✅ done (`append_trailing_space` toggle); auto-submit (Enter after paste) pending — timing/paste, needs real testing
 - ⏳ **E6** paste delays / modifier-hold + configurable
 - 🚩 **E4** X11 fallback (xdotool/ydotool) — UNVERIFIED (Linux)
 - 🚩 **E5** Wayland fallback (240-char/GNOME) — UNVERIFIED (Linux)
