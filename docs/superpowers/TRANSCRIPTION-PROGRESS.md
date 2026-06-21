@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (44 / 52)
+## Done (45 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -72,7 +72,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - 🔶 **A3** Whisper `initial_prompt` ✅ done (`WHISPER_INITIAL_PROMPT` set from `custom_words` in `transcribe_audio`; baseline EXACT); ONNX hotwords_file/score still pending
 - ✅ **A2** beam search (`WHISPER_BEAM_SIZE` global, beam 5 when accurate) — verified EXACT on baseline
 - ✅ **A8** "Accurate mode" preset toggle (`decode_accurate` config, applied per-transcription). _Full typed DecodeParams UI (temperature etc.) not exposed — beam on/off covers the preset._
-- 🔶 **A7** ONNX decoding params — beam search ✅ done (verified); hotwords (with D1 dictionary) + EN-only language-routing gate still pending
+- ✅ **A7/A3-onnx** ONNX decoding — beam search ✅ + **hotword contextual biasing** ✅: `create_stream_with_hotwords` from `custom_words` + `hotwords_score` (modified_beam_search already on). Hotword tokenization needs the model's text `bpe.vocab`; k2 zipformers ship only the binary `bpe.model`, so we derive `bpe.vocab` from it in pure Rust (minimal protobuf reader) and cache it. Fixed `model_type` (was hardcoded `nemo_transducer`, breaks k2 with 'vocab_size'). Added downloadable "Zipformer GigaSpeech (EN · hotwords)" (ships `bpe.model`). Verified: encodes with no error, pieces align with tokens.txt. _NeMo Parakeet still can't encode hotwords (no bpe.model in its repo) — gracefully skips._
 - 🔶 **A6** "Recommended" badge ✅ done (Parakeet TDT v3 + Whisper Large v3 Turbo flagged in the download list, en/pl/de). _Metadata-calibration + `supports_language_hint` skipped: the latter is dead code, calibration low-value._
 
 ### Batch E-delivery (macOS-verifiable parts)
@@ -131,7 +131,7 @@ _(filled as 🚩 items land)_
 
 ---
 
-## Remaining 8 — needs your involvement (B2 reverted; D3 + C2 + E1 + E6 done)
+## Remaining 7 — needs your involvement (B2 reverted; D3 + C2 + E1 + E6 + A7-hotwords done)
 
 **Blocked on an asset / key / data you must provide:**
 - ~~**B2** Silero VAD~~ ❌ REMOVED by user — redundant with the auto-end VAD (B4); see Done section.
@@ -146,7 +146,7 @@ _(filled as 🚩 items land)_
 - **B1** rubato anti-aliasing resampler (capture rewrite), **B3** pre-roll buffer (needs always-on capture), **B6** chunker VAD-driven cuts + overlap.
 - ~~**C2** push-to-talk~~ ✅, ~~**E1** clipboard save/restore~~ ✅, ~~**E6** paste delays~~ ✅ (live-test the first two), **C5** cloud chunk parallelism (needs a cloud API key).
 - **G1** committed-prefix O(n²) trim, **G4** decouple ingest/decode, **G6** native transducer streaming (XL).
-- **A3-onnx / A7-hotwords** ONNX hotwords (needs a hotwords file + init-time threading).
+- ~~**A3-onnx / A7-hotwords** ONNX hotwords~~ ✅ done (bpe.vocab derived from bpe.model in Rust; gigaspeech model added).
 
 **Doable but lower-value / larger — say the word and I'll do them:**
 - **A6** Parakeet-V3 "recommended" badge + calibrated metadata (cosmetic).
