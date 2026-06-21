@@ -5,6 +5,8 @@ pub mod traits;
 pub mod factory;
 pub mod ggml_whisper;
 pub mod onnx_engine;
+#[cfg(feature = "onnx")]
+pub mod vad;
 pub mod converter;
 pub mod downloader;
 pub mod streaming;

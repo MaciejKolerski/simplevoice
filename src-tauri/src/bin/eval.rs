@@ -53,6 +53,7 @@ fn run() -> Result<(), String> {
                 continue;
             }
         };
+        let samples = maybe_vad_trim_eval(samples);
         let audio_secs = samples.len() as f64 / 16_000.0;
         let started = Instant::now();
         let hyp = match controller.transcribe_with_progress(&samples, clip.language.as_deref(), &mut |_, _| {}) {
@@ -87,6 +88,36 @@ fn run() -> Result<(), String> {
     std::fs::write(&out_path, json).map_err(|e| format!("write {}: {}", out_path.display(), e))?;
     println!("wrote {}", out_path.display());
     Ok(())
+}
+
+/// Optional Silero-VAD trim, gated by `SV_VAD_TRIM=1`, so the harness can
+/// measure transcription accuracy on VAD-trimmed audio (B2). Model path from
+/// `SV_SILERO_MODEL` or the app's default models dir.
+#[cfg(feature = "onnx")]
+fn maybe_vad_trim_eval(samples: Vec<f32>) -> Vec<f32> {
+    use simplevoice_app_lib::stt::vad;
+    if !matches!(std::env::var("SV_VAD_TRIM").as_deref(), Ok("1") | Ok("true")) {
+        return samples;
+    }
+    let model = std::env::var("SV_SILERO_MODEL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(
+                "Library/Application Support/com.woro.simplevoice/models/silero_vad_v4.onnx",
+            )
+        });
+    match vad::trim_to_speech(&samples, &model) {
+        Some(t) if !t.is_empty() => {
+            eprintln!("vad_trim: {} -> {} samples", samples.len(), t.len());
+            t
+        }
+        _ => samples,
+    }
+}
+
+#[cfg(not(feature = "onnx"))]
+fn maybe_vad_trim_eval(samples: Vec<f32>) -> Vec<f32> {
+    samples
 }
 
 fn read_wav_16k_mono(path: &Path) -> Result<Vec<f32>, String> {
