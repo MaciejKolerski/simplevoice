@@ -341,7 +341,9 @@ impl AudioController {
                         // Live fan-out: hand the chunk to the streaming session. Non-blocking;
                         // the bounded channel returns Full rather than stalling the audio path.
                         if let Some(tx) = &s.stream_tx {
-                            let _ = tx.try_send(local_buf[..read].to_vec());
+                            if tx.try_send(local_buf[..read].to_vec()).is_err() {
+                                note_live_drop();
+                            }
                         }
 
                         if buffer_len >= RECORDING_MAX_SECS * 16_000 {
@@ -555,6 +557,19 @@ fn note_ring_overflow(dropped: usize) {
     RING_DROPPED.fetch_add(dropped, Ordering::Relaxed);
     if !RING_WARNED.swap(true, Ordering::Relaxed) {
         eprintln!("audio ring buffer overflow: consumer fell behind, dropping samples");
+    }
+}
+
+static LIVE_DROPPED: AtomicUsize = AtomicUsize::new(0);
+static LIVE_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// Records a live-fan-out chunk dropped because the streaming worker fell behind
+/// (the bounded channel returned Full). Warns once per process. With G3 coalescing
+/// this should be rare; surfacing it makes a real overload visible (G3).
+fn note_live_drop() {
+    LIVE_DROPPED.fetch_add(1, Ordering::Relaxed);
+    if !LIVE_WARNED.swap(true, Ordering::Relaxed) {
+        eprintln!("live transcription overload: dropping audio chunks (decode too slow)");
     }
 }
 
