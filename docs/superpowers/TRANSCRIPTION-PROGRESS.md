@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (29 / 52)
+## Done (30 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -69,7 +69,7 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 > **Remaining D-tail:** D4-OpenCC zh-Hans/Hant (dep `ferrous-opencc`), A3 decode-time `initial_prompt`/hotwords (needs options threaded into engines), D3 LLM cleanup (deferred, needs API keys).
 
 ### Batch A-accuracy (decoder/model, mostly verifiable)
-- ⏳ **A3** custom dictionary as `initial_prompt` (Whisper) + ONNX hotwords  — pairs with D1
+- 🔶 **A3** Whisper `initial_prompt` ✅ done (`WHISPER_INITIAL_PROMPT` set from `custom_words` in `transcribe_audio`; baseline EXACT); ONNX hotwords_file/score still pending
 - ✅ **A2** beam search (`WHISPER_BEAM_SIZE` global, beam 5 when accurate) — verified EXACT on baseline
 - ✅ **A8** "Accurate mode" preset toggle (`decode_accurate` config, applied per-transcription). _Full typed DecodeParams UI (temperature etc.) not exposed — beam on/off covers the preset._
 - 🔶 **A7** ONNX decoding params — beam search ✅ done (verified); hotwords (with D1 dictionary) + EN-only language-routing gate still pending
