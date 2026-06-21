@@ -917,6 +917,27 @@ fn warm_up_engine(app: &tauri::AppHandle) {
     }
 }
 
+/// Applies the configurable VAD threshold / silence duration from config.json to the
+/// audio state at recording start (B4). Missing keys keep the current defaults; values
+/// are clamped to sane ranges.
+fn apply_vad_config(app_handle: &tauri::AppHandle) {
+    let parsed = app_handle
+        .path()
+        .app_local_data_dir()
+        .ok()
+        .and_then(|dir| std::fs::read_to_string(dir.join("config.json")).ok())
+        .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok());
+    let Some(v) = parsed else { return };
+    let audio = app_handle.state::<AudioController>();
+    let mut s = audio.state.lock().unwrap();
+    if let Some(t) = v.get("vad_threshold").and_then(|x| x.as_f64()) {
+        s.vad_threshold = (t as f32).clamp(0.0005, 0.2);
+    }
+    if let Some(ms) = v.get("vad_silence_ms").and_then(|x| x.as_u64()) {
+        s.vad_silence_duration_ms = (ms as u32).clamp(200, 10_000);
+    }
+}
+
 #[tauri::command]
 fn start_recording(
     controller: tauri::State<'_, AudioController>,
@@ -930,6 +951,7 @@ fn start_recording(
     play_backend_sound(&app_handle, "start");
     let _ = rebuild_tray_menu(&app_handle);
     update_recording_window_visibility(&app_handle);
+    apply_vad_config(&app_handle);
     begin_live_session(&app_handle);
     warm_up_engine(&app_handle);
     Ok(())
@@ -1307,6 +1329,7 @@ fn toggle_recording(app: &tauri::AppHandle) {
                         play_backend_sound(app, "start");
                         let _ = app.emit("recording-started", ());
                         update_recording_window_visibility(app);
+                        apply_vad_config(app);
                         begin_live_session(app);
                         warm_up_engine(app);
                     }

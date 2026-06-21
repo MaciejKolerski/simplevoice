@@ -129,6 +129,8 @@ export function SettingsView() {
   const { updateConfig, getConfig, config } = useConfig();
   const { t, i18n } = useTranslation();
   const [vadEnabled, setVadEnabled] = useState(false);
+  const [vadThreshold, setVadThreshold] = useState("0.008");
+  const [vadSilenceMs, setVadSilenceMs] = useState("1500");
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [liveAutopaste, setLiveAutopaste] = useState(true);
   const [liveOverlayMode, setLiveOverlayMode] = useState("full");
@@ -268,6 +270,8 @@ export function SettingsView() {
     setTrailingSpace(getConfig("append_trailing_space", false) === true);
     setModelUnload(getConfig("model_unload_enabled", false) === true);
     setClipboardOnly(getConfig("clipboard_only", false) === true);
+    setVadThreshold(String(getConfig("vad_threshold", 0.008)));
+    setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
     const chunkMs = getConfig("live_min_chunk_ms", null);
     const speed = Object.entries(LIVE_SPEED_MS).find(([, ms]) => ms === chunkMs)?.[0];
@@ -529,6 +533,18 @@ export function SettingsView() {
     } catch (err) {
       console.error("Failed to set VAD state:", err);
     }
+  };
+
+  const handleVadThresholdChange = (value: string) => {
+    setVadThreshold(value);
+    const n = parseFloat(value);
+    if (!isNaN(n)) updateConfig("vad_threshold", n);
+  };
+
+  const handleVadSilenceChange = (value: string) => {
+    setVadSilenceMs(value);
+    const n = parseInt(value, 10);
+    if (!isNaN(n)) updateConfig("vad_silence_ms", n);
   };
 
   const handleLiveToggle = (checked: boolean) => {
@@ -900,6 +916,29 @@ export function SettingsView() {
           <SettingRow title={t("settings.vad")} description={t("settings.vadDesc")}>
             <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
           </SettingRow>
+
+          {vadEnabled && (
+            <>
+              <SettingRow title={t("settings.vadThreshold")} description={t("settings.vadThresholdDesc")}>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={vadThreshold}
+                  onChange={(e) => handleVadThresholdChange(e.target.value)}
+                  className="w-24"
+                />
+              </SettingRow>
+              <SettingRow title={t("settings.vadSilence")} description={t("settings.vadSilenceDesc")}>
+                <Input
+                  type="number"
+                  step="100"
+                  value={vadSilenceMs}
+                  onChange={(e) => handleVadSilenceChange(e.target.value)}
+                  className="w-24"
+                />
+              </SettingRow>
+            </>
+          )}
 
           <SettingRow title={t("settings.soundEffects")} description={t("settings.soundEffectsDesc")}>
             <Switch checked={soundEnabled} onCheckedChange={handleSoundToggle} />
