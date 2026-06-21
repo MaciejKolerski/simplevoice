@@ -24,7 +24,7 @@ Real A/B/D gains need harder fixtures (noisy/looping/accented) the user can add.
 ## Status legend
 ✅ done & merged · 🔜 next · ⏳ pending · 🚩 needs your verification/assets · ⏸ deferred
 
-## Done (23 / 52)
+## Done (24 / 52)
 
 > **Config↔frontend pattern established (D2-fillers):** backend reads a bool from
 > `config.json` via an `is_X_enabled(app)` helper (like `is_live_transcription_enabled`)
@@ -63,9 +63,10 @@ _B5 and G3 are now fully done: ring-overflow counter (`note_ring_overflow`) and 
 - ✅ **D2-fillers** per-language filler-word removal (en/pl/de), opt-in via `filler_removal_enabled` config + Settings toggle (delivery-layer in `transcribe_audio`)
 - ✅ **D4-casing** sentence casing (`sentence_case` + `sentence_case_enabled` toggle, en/pl/de i18n)
 - ✅ **D5** voice formatting commands (`apply_formatting_commands`, en/pl/de) + `formatting_commands_enabled` toggle
+- ✅ **D1-fuzzy** custom-dictionary correction (`apply_custom_words` reusing `eval::edit_distance`) + `custom_words` config + Settings input. _A3 decode-time initial_prompt/hotwords still pending._
 - 🔶 **D4** sentence-casing ✅ done (`sentence_case` + `sentence_case_enabled` toggle); OpenCC zh-Hans/Hant pending (dep `ferrous-opencc`)
 - ✅ **D5** voice formatting commands ("new line"/"comma"/"period"…, en/pl/de) + `formatting_commands_enabled` toggle
-- ⏳ **D1** custom-dictionary fuzzy corrector (dep: `strsim`/`natural`)
+- 🔶 **D1** custom-dictionary fuzzy corrector ✅ done (delivery-layer, `apply_custom_words` reusing `eval::edit_distance`, `custom_words` config + Settings input); A3 decode-time `initial_prompt`/hotwords still pending (needs options threaded into engines)
 
 ### Batch A-accuracy (decoder/model, mostly verifiable)
 - ⏳ **A3** custom dictionary as `initial_prompt` (Whisper) + ONNX hotwords  — pairs with D1
