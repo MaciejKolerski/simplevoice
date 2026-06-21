@@ -153,3 +153,22 @@ _(filled as 🚩 items land)_
 - **D4-OpenCC** zh-Hans/Hant (adds `ferrous-opencc` dep), **E2-type** "type instead of paste" mode, **F2** atomic multi-file install, **F4-retry** download retry/backoff, **H5** structured `tracing` logging (large mechanical sweep).
 
 **How to unblock fastest:** drop a `silero_vad_v4.onnx`, an API key (for D3), and tell me whether to ship the platform code unverified — and I'll resume the loop on the rest.
+
+---
+
+## DECISIONS (user, 2026-06-21) — loop RESUMED
+
+- **A (no-input items): DO NOW** → E2-type, F2, F4-retry, A6, H5. (User: "rób A".)
+- **B1/B2 Silero VAD: UNBLOCKED** — `silero_vad_v4.onnx` downloaded to
+  `~/Library/Application Support/com.woro.simplevoice/models/silero_vad_v4.onnx`
+  (629 KB, sherpa-onnx hosted). Wire `sherpa_onnx::Vad` per B2; bundle the file via
+  tauri resources. User does NOT have it → we fetched it.
+- **B3 platform code (E4/E5 Linux paste, F6 GPU): WRITE UNVERIFIED** — user OK with
+  "write blind, I'll test & fix on Linux/Windows". Implement behind `cfg`, flag clearly.
+- **D3 LLM cleanup: key provided (Gemini / Google AI Studio).** Handle SEPARATELY,
+  NOT in the autonomous loop: key lives only in the OS keyring (reuse the app's
+  `set_secure_api_key` mechanism) / a one-off env var for testing — NEVER written to
+  any file, config, code, or git. User will rotate/delete the key after testing.
+- User is on **Whisper V3 Turbo** (so A3 initial_prompt + A2 beam already apply).
+- Still wanted from user: a few hard PL clips in `/Users/woro/Documents/Simple/test/`
+  for real WER-gain measurement (harness currently proves no-regression only).
