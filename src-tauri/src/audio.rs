@@ -407,55 +407,43 @@ impl AudioController {
             let _ = err_app.emit("recording-error", "device_lost");
         };
 
+        // Build the capture stream for whatever sample format the device reports.
+        // cpal's `to_sample::<f32>` conversion is generic over every integer/float
+        // sample type, so one macro covers them all. Some Linux/PipeWire devices
+        // default to I32 (or other formats) that a F32/I16/U16-only match rejected
+        // with "Unsupported sample format".
+        macro_rules! capture_stream {
+            ($t:ty) => {
+                device.build_input_stream(
+                    &stream_config,
+                    move |data: &[$t], _: &cpal::InputCallbackInfo| {
+                        let f32_data: Vec<f32> =
+                            data.iter().map(|&s| cpal::Sample::to_sample::<f32>(s)).collect();
+                        let mono = downmix(&f32_data, channels);
+                        let resampled = dc_blocker.process(&resampler.process(&mono));
+                        let pushed = producer.push_slice(&resampled);
+                        if pushed < resampled.len() {
+                            note_ring_overflow(resampled.len() - pushed);
+                        }
+                    },
+                    err_fn,
+                    None,
+                )
+            };
+        }
+
         let stream = match sample_format {
-            cpal::SampleFormat::F32 => device.build_input_stream(
-                &stream_config,
-                move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    let mono = downmix(data, channels);
-                    let resampled = dc_blocker.process(&resampler.process(&mono));
-                    let pushed = producer.push_slice(&resampled);
-                    if pushed < resampled.len() {
-                        note_ring_overflow(resampled.len() - pushed);
-                    }
-                },
-                err_fn,
-                None,
-            ),
-            cpal::SampleFormat::I16 => device.build_input_stream(
-                &stream_config,
-                move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    let f32_data: Vec<f32> = data
-                        .iter()
-                        .map(|&s| cpal::Sample::to_sample::<f32>(s))
-                        .collect();
-                    let mono = downmix(&f32_data, channels);
-                    let resampled = dc_blocker.process(&resampler.process(&mono));
-                    let pushed = producer.push_slice(&resampled);
-                    if pushed < resampled.len() {
-                        note_ring_overflow(resampled.len() - pushed);
-                    }
-                },
-                err_fn,
-                None,
-            ),
-            cpal::SampleFormat::U16 => device.build_input_stream(
-                &stream_config,
-                move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                    let f32_data: Vec<f32> = data
-                        .iter()
-                        .map(|&s| cpal::Sample::to_sample::<f32>(s))
-                        .collect();
-                    let mono = downmix(&f32_data, channels);
-                    let resampled = dc_blocker.process(&resampler.process(&mono));
-                    let pushed = producer.push_slice(&resampled);
-                    if pushed < resampled.len() {
-                        note_ring_overflow(resampled.len() - pushed);
-                    }
-                },
-                err_fn,
-                None,
-            ),
-            _ => return Err("Unsupported sample format".to_string()),
+            cpal::SampleFormat::I8 => capture_stream!(i8),
+            cpal::SampleFormat::I16 => capture_stream!(i16),
+            cpal::SampleFormat::I32 => capture_stream!(i32),
+            cpal::SampleFormat::I64 => capture_stream!(i64),
+            cpal::SampleFormat::U8 => capture_stream!(u8),
+            cpal::SampleFormat::U16 => capture_stream!(u16),
+            cpal::SampleFormat::U32 => capture_stream!(u32),
+            cpal::SampleFormat::U64 => capture_stream!(u64),
+            cpal::SampleFormat::F32 => capture_stream!(f32),
+            cpal::SampleFormat::F64 => capture_stream!(f64),
+            other => return Err(format!("Unsupported sample format: {other:?}")),
         }
         .map_err(|e| e.to_string())?;
 
