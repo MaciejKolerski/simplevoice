@@ -156,7 +156,10 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
     let c = config.active.lock().unwrap();
     if c.engine == "local" {
         let stt_state = stt.state.lock().unwrap();
-        if stt_state.engine.is_none() {
+        // An idle-unloaded model (C6) keeps `active_model_path` and is reloaded
+        // transparently on the next transcription, so only block when no model is
+        // selected at all — not merely when the engine is currently unloaded.
+        if stt_state.engine.is_none() && stt_state.active_model_path.is_none() {
             return Err("errors.no_model_loaded".to_string());
         }
     } else if c.engine == "openai-cloud" {
@@ -826,7 +829,14 @@ pub(crate) fn get_recording_window_mode(app_handle: &tauri::AppHandle) -> String
     };
     let json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(v) => v,
-        Err(_) => return "always".to_string(),
+        Err(e) => {
+            // With atomic config writes a reader never sees a half-written file, so
+            // this should not fire from a write race anymore. If it does, the config
+            // is genuinely malformed — log it instead of silently defaulting to
+            // "always" (which would resurrect the overlay despite a "never" setting).
+            tracing::warn!("get_recording_window_mode: config.json parse failed, defaulting to 'always': {e}");
+            return "always".to_string();
+        }
     };
     if let Some(val) = json.get("recording_window_mode") {
         if let Some(s) = val.as_str() {
@@ -875,7 +885,7 @@ fn save_recording_window_position(app_handle: &tauri::AppHandle, x: i32, y: i32)
     }
 
     if let Ok(serialized) = serde_json::to_string_pretty(&json) {
-        let _ = std::fs::write(&config_path, serialized);
+        let _ = write_config_atomic(&config_path, serialized);
      }
 }
 
@@ -2536,6 +2546,22 @@ fn has_last_recording_samples(
 /// and clobber each other.
 static CONFIG_FILE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// Writes config.json atomically: write a sibling temp file, then rename it over
+/// the target. `rename` is atomic on POSIX, so concurrent readers (which do not
+/// take CONFIG_FILE_LOCK) always observe a complete, parseable file instead of a
+/// half-written one. A half-written read made config readers fall back to their
+/// defaults — e.g. `get_recording_window_mode` returning "always", which made the
+/// recording overlay reappear intermittently even when set to "never".
+fn write_config_atomic<C: AsRef<[u8]>>(
+    path: &std::path::Path,
+    contents: C,
+) -> std::io::Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, contents)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 #[tauri::command]
 fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), String> {
     let app_local_data = app_handle
@@ -2582,7 +2608,7 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
         Err(_) => config,
     };
 
-    std::fs::write(&config_path, to_write).map_err(|e| e.to_string())?;
+    write_config_atomic(&config_path, to_write).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -2628,7 +2654,7 @@ fn set_gpu_enabled(
             if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&existing) {
                 if let Some(obj) = json.as_object_mut() {
                     obj.insert("gpu_enabled".to_string(), serde_json::json!(enabled));
-                    let _ = std::fs::write(
+                    let _ = write_config_atomic(
                         &config_path,
                         serde_json::to_string_pretty(&json).unwrap_or_default(),
                     );
@@ -2636,7 +2662,7 @@ fn set_gpu_enabled(
             }
         } else {
             let json = serde_json::json!({ "gpu_enabled": enabled });
-            let _ = std::fs::write(
+            let _ = write_config_atomic(
                 &config_path,
                 serde_json::to_string_pretty(&json).unwrap_or_default(),
             );
@@ -2679,7 +2705,7 @@ fn set_recording_window_mode(mode: String, app_handle: tauri::AppHandle) -> Resu
             }
         }
         let pretty = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
-        std::fs::write(&config_path, pretty).map_err(|e| e.to_string())?;
+        write_config_atomic(&config_path, pretty).map_err(|e| e.to_string())?;
     }
 
     update_recording_window_visibility(&app_handle);
@@ -2714,7 +2740,7 @@ fn set_recording_window_locked(locked: bool, app_handle: tauri::AppHandle) -> Re
     }
 
     let serialized = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, serialized).map_err(|e| e.to_string())?;
+    write_config_atomic(&config_path, serialized).map_err(|e| e.to_string())?;
 
     if let Some(window) = app_handle.get_webview_window("recording_window") {
         let _ = window.set_ignore_cursor_events(locked);
@@ -2761,7 +2787,7 @@ fn reset_recording_window_position(app_handle: tauri::AppHandle) -> Result<(), S
     }
 
     let serialized = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, serialized).map_err(|e| e.to_string())?;
+    write_config_atomic(&config_path, serialized).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -3738,6 +3764,54 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::marker_for;
+    use super::{is_recording_allowed, write_config_atomic, ActiveConfig, AppConfig, SttController};
+
+    fn local_config() -> AppConfig {
+        AppConfig {
+            active: std::sync::Mutex::new(ActiveConfig {
+                engine: "local".to_string(),
+                provider: String::new(),
+                gpu_enabled: false,
+            }),
+        }
+    }
+
+    #[test]
+    fn idle_unloaded_local_model_still_allows_recording() {
+        // After an idle-unload (C6) the engine is dropped but `active_model_path`
+        // is kept; recording must still be allowed since transcription reloads it.
+        let stt = SttController::new();
+        {
+            let mut s = stt.state.lock().unwrap();
+            s.active_model_path = Some("/models/whisper.bin".to_string());
+            s.engine = None;
+        }
+        assert!(is_recording_allowed(&local_config(), &stt).is_ok());
+    }
+
+    #[test]
+    fn no_local_model_selected_blocks_recording() {
+        // Nothing ever loaded: no engine AND no selected model -> blocked.
+        let stt = SttController::new();
+        assert_eq!(
+            is_recording_allowed(&local_config(), &stt),
+            Err("errors.no_model_loaded".to_string())
+        );
+    }
+
+    #[test]
+    fn write_config_atomic_replaces_file_and_cleans_temp() {
+        // Atomic write: the target ends up with the exact content and the sibling
+        // temp file is gone (so readers never see a half-written config).
+        let dir = std::env::temp_dir().join(format!("sv-cfg-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let body = "{\"recording_window_mode\":\"never\"}";
+        write_config_atomic(&path, body).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), body);
+        assert!(!path.with_extension("json.tmp").exists());
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn truncation_marker_localization_and_format() {
