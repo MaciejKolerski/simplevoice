@@ -31,7 +31,6 @@
     "copyLast": "Letzte Transkription kopieren",
     "lockWindow": "Position des Aufnahmefensters sperren",
     "unlockWindow": "Position des Aufnahmefensters entsperren",
-    "selectMicrophone": "Mikrofon auswählen",
     "defaultMicrophone": "Standard-Systemmikrofon",
     "quit": "Beenden"
   },

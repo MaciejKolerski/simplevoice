@@ -14,9 +14,9 @@ export function pushTrayLabels(): Promise<void> {
     models: t("nav.models"),
     history: t("nav.transcriptions"),
     settings: t("nav.settings"),
+    dictionary: t("nav.dictionary"),
     lock_window: t("tray.lockWindow"),
     unlock_window: t("tray.unlockWindow"),
-    select_microphone: t("tray.selectMicrophone"),
     default_microphone: t("tray.defaultMicrophone"),
     quit: t("tray.quit"),
   };

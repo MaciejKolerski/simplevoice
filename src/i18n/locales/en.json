@@ -31,7 +31,6 @@
     "copyLast": "Copy Last Transcription",
     "lockWindow": "Lock Recording Window Position",
     "unlockWindow": "Unlock Recording Window Position",
-    "selectMicrophone": "Select Microphone",
     "defaultMicrophone": "Default System Microphone",
     "quit": "Quit"
   },

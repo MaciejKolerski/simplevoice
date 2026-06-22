@@ -1325,12 +1325,12 @@ struct TrayLabels {
     usage: String,
     models: String,
     history: String,
+    dictionary: String,
     settings: String,
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     lock_window: String,
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     unlock_window: String,
-    select_microphone: String,
     default_microphone: String,
     quit: String,
 }
@@ -1344,10 +1344,10 @@ impl Default for TrayLabels {
             usage: "Usage".into(),
             models: "Models".into(),
             history: "History".into(),
+            dictionary: "Dictionary".into(),
             settings: "Settings".into(),
             lock_window: "Lock Recording Window Position".into(),
             unlock_window: "Unlock Recording Window Position".into(),
-            select_microphone: "Select Microphone".into(),
             default_microphone: "Default System Microphone".into(),
             quit: "Quit".into(),
         }
@@ -1467,6 +1467,11 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
+    let nav_dictionary_item = MenuItemBuilder::new(labels.dictionary.as_str())
+        .id("nav_dictionary")
+        .build(app_handle)
+        .map_err(|e| e.to_string())?;
+
     let nav_settings_item = MenuItemBuilder::new(labels.settings.as_str())
         .id("nav_settings")
         .build(app_handle)
@@ -1488,7 +1493,12 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
 
     let devices = controller.list_devices().unwrap_or_default();
     let mic_menu = {
-        let mut builder = SubmenuBuilder::new(app_handle, labels.select_microphone.as_str());
+        // Show the currently selected microphone (or the default) as the submenu
+        // title; expanding it still lists devices to switch.
+        let current_mic = selected_device
+            .as_deref()
+            .unwrap_or(labels.default_microphone.as_str());
+        let mut builder = SubmenuBuilder::new(app_handle, current_mic);
 
         let is_default_checked = selected_device.is_none();
         let default_mic_item = CheckMenuItemBuilder::new(labels.default_microphone.as_str())
@@ -1529,6 +1539,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .item(&nav_usage_item)
         .item(&nav_models_item)
         .item(&nav_history_item)
+        .item(&nav_dictionary_item)
         .item(&nav_settings_item)
         .item(&separator2)
         .item(&mic_menu)
@@ -1545,6 +1556,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .item(&nav_usage_item)
         .item(&nav_models_item)
         .item(&nav_history_item)
+        .item(&nav_dictionary_item)
         .item(&nav_settings_item)
         .item(&separator2)
         .item(&mic_menu)
