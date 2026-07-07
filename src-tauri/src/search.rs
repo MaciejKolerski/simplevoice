@@ -1,5 +1,5 @@
 //! Voice search commands: turn an utterance that opens with the wake-word prefix
-//! and a site keyword ("hej google …") into a browser search on that site, with
+//! and a site keyword ("hey google …") into a browser search on that site, with
 //! the rest of the utterance as the query. The Dictionary view edits these;
 //! `transcribe_audio` matches on the raw transcription and, on a hit, opens the
 //! built URL instead of typing the text.
@@ -9,7 +9,7 @@
 //! browser open live in `lib.rs`.
 
 /// A single voice-search command. `triggers` are the site keyword(s) spoken after
-/// the global wake-word prefix (e.g. "google" for "hej google"); `url` is a
+/// the global wake-word prefix (e.g. "google" for "hey google"); `url` is a
 /// template whose `%s` (or `{query}` / `{q}`) placeholder is replaced with the
 /// percent-encoded query. Built-ins ship enabled; `builtin` only marks origin for
 /// the UI (all fields stay user-editable).
@@ -36,10 +36,11 @@ fn default_true() -> bool {
 /// this is the single source of truth.
 ///
 /// Triggers are the site *keyword* only — the spoken wake word is the global,
-/// user-configurable prefix (`search_command_prefix`, default "hej"), so the
-/// effective phrase is "{prefix} {keyword}" ("hej google"). Keywords include
-/// Polish phonetic spellings Whisper is likely to emit ("czat", "klaudia",
-/// "grock") for robustness.
+/// user-configurable prefix (`search_command_prefix`, default "hey"), so the
+/// effective phrase is "{prefix} {keyword}" ("hey google"). Keywords are the
+/// plain brand names, so they read the same in every language; a couple of
+/// commands add a natural spacing/word variant ("duck duck go", "chat gpt").
+/// Users add their own aliases per command in the Dictionary view.
 ///
 /// Deep-link notes: Google/Bing/DuckDuckGo/YouTube use documented search params.
 /// ChatGPT (`?q=`) and Grok (`?q=`) prefill and submit the prompt. Claude
@@ -58,13 +59,13 @@ pub fn default_search_commands() -> Vec<SearchCommand> {
     }
     vec![
         cmd("google", "Google", &["google"], "https://www.google.com/search?q=%s"),
-        cmd("youtube", "YouTube", &["youtube", "jutub"], "https://www.youtube.com/results?search_query=%s"),
+        cmd("youtube", "YouTube", &["youtube"], "https://www.youtube.com/results?search_query=%s"),
         cmd("bing", "Bing", &["bing"], "https://www.bing.com/search?q=%s"),
         cmd("duckduckgo", "DuckDuckGo", &["duckduckgo", "duck duck go"], "https://duckduckgo.com/?q=%s"),
-        cmd("chatgpt", "ChatGPT", &["chat", "czat", "chatgpt", "czat gpt"], "https://chatgpt.com/?q=%s"),
-        cmd("claude", "Claude", &["claude", "klaudia", "klaud"], "https://claude.ai/new?q=%s"),
-        cmd("gemini", "Gemini", &["gemini", "dżemini"], "https://gemini.google.com/app?q=%s"),
-        cmd("grok", "Grok", &["grok", "grock"], "https://grok.com/?q=%s"),
+        cmd("chatgpt", "ChatGPT", &["chatgpt", "chat gpt"], "https://chatgpt.com/?q=%s"),
+        cmd("claude", "Claude", &["claude"], "https://claude.ai/new?q=%s"),
+        cmd("gemini", "Gemini", &["gemini"], "https://gemini.google.com/app?q=%s"),
+        cmd("grok", "Grok", &["grok"], "https://grok.com/?q=%s"),
     ]
 }
 
@@ -121,7 +122,7 @@ fn is_wake_word(core: &str, prefix_first: Option<&str>) -> bool {
 /// If `text` opens with the wake-word `prefix` followed by one of the commands'
 /// keyword triggers, returns the URL to open (site + the rest of the utterance as
 /// the query); otherwise `None`. Matching is anchored at the start of the utterance
-/// (a command replaces the whole dictation, so a mid-sentence "hej google" is left
+/// (a command replaces the whole dictation, so a mid-sentence "hey google" is left
 /// as ordinary text), case-insensitive on word cores, and multi-word — the longest
 /// matching keyword wins so "duck duck go" beats a hypothetical "duck". An empty
 /// `prefix` means no wake word is required (keyword-only, higher false-positive
@@ -178,7 +179,7 @@ pub fn match_search_command(text: &str, prefix: &str, commands: &[SearchCommand]
     let (n, cmd) = best?;
     // The query is the original words after the prefix + keyword, so spelling and
     // casing are preserved. Leading punctuation that survived the split
-    // ("hej google - co…") is trimmed; encoding handles the rest.
+    // ("hey google - co…") is trimmed; encoding handles the rest.
     let query = words[p + n..].join(" ");
     let query = query
         .trim()
@@ -221,9 +222,10 @@ mod tests {
     }
 
     #[test]
-    fn phonetic_aliases_route_to_same_site() {
-        let a = match_search_command("hej czat co słychać", "hej", &cmds()).unwrap();
-        let b = match_search_command("hej chat co słychać", "hej", &cmds()).unwrap();
+    fn name_variants_route_to_same_site() {
+        // A command may carry a couple of natural name variants; both resolve.
+        let a = match_search_command("hej chat gpt co słychać", "hej", &cmds()).unwrap();
+        let b = match_search_command("hej chatgpt co słychać", "hej", &cmds()).unwrap();
         assert!(a.starts_with("https://chatgpt.com/?q="));
         assert_eq!(a, b);
     }

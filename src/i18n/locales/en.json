@@ -190,7 +190,13 @@
     "barPositionResetError": "Could not reset the bar position",
     "searchPrefix": "Voice search prefix",
     "searchPrefixDesc": "The word you say before a service name — e.g. “hey” in “hey Google”. Leave empty to trigger commands without a prefix.",
-    "searchPrefixPlaceholder": "hej"
+    "searchPrefixPlaceholder": "hey",
+    "tabGeneral": "General",
+    "tabShortcuts": "Shortcuts",
+    "tabRecording": "Recording",
+    "tabText": "Text",
+    "tabOutput": "Output",
+    "advanced": "Advanced"
   },
   "hud": {
     "recording": "Recording",
@@ -358,13 +364,17 @@
     "voiceSearchEmpty": "No search rules. Add your own or restore the defaults.",
     "colName": "Name",
     "namePlaceholder": "e.g. Facebook",
-    "triggersPlaceholder": "e.g. facebook, fb",
+    "triggersPlaceholder": "e.g. facebook",
     "urlPlaceholder": "https://…/?q=%s",
     "urlHint": "The search page URL. Put %s where your spoken query should go.",
     "addSearch": "Add custom rule",
     "restoreDefaults": "Restore defaults",
     "prefixHint": "Commands trigger after “{{prefix}}” — e.g. “{{prefix}} google, what's the weather”. Change the prefix in Settings.",
-    "prefixHintNone": "Commands trigger with no prefix — just the service name and your query. Set a prefix in Settings."
+    "prefixHintNone": "Commands trigger with no prefix — just the service name and your query. Set a prefix in Settings.",
+    "tabSearch": "Voice search",
+    "tabDictionary": "Dictionary",
+    "noTriggers": "— add a keyword —",
+    "editCommand": "Edit"
   },
   "onboarding": {
     "stepCounter": "Step {{current}} / {{total}}",

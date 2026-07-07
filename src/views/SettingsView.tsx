@@ -1,5 +1,16 @@
-import { useEffect, useState, useRef } from "react";
-import { Cpu, Shield, Keyboard, Check, Mic, Info, RefreshCw, Languages, Radio } from "lucide-react";
+import { useEffect, useState, useRef, ReactNode } from "react";
+import {
+  Shield,
+  Keyboard,
+  Check,
+  Mic,
+  RefreshCw,
+  Radio,
+  Type,
+  ClipboardPaste,
+  SlidersHorizontal,
+  ChevronDown,
+} from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
@@ -8,12 +19,15 @@ import { useConfig } from "../context/ConfigContext";
 import { useTranslation, Trans } from "react-i18next";
 import { changeLanguage } from "@/i18n/language";
 import { SUPPORTED_LANGUAGES, Language } from "@/i18n/detect";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useOnboarding } from "@/components/onboarding/OnboardingProvider";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { SettingRow } from "@/components/ui/setting-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -125,9 +139,75 @@ const LIVE_SPEED_MS: Record<string, number> = {
   accurate: 1000,
 };
 
+/** Maps an onboarding tour target (`data-tour`) to the settings tab that hosts it,
+ * so the tour can spotlight elements that now live behind tabs — the view switches
+ * to the right tab and the spotlight's poll picks the element up once it appears. */
+const TAB_FOR_TOUR_TARGET: Record<string, string> = {
+  "language-select": "general",
+  "permissions-section": "general",
+  "shortcuts-section": "shortcuts",
+  "record-shortcut": "shortcuts",
+  "recording-section": "recording",
+};
+
+/** A card whose body is hidden until the user opens it — used to tuck advanced,
+ * rarely-touched knobs out of the way so a tab isn't overwhelming at a glance. */
+function CollapsibleCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-4 px-5 py-3.5 text-left text-[13px] font-medium text-muted hover:text-foreground hover:bg-surface-hover transition-colors"
+      >
+        <span>{title}</span>
+        <ChevronDown
+          size={15}
+          className={cn("shrink-0 transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open && <div className="border-t border-border/50">{children}</div>}
+    </div>
+  );
+}
+
+/** A titled group: a small label above a bordered card. Keeps each tab scannable. */
+function SettingsCard({
+  title,
+  children,
+  ...rest
+}: {
+  title?: string;
+  children: ReactNode;
+  "data-tour"?: string;
+}) {
+  return (
+    <div {...rest}>
+      {title && (
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 px-1">
+          {title}
+        </h2>
+      )}
+      <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsView() {
   const { updateConfig, getConfig, config } = useConfig();
   const { t, i18n } = useTranslation();
+  const { active: onboardingActive, step: onboardingStep } = useOnboarding();
+  const [activeTab, setActiveTab] = useState("general");
   const [vadEnabled, setVadEnabled] = useState(false);
   const [vadThreshold, setVadThreshold] = useState("0.008");
   const [vadSilenceMs, setVadSilenceMs] = useState("1500");
@@ -139,7 +219,7 @@ export function SettingsView() {
   const [fillerRemovalEnabled, setFillerRemovalEnabled] = useState(false);
   const [sentenceCaseEnabled, setSentenceCaseEnabled] = useState(false);
   const [formattingCommandsEnabled, setFormattingCommandsEnabled] = useState(false);
-  const [searchPrefix, setSearchPrefix] = useState("hej");
+  const [searchPrefix, setSearchPrefix] = useState("hey");
   const [decodeAccurate, setDecodeAccurate] = useState(false);
   const [trailingSpace, setTrailingSpace] = useState(false);
   const [modelUnload, setModelUnload] = useState(false);
@@ -197,6 +277,19 @@ export function SettingsView() {
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [copyShortcutError, setCopyShortcutError] = useState<string | null>(null);
   const [showManualWMInstructions, setShowManualWMInstructions] = useState(false);
+
+  // During onboarding, jump to the tab that hosts the step's spotlight target so
+  // the tour can find and highlight it (the elements now live behind tabs).
+  useEffect(() => {
+    if (
+      onboardingActive &&
+      onboardingStep?.view === "settings" &&
+      onboardingStep.target
+    ) {
+      const tab = TAB_FOR_TOUR_TARGET[onboardingStep.target];
+      if (tab) setActiveTab(tab);
+    }
+  }, [onboardingActive, onboardingStep?.target, onboardingStep?.view]);
 
   useEffect(() => {
     isCompletedRef.current = isCompleted;
@@ -274,7 +367,7 @@ export function SettingsView() {
     setFillerRemovalEnabled(getConfig("filler_removal_enabled", false) === true);
     setSentenceCaseEnabled(getConfig("sentence_case_enabled", false) === true);
     setFormattingCommandsEnabled(getConfig("formatting_commands_enabled", false) === true);
-    setSearchPrefix(String(getConfig("search_command_prefix", "hej")));
+    setSearchPrefix(String(getConfig("search_command_prefix", "hey")));
     setDecodeAccurate(getConfig("decode_accurate", false) === true);
     setTrailingSpace(getConfig("append_trailing_space", false) === true);
     setModelUnload(getConfig("model_unload_enabled", false) === true);
@@ -386,7 +479,7 @@ export function SettingsView() {
         // Normalize spacebar inputs across different layout/platform representations
         if (
           mainKey === " " ||
-          mainKey === " " ||
+          mainKey === " " ||
           mainKey === "\xa0" ||
           mainKey === "Spacebar"
         ) {
@@ -730,14 +823,9 @@ export function SettingsView() {
     setGpuEnabled(checked);
     try {
       await invoke("set_gpu_enabled", { enabled: checked });
-      console.log(`[Settings] GPU toggled to: ${checked}`);
-
       const activeModel = localStorage.getItem("active_local_model_path");
       if (activeModel) {
-        console.log(`[Settings] Reloading model with GPU=${checked}: ${activeModel}`);
         await invoke("load_model", { modelPath: activeModel });
-      } else {
-        console.log("[Settings] No active model to reload");
       }
     } catch (err) {
       console.error("Failed to set GPU state:", err);
@@ -749,37 +837,41 @@ export function SettingsView() {
     window.dispatchEvent(new Event("check-for-updates"));
   };
 
-  const micItems: Record<string, string> = {
-    default: t("settings.defaultMicrophone"),
-    ...Object.fromEntries(devices.map((d) => [d, d])),
-  };
-
-  const languageLabels: Record<string, string> = {
-    auto: t("settings.autoDetect"),
-    ...LANGUAGE_NAMES,
-  };
-
   const recordingModeLabels: Record<string, string> = {
     always: t("settings.recordingModeAlways"),
     recording: t("settings.recordingModeRecording"),
     never: t("settings.recordingModeNever"),
   };
 
-  return (
-    <div className="flex flex-col animate-[fadeIn_0.3s_ease-out]">
-      <div className="mb-6">
-        <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
-          {t("settings.preferencesTitle")}
-        </h1>
-      </div>
+  const tabs: { value: string; label: string; Icon: typeof Mic }[] = [
+    { value: "general", label: t("settings.tabGeneral"), Icon: SlidersHorizontal },
+    { value: "shortcuts", label: t("settings.tabShortcuts"), Icon: Keyboard },
+    { value: "recording", label: t("settings.tabRecording"), Icon: Mic },
+    { value: "text", label: t("settings.tabText"), Icon: Type },
+    { value: "output", label: t("settings.tabOutput"), Icon: ClipboardPaste },
+  ];
 
-      <div className="w-full columns-1 lg:columns-2 2xl:columns-3 gap-6 [&>section]:mb-6 [&>section]:break-inside-avoid">
-        {/* GROUP: Interface */}
-        <section>
-          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Languages size={16} className="text-muted" /> {t("settings.interfaceLanguageGroup")}
-          </h2>
-          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+  return (
+    <div className="animate-[fadeIn_0.3s_ease-out]">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="w-full max-w-3xl mx-auto"
+      >
+        <TabsList
+          variant="line"
+          className="mb-7 border-b border-border w-full justify-start"
+        >
+          {tabs.map(({ value, label, Icon }) => (
+            <TabsTrigger key={value} value={value} className="flex-none px-3.5 gap-1.5">
+              <Icon /> {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* ── General ─────────────────────────────────────────────────────── */}
+        <TabsContent value="general" className="flex flex-col gap-6">
+          <SettingsCard>
             <SettingRow layout="column" title={t("settings.interfaceLanguage")}>
               <Select
                 value={i18n.language}
@@ -800,487 +892,75 @@ export function SettingsView() {
                 </SelectContent>
               </Select>
             </SettingRow>
-          </div>
-        </section>
 
-        {/* GROUP: Audio & Speech-to-Text */}
-        <section>
-          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Cpu size={16} className="text-muted" /> {t("settings.audioSttGroup")}
-          </h2>
-          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-          <SettingRow layout="column" title={t("settings.inputMicrophone")}>
-            <Select
-              value={selectedDevice || "default"}
-              onValueChange={(v) => handleDeviceChange(v ?? "default")}
-              items={micItems}
-            >
-              <SelectTrigger className="w-full bg-black">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">{t("settings.defaultMicrophone")}</SelectItem>
-                {devices.map((device) => (
-                  <SelectItem key={device} value={device}>
-                    {device}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </SettingRow>
-
-          <SettingRow layout="column" title={t("settings.transcriptionLanguage")} data-tour="language-select">
-            <Select
-              value={asrLanguage}
-              onValueChange={(v) => handleAsrLanguageChange(v ?? "auto")}
-              items={languageLabels}
-            >
-              <SelectTrigger className="w-full bg-black">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                <SelectItem value="auto">{t("settings.autoDetect")}</SelectItem>
-                {LANGUAGE_GROUPS.map((group) => (
-                  <SelectGroup key={group.label}>
-                    <SelectLabel>{t(group.labelKey)}</SelectLabel>
-                    {group.items.map(([code, label]) => (
-                      <SelectItem key={code} value={code}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-muted text-[13px] mt-2">
-              {t("settings.transcriptionLanguageHelp")}
-            </p>
-          </SettingRow>
-
-          {!isMac && (
-            <SettingRow
-              title={t("settings.gpuAcceleration")}
-              description={t("settings.gpuAccelerationDesc")}
-            >
-              <Switch checked={gpuEnabled} onCheckedChange={handleGpuToggle} />
-            </SettingRow>
-          )}
-          </div>
-        </section>
-
-        {/* GROUP: Live transcription */}
-        <section>
-          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Radio size={16} className="text-muted" /> {t("settings.liveGroup")}
-          </h2>
-          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-            <SettingRow
-              title={t("settings.liveTranscription")}
-              description={t("settings.liveTranscriptionDesc")}
-            >
-              <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
+            <SettingRow layout="column" title={t("settings.inputMicrophone")}>
+              <Select
+                value={selectedDevice || "default"}
+                onValueChange={(v) => handleDeviceChange(v ?? "default")}
+                items={{
+                  default: t("settings.defaultMicrophone"),
+                  ...Object.fromEntries(devices.map((d) => [d, d])),
+                }}
+              >
+                <SelectTrigger className="w-full bg-black">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">{t("settings.defaultMicrophone")}</SelectItem>
+                  {devices.map((device) => (
+                    <SelectItem key={device} value={device}>
+                      {device}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </SettingRow>
 
             <SettingRow
-              title={t("settings.pushToTalk")}
-              description={t("settings.pushToTalkDesc")}
+              layout="column"
+              title={t("settings.transcriptionLanguage")}
+              data-tour="language-select"
             >
-              <Switch checked={pushToTalk} onCheckedChange={handlePushToTalkToggle} />
+              <Select
+                value={asrLanguage}
+                onValueChange={(v) => handleAsrLanguageChange(v ?? "auto")}
+                items={{ auto: t("settings.autoDetect"), ...LANGUAGE_NAMES }}
+              >
+                <SelectTrigger className="w-full bg-black">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-80">
+                  <SelectItem value="auto">{t("settings.autoDetect")}</SelectItem>
+                  {LANGUAGE_GROUPS.map((group) => (
+                    <SelectGroup key={group.label}>
+                      <SelectLabel>{t(group.labelKey)}</SelectLabel>
+                      {group.items.map(([code, label]) => (
+                        <SelectItem key={code} value={code}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted text-[13px] mt-2">
+                {t("settings.transcriptionLanguageHelp")}
+              </p>
             </SettingRow>
 
-            <div
-              className={liveEnabled ? "" : "opacity-50 select-none"}
-              inert={!liveEnabled || undefined}
-            >
-              <SettingRow
-                title={t("settings.liveAutopaste")}
-                description={t("settings.liveAutopasteDesc")}
-              >
-                <Switch
-                  checked={liveAutopaste}
-                  disabled={!liveEnabled}
-                  onCheckedChange={handleLiveAutopasteToggle}
-                />
-              </SettingRow>
-
-              <SettingRow
-                layout="column"
-                title={t("settings.liveOverlayText")}
-                description={t("settings.liveOverlayTextDesc")}
-              >
-                <Select
-                  value={liveOverlayMode}
-                  onValueChange={(v) => handleOverlayModeChange(v ?? "full")}
-                  items={{
-                    full: t("settings.liveOverlayFull"),
-                    recent: t("settings.liveOverlayRecent"),
-                  }}
-                >
-                  <SelectTrigger className="w-full bg-black" disabled={!liveEnabled}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="full">
-                      {t("settings.liveOverlayFull")}
-                    </SelectItem>
-                    <SelectItem value="recent">
-                      {t("settings.liveOverlayRecent")}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-
-              <SettingRow
-                layout="column"
-                title={t("settings.liveSpeed")}
-                description={t("settings.liveSpeedDesc")}
-              >
-                <Select
-                  value={liveSpeed}
-                  onValueChange={(v) => handleSpeedChange(v ?? "balanced")}
-                  items={{
-                    fast: t("settings.liveSpeedFast"),
-                    balanced: t("settings.liveSpeedBalanced"),
-                    accurate: t("settings.liveSpeedAccurate"),
-                  }}
-                >
-                  <SelectTrigger className="w-full bg-black" disabled={!liveEnabled}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="fast">
-                      {t("settings.liveSpeedFast")}
-                    </SelectItem>
-                    <SelectItem value="balanced">
-                      {t("settings.liveSpeedBalanced")}
-                    </SelectItem>
-                    <SelectItem value="accurate">
-                      {t("settings.liveSpeedAccurate")}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-            </div>
-          </div>
-        </section>
-
-        {/* GROUP: Recording & Feedback */}
-        <section data-tour="recording-section">
-          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Mic size={16} className="text-muted" /> {t("settings.recordingFeedbackGroup")}
-          </h2>
-          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             <SettingRow
               title={t("settings.autoStart")}
               description={t("settings.autoStartDesc")}
             >
-              <Switch
-                checked={autostartEnabled}
-                onCheckedChange={handleAutostartToggle}
-              />
+              <Switch checked={autostartEnabled} onCheckedChange={handleAutostartToggle} />
             </SettingRow>
+          </SettingsCard>
 
-          <SettingRow title={t("settings.vad")} description={t("settings.vadDesc")}>
-            <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
-          </SettingRow>
-
-          {vadEnabled && (
-            <>
-              <SettingRow title={t("settings.vadThreshold")} description={t("settings.vadThresholdDesc")}>
-                <Input
-                  type="number"
-                  step="0.001"
-                  value={vadThreshold}
-                  onChange={(e) => handleVadThresholdChange(e.target.value)}
-                  className="w-24"
-                />
-              </SettingRow>
-              <SettingRow title={t("settings.vadSilence")} description={t("settings.vadSilenceDesc")}>
-                <Input
-                  type="number"
-                  step="100"
-                  value={vadSilenceMs}
-                  onChange={(e) => handleVadSilenceChange(e.target.value)}
-                  className="w-24"
-                />
-              </SettingRow>
-            </>
-          )}
-
-          <SettingRow title={t("settings.soundEffects")} description={t("settings.soundEffectsDesc")}>
-            <Switch checked={soundEnabled} onCheckedChange={handleSoundToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.fillerRemoval")} description={t("settings.fillerRemovalDesc")}>
-            <Switch checked={fillerRemovalEnabled} onCheckedChange={handleFillerRemovalToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.sentenceCase")} description={t("settings.sentenceCaseDesc")}>
-            <Switch checked={sentenceCaseEnabled} onCheckedChange={handleSentenceCaseToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.formattingCommands")} description={t("settings.formattingCommandsDesc")}>
-            <Switch checked={formattingCommandsEnabled} onCheckedChange={handleFormattingCommandsToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.searchPrefix")} description={t("settings.searchPrefixDesc")}>
-            <Input
-              value={searchPrefix}
-              onChange={(e) => handleSearchPrefixChange(e.target.value)}
-              placeholder={t("settings.searchPrefixPlaceholder")}
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              className="w-40 bg-black"
-            />
-          </SettingRow>
-
-          <SettingRow title={t("settings.accurateMode")} description={t("settings.accurateModeDesc")}>
-            <Switch checked={decodeAccurate} onCheckedChange={handleDecodeAccurateToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.llmCleanup")} description={t("settings.llmCleanupDesc")}>
-            <Switch checked={llmCleanup} onCheckedChange={handleLlmCleanupToggle} />
-          </SettingRow>
-
-          <SettingRow layout="column" title={t("settings.opencc")} description={t("settings.openccDesc")}>
-            <Select
-              value={opencc}
-              onValueChange={(v) => handleOpenccChange(v ?? "off")}
-              items={Object.fromEntries(
-                ["off", "s2t", "t2s", "s2tw", "tw2s", "s2hk", "hk2s"].map((o) => [
-                  o,
-                  t(`settings.openccOptions.${o}`),
-                ]),
-              )}
+          {platform === "macos" && (
+            <SettingsCard
+              title={t("settings.systemPermissionsGroup")}
+              data-tour="permissions-section"
             >
-              <SelectTrigger className="w-full bg-black">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {["off", "s2t", "t2s", "s2tw", "tw2s", "s2hk", "hk2s"].map((o) => (
-                  <SelectItem key={o} value={o}>
-                    {t(`settings.openccOptions.${o}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </SettingRow>
-
-          <SettingRow title={t("settings.trailingSpace")} description={t("settings.trailingSpaceDesc")}>
-            <Switch checked={trailingSpace} onCheckedChange={handleTrailingSpaceToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.modelUnload")} description={t("settings.modelUnloadDesc")}>
-            <Switch checked={modelUnload} onCheckedChange={handleModelUnloadToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.clipboardOnly")} description={t("settings.clipboardOnlyDesc")}>
-            <Switch checked={clipboardOnly} onCheckedChange={handleClipboardOnlyToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.typeOutput")} description={t("settings.typeOutputDesc")}>
-            <Switch checked={typeOutput} disabled={clipboardOnly} onCheckedChange={handleTypeOutputToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.restoreClipboard")} description={t("settings.restoreClipboardDesc")}>
-            <Switch checked={restoreClipboard} disabled={clipboardOnly} onCheckedChange={handleRestoreClipboardToggle} />
-          </SettingRow>
-
-          <SettingRow title={t("settings.pasteDelay")} description={t("settings.pasteDelayDesc")}>
-            <Input
-              type="number"
-              step="50"
-              value={pasteDelay}
-              onChange={(e) => handlePasteDelayChange(e.target.value)}
-              className="w-24"
-            />
-          </SettingRow>
-
-          <SettingRow title={t("settings.pasteKeyHold")} description={t("settings.pasteKeyHoldDesc")}>
-            <Input
-              type="number"
-              step="10"
-              value={pasteKeyHold}
-              onChange={(e) => handlePasteKeyHoldChange(e.target.value)}
-              className="w-24"
-            />
-          </SettingRow>
-
-          <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>
-            <Switch
-              checked={pauseAudioEnabled}
-              onCheckedChange={handlePauseAudioToggle}
-            />
-          </SettingRow>
-
-          {(isMac || platform === "linux" || platform === "windows") && (
-            <>
-              <SettingRow
-                title={t("settings.recordingOverlayWindow")}
-                description={t("settings.recordingOverlayWindowDesc")}
-              >
-                <Select
-                  value={recordingWindowMode}
-                  onValueChange={(v) => handleRecordingWindowModeChange(v ?? "always")}
-                  items={recordingModeLabels}
-                >
-                  <SelectTrigger className="w-48 bg-black shrink-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="always">{t("settings.recordingModeAlways")}</SelectItem>
-                    <SelectItem value="recording">{t("settings.recordingModeRecording")}</SelectItem>
-                    <SelectItem value="never">{t("settings.recordingModeNever")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-              {isMac && (
-                <SettingRow
-                  title={t("settings.barPositionMoveTitle")}
-                  description={
-                    <Trans
-                      i18nKey="settings.barPositionMoveDescMac"
-                      components={{
-                        kbd: (
-                          <kbd className="inline-flex items-center justify-center px-1.5 py-0.5 mx-0.5 rounded-md border border-border bg-surface-active font-mono text-[11px] text-foreground" />
-                        ),
-                      }}
-                    />
-                  }
-                />
-              )}
-              {(platform === "linux" || platform === "windows") && (
-                <SettingRow
-                  title={t("settings.barPositionUnlockTitle")}
-                  description={t("settings.barPositionUnlockDesc")}
-                >
-                  <Switch checked={barUnlocked} onCheckedChange={handleBarUnlockToggle} aria-label={t("settings.barPositionUnlockTitle")} />
-                </SettingRow>
-              )}
-              <SettingRow
-                title={t("settings.barPositionResetTitle")}
-                description={t("settings.barPositionResetDesc")}
-              >
-                <Button variant="outline" size="sm" onClick={handleResetBarPosition}>
-                  {t("settings.barPositionReset")}
-                </Button>
-              </SettingRow>
-            </>
-          )}
-          </div>
-        </section>
-
-        {/* GROUP: Keyboard Shortcuts */}
-        <section data-tour="shortcuts-section">
-          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Keyboard size={16} className="text-muted" /> {t("settings.keyboardShortcutsGroup")}
-          </h2>
-          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
-
-          <SettingRow
-            title={t("settings.startStopRecording")}
-            description={t("settings.startStopRecordingDesc")}
-          >
-            <button
-              data-tour="record-shortcut"
-              onClick={() => startRecordingShortcut("record")}
-              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-              title={t("settings.clickToChangeShortcut")}
-            >
-              {formatShortcutDisplay(shortcutText, t("settings.shortcutNone"))}
-            </button>
-          </SettingRow>
-
-          <SettingRow
-            title={t("settings.copyLastTranscription")}
-            description={t("settings.copyLastTranscriptionDesc")}
-          >
-            <button
-              onClick={() => startRecordingShortcut("copy")}
-              className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-              title={t("settings.clickToChangeShortcut")}
-            >
-              {formatShortcutDisplay(copyShortcutText, t("settings.shortcutNone"))}
-            </button>
-          </SettingRow>
-
-          {/* Linux Native / Wayland warning block */}
-          {platform === "linux" && (
-            <div className="p-5 pt-0">
-              {["niri", "hyprland", "sway", "i3", "unknown"].includes(desktopEnv) ? (
-                <div className="mt-4 p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
-                  <div className="font-semibold flex items-center gap-1.5 text-sm">
-                    <Check size={14} /> {t("settings.nativeGlobalHotkeysActive")}
-                  </div>
-                  <p className="text-success/85">
-                    {t("settings.nativeGlobalHotkeysActiveDesc")}
-                  </p>
-                  <button
-                    onClick={() => setShowManualWMInstructions(!showManualWMInstructions)}
-                    className="text-left text-[11px] text-warning hover:text-warning/80 underline font-medium mt-1 cursor-pointer select-none transition-colors bg-transparent border-0 p-0"
-                  >
-                    {showManualWMInstructions ? t("settings.hideTroubleshooting") : t("settings.showTroubleshooting")}
-                  </button>
-
-                  {showManualWMInstructions && (
-                    <div className="mt-3 font-medium border-t border-success/10 pt-3 flex flex-col gap-2 text-muted text-[11px]">
-                      <p>
-                        <Trans
-                          i18nKey="settings.hotkeyTroubleshootingInput"
-                          components={{ strong: <strong /> }}
-                        />
-                      </p>
-                      <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-warning/90 overflow-x-auto">sudo usermod -aG input $USER</pre>
-                      <p>
-                        {t("settings.hotkeyTroubleshootingObserved")}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : ["gnome", "kde", "xfce", "cinnamon", "mate"].includes(desktopEnv) ? (
-                <div className="mt-4 p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
-                  <div className="font-semibold flex items-center gap-1.5 text-sm">
-                    <Check size={14} /> {t("settings.nativeLinuxShortcutIntegrationActive")}
-                  </div>
-                  <p className="text-success/85">
-                    <Trans
-                      i18nKey="settings.nativeLinuxShortcutIntegrationActiveDesc"
-                      values={{
-                        env:
-                          desktopEnv === "gnome" ? "GNOME" :
-                          desktopEnv === "kde" ? "KDE Plasma" :
-                          desktopEnv === "xfce" ? "XFCE" :
-                          desktopEnv === "cinnamon" ? "Cinnamon" : "MATE",
-                      }}
-                      components={{ strong: <strong /> }}
-                    />
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          )}
-
-          {/* Fallback generic error warning if registration fails on other platforms */}
-          {platform !== "linux" && (shortcutError || copyShortcutError) && (
-            <div className="p-5 pt-0">
-              <Alert variant="destructive" className="mt-4 border-danger/20 bg-danger/5">
-                <Shield />
-                <AlertTitle>{t("settings.shortcutRegistrationError")}</AlertTitle>
-                <AlertDescription>{shortcutError || copyShortcutError}</AlertDescription>
-              </Alert>
-            </div>
-          )}
-        </div>
-        </section>
-
-        {/* GROUP: System Permissions */}
-        {platform === "macos" && (
-          <section data-tour="permissions-section">
-            <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-              <Shield size={16} className="text-muted" /> {t("settings.systemPermissionsGroup")}
-            </h2>
-            <div className="border border-border rounded-xl overflow-hidden bg-secondary">
               <SettingRow
                 title={
                   <span className="flex items-center gap-2">
@@ -1373,16 +1053,10 @@ export function SettingsView() {
                   </span>
                 )}
               </SettingRow>
-            </div>
-          </section>
-        )}
+            </SettingsCard>
+          )}
 
-        {/* GROUP: About */}
-        <section>
-          <h2 className="mt-0 mb-4 text-base text-white font-medium flex items-center gap-2">
-            <Info size={16} className="text-muted" /> {t("settings.aboutGroup")}
-          </h2>
-          <div className="border border-border rounded-xl overflow-hidden bg-secondary">
+          <SettingsCard title={t("settings.aboutGroup")}>
             <SettingRow
               title="Simplevoice"
               description={t("settings.version", { version: appVersion || "…" })}
@@ -1393,16 +1067,366 @@ export function SettingsView() {
                 onClick={handleCheckForUpdates}
                 disabled={checkingUpdate}
               >
-                <RefreshCw
-                  size={14}
-                  className={checkingUpdate ? "animate-spin" : ""}
-                />
+                <RefreshCw size={14} className={checkingUpdate ? "animate-spin" : ""} />
                 {checkingUpdate ? t("settings.checkingForUpdates") : t("settings.checkForUpdates")}
               </Button>
             </SettingRow>
-          </div>
-        </section>
-      </div>
+          </SettingsCard>
+        </TabsContent>
+
+        {/* ── Shortcuts ───────────────────────────────────────────────────── */}
+        <TabsContent value="shortcuts" className="flex flex-col gap-6" data-tour="shortcuts-section">
+          <SettingsCard>
+            <SettingRow
+              title={t("settings.startStopRecording")}
+              description={t("settings.startStopRecordingDesc")}
+            >
+              <button
+                data-tour="record-shortcut"
+                onClick={() => startRecordingShortcut("record")}
+                className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                title={t("settings.clickToChangeShortcut")}
+              >
+                {formatShortcutDisplay(shortcutText, t("settings.shortcutNone"))}
+              </button>
+            </SettingRow>
+
+            <SettingRow
+              title={t("settings.copyLastTranscription")}
+              description={t("settings.copyLastTranscriptionDesc")}
+            >
+              <button
+                onClick={() => startRecordingShortcut("copy")}
+                className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                title={t("settings.clickToChangeShortcut")}
+              >
+                {formatShortcutDisplay(copyShortcutText, t("settings.shortcutNone"))}
+              </button>
+            </SettingRow>
+
+            <SettingRow
+              title={t("settings.pushToTalk")}
+              description={t("settings.pushToTalkDesc")}
+            >
+              <Switch checked={pushToTalk} onCheckedChange={handlePushToTalkToggle} />
+            </SettingRow>
+          </SettingsCard>
+
+          {/* Linux Native / Wayland status */}
+          {platform === "linux" &&
+            (["niri", "hyprland", "sway", "i3", "unknown"].includes(desktopEnv) ? (
+              <div className="p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
+                <div className="font-semibold flex items-center gap-1.5 text-sm">
+                  <Check size={14} /> {t("settings.nativeGlobalHotkeysActive")}
+                </div>
+                <p className="text-success/85">{t("settings.nativeGlobalHotkeysActiveDesc")}</p>
+                <button
+                  onClick={() => setShowManualWMInstructions(!showManualWMInstructions)}
+                  className="text-left text-[11px] text-warning hover:text-warning/80 underline font-medium mt-1 cursor-pointer select-none transition-colors bg-transparent border-0 p-0"
+                >
+                  {showManualWMInstructions ? t("settings.hideTroubleshooting") : t("settings.showTroubleshooting")}
+                </button>
+                {showManualWMInstructions && (
+                  <div className="mt-3 font-medium border-t border-success/10 pt-3 flex flex-col gap-2 text-muted text-[11px]">
+                    <p>
+                      <Trans i18nKey="settings.hotkeyTroubleshootingInput" components={{ strong: <strong /> }} />
+                    </p>
+                    <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-warning/90 overflow-x-auto">sudo usermod -aG input $USER</pre>
+                    <p>{t("settings.hotkeyTroubleshootingObserved")}</p>
+                  </div>
+                )}
+              </div>
+            ) : ["gnome", "kde", "xfce", "cinnamon", "mate"].includes(desktopEnv) ? (
+              <div className="p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
+                <div className="font-semibold flex items-center gap-1.5 text-sm">
+                  <Check size={14} /> {t("settings.nativeLinuxShortcutIntegrationActive")}
+                </div>
+                <p className="text-success/85">
+                  <Trans
+                    i18nKey="settings.nativeLinuxShortcutIntegrationActiveDesc"
+                    values={{
+                      env:
+                        desktopEnv === "gnome" ? "GNOME" :
+                        desktopEnv === "kde" ? "KDE Plasma" :
+                        desktopEnv === "xfce" ? "XFCE" :
+                        desktopEnv === "cinnamon" ? "Cinnamon" : "MATE",
+                    }}
+                    components={{ strong: <strong /> }}
+                  />
+                </p>
+              </div>
+            ) : null)}
+
+          {/* Generic registration error (non-Linux) */}
+          {platform !== "linux" && (shortcutError || copyShortcutError) && (
+            <Alert variant="destructive" className="border-danger/20 bg-danger/5">
+              <Shield />
+              <AlertTitle>{t("settings.shortcutRegistrationError")}</AlertTitle>
+              <AlertDescription>{shortcutError || copyShortcutError}</AlertDescription>
+            </Alert>
+          )}
+        </TabsContent>
+
+        {/* ── Recording ───────────────────────────────────────────────────── */}
+        <TabsContent value="recording" className="flex flex-col gap-6">
+          <SettingsCard data-tour="recording-section">
+            <SettingRow title={t("settings.vad")} description={t("settings.vadDesc")}>
+              <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
+            </SettingRow>
+
+            {vadEnabled && (
+              <>
+                <SettingRow title={t("settings.vadThreshold")} description={t("settings.vadThresholdDesc")}>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={vadThreshold}
+                    onChange={(e) => handleVadThresholdChange(e.target.value)}
+                    className="w-24"
+                  />
+                </SettingRow>
+                <SettingRow title={t("settings.vadSilence")} description={t("settings.vadSilenceDesc")}>
+                  <Input
+                    type="number"
+                    step="100"
+                    value={vadSilenceMs}
+                    onChange={(e) => handleVadSilenceChange(e.target.value)}
+                    className="w-24"
+                  />
+                </SettingRow>
+              </>
+            )}
+
+            <SettingRow title={t("settings.soundEffects")} description={t("settings.soundEffectsDesc")}>
+              <Switch checked={soundEnabled} onCheckedChange={handleSoundToggle} />
+            </SettingRow>
+
+            <SettingRow title={t("settings.pauseSystemAudio")} description={t("settings.pauseSystemAudioDesc")}>
+              <Switch checked={pauseAudioEnabled} onCheckedChange={handlePauseAudioToggle} />
+            </SettingRow>
+
+            {!isMac && (
+              <SettingRow title={t("settings.gpuAcceleration")} description={t("settings.gpuAccelerationDesc")}>
+                <Switch checked={gpuEnabled} onCheckedChange={handleGpuToggle} />
+              </SettingRow>
+            )}
+          </SettingsCard>
+
+          <CollapsibleCard title={t("settings.advanced")}>
+            {(isMac || platform === "linux" || platform === "windows") && (
+              <>
+                <SettingRow
+                  title={t("settings.recordingOverlayWindow")}
+                  description={t("settings.recordingOverlayWindowDesc")}
+                >
+                  <Select
+                    value={recordingWindowMode}
+                    onValueChange={(v) => handleRecordingWindowModeChange(v ?? "always")}
+                    items={recordingModeLabels}
+                  >
+                    <SelectTrigger className="w-48 bg-black shrink-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="always">{t("settings.recordingModeAlways")}</SelectItem>
+                      <SelectItem value="recording">{t("settings.recordingModeRecording")}</SelectItem>
+                      <SelectItem value="never">{t("settings.recordingModeNever")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+                {isMac && (
+                  <SettingRow
+                    title={t("settings.barPositionMoveTitle")}
+                    description={
+                      <Trans
+                        i18nKey="settings.barPositionMoveDescMac"
+                        components={{
+                          kbd: (
+                            <kbd className="inline-flex items-center justify-center px-1.5 py-0.5 mx-0.5 rounded-md border border-border bg-surface-active font-mono text-[11px] text-foreground" />
+                          ),
+                        }}
+                      />
+                    }
+                  />
+                )}
+                {(platform === "linux" || platform === "windows") && (
+                  <SettingRow
+                    title={t("settings.barPositionUnlockTitle")}
+                    description={t("settings.barPositionUnlockDesc")}
+                  >
+                    <Switch checked={barUnlocked} onCheckedChange={handleBarUnlockToggle} aria-label={t("settings.barPositionUnlockTitle")} />
+                  </SettingRow>
+                )}
+                <SettingRow
+                  title={t("settings.barPositionResetTitle")}
+                  description={t("settings.barPositionResetDesc")}
+                >
+                  <Button variant="outline" size="sm" onClick={handleResetBarPosition}>
+                    {t("settings.barPositionReset")}
+                  </Button>
+                </SettingRow>
+              </>
+            )}
+            <SettingRow title={t("settings.modelUnload")} description={t("settings.modelUnloadDesc")}>
+              <Switch checked={modelUnload} onCheckedChange={handleModelUnloadToggle} />
+            </SettingRow>
+          </CollapsibleCard>
+        </TabsContent>
+
+        {/* ── Text ────────────────────────────────────────────────────────── */}
+        <TabsContent value="text" className="flex flex-col gap-6">
+          <SettingsCard>
+            <SettingRow title={t("settings.accurateMode")} description={t("settings.accurateModeDesc")}>
+              <Switch checked={decodeAccurate} onCheckedChange={handleDecodeAccurateToggle} />
+            </SettingRow>
+            <SettingRow title={t("settings.fillerRemoval")} description={t("settings.fillerRemovalDesc")}>
+              <Switch checked={fillerRemovalEnabled} onCheckedChange={handleFillerRemovalToggle} />
+            </SettingRow>
+            <SettingRow title={t("settings.sentenceCase")} description={t("settings.sentenceCaseDesc")}>
+              <Switch checked={sentenceCaseEnabled} onCheckedChange={handleSentenceCaseToggle} />
+            </SettingRow>
+            <SettingRow title={t("settings.formattingCommands")} description={t("settings.formattingCommandsDesc")}>
+              <Switch checked={formattingCommandsEnabled} onCheckedChange={handleFormattingCommandsToggle} />
+            </SettingRow>
+            <SettingRow title={t("settings.trailingSpace")} description={t("settings.trailingSpaceDesc")}>
+              <Switch checked={trailingSpace} onCheckedChange={handleTrailingSpaceToggle} />
+            </SettingRow>
+            <SettingRow title={t("settings.llmCleanup")} description={t("settings.llmCleanupDesc")}>
+              <Switch checked={llmCleanup} onCheckedChange={handleLlmCleanupToggle} />
+            </SettingRow>
+            <SettingRow title={t("settings.searchPrefix")} description={t("settings.searchPrefixDesc")}>
+              <Input
+                value={searchPrefix}
+                onChange={(e) => handleSearchPrefixChange(e.target.value)}
+                placeholder={t("settings.searchPrefixPlaceholder")}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                className="w-40 bg-black"
+              />
+            </SettingRow>
+          </SettingsCard>
+
+          <CollapsibleCard title={t("settings.advanced")}>
+            <SettingRow layout="column" title={t("settings.opencc")} description={t("settings.openccDesc")}>
+              <Select
+                value={opencc}
+                onValueChange={(v) => handleOpenccChange(v ?? "off")}
+                items={Object.fromEntries(
+                  ["off", "s2t", "t2s", "s2tw", "tw2s", "s2hk", "hk2s"].map((o) => [
+                    o,
+                    t(`settings.openccOptions.${o}`),
+                  ]),
+                )}
+              >
+                <SelectTrigger className="w-full bg-black">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["off", "s2t", "t2s", "s2tw", "tw2s", "s2hk", "hk2s"].map((o) => (
+                    <SelectItem key={o} value={o}>
+                      {t(`settings.openccOptions.${o}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingRow>
+          </CollapsibleCard>
+        </TabsContent>
+
+        {/* ── Output ──────────────────────────────────────────────────────── */}
+        <TabsContent value="output" className="flex flex-col gap-6">
+          <SettingsCard>
+            <SettingRow title={t("settings.clipboardOnly")} description={t("settings.clipboardOnlyDesc")}>
+              <Switch checked={clipboardOnly} onCheckedChange={handleClipboardOnlyToggle} />
+            </SettingRow>
+            <SettingRow title={t("settings.typeOutput")} description={t("settings.typeOutputDesc")}>
+              <Switch checked={typeOutput} disabled={clipboardOnly} onCheckedChange={handleTypeOutputToggle} />
+            </SettingRow>
+            <SettingRow title={t("settings.restoreClipboard")} description={t("settings.restoreClipboardDesc")}>
+              <Switch checked={restoreClipboard} disabled={clipboardOnly} onCheckedChange={handleRestoreClipboardToggle} />
+            </SettingRow>
+          </SettingsCard>
+
+          <CollapsibleCard title={t("settings.advanced")}>
+            <SettingRow title={t("settings.pasteDelay")} description={t("settings.pasteDelayDesc")}>
+              <Input
+                type="number"
+                step="50"
+                value={pasteDelay}
+                onChange={(e) => handlePasteDelayChange(e.target.value)}
+                className="w-24"
+              />
+            </SettingRow>
+            <SettingRow title={t("settings.pasteKeyHold")} description={t("settings.pasteKeyHoldDesc")}>
+              <Input
+                type="number"
+                step="10"
+                value={pasteKeyHold}
+                onChange={(e) => handlePasteKeyHoldChange(e.target.value)}
+                className="w-24"
+              />
+            </SettingRow>
+          </CollapsibleCard>
+
+          <SettingsCard title={t("settings.liveGroup")}>
+            <SettingRow
+              title={
+                <span className="flex items-center gap-2">
+                  <Radio size={15} className="text-muted" />
+                  {t("settings.liveTranscription")}
+                </span>
+              }
+              description={t("settings.liveTranscriptionDesc")}
+            >
+              <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
+            </SettingRow>
+
+            <div className={liveEnabled ? "" : "opacity-50 select-none"} inert={!liveEnabled || undefined}>
+              <SettingRow title={t("settings.liveAutopaste")} description={t("settings.liveAutopasteDesc")}>
+                <Switch checked={liveAutopaste} disabled={!liveEnabled} onCheckedChange={handleLiveAutopasteToggle} />
+              </SettingRow>
+
+              <SettingRow layout="column" title={t("settings.liveOverlayText")} description={t("settings.liveOverlayTextDesc")}>
+                <Select
+                  value={liveOverlayMode}
+                  onValueChange={(v) => handleOverlayModeChange(v ?? "full")}
+                  items={{ full: t("settings.liveOverlayFull"), recent: t("settings.liveOverlayRecent") }}
+                >
+                  <SelectTrigger className="w-full bg-black" disabled={!liveEnabled}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full">{t("settings.liveOverlayFull")}</SelectItem>
+                    <SelectItem value="recent">{t("settings.liveOverlayRecent")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+
+              <SettingRow layout="column" title={t("settings.liveSpeed")} description={t("settings.liveSpeedDesc")}>
+                <Select
+                  value={liveSpeed}
+                  onValueChange={(v) => handleSpeedChange(v ?? "balanced")}
+                  items={{
+                    fast: t("settings.liveSpeedFast"),
+                    balanced: t("settings.liveSpeedBalanced"),
+                    accurate: t("settings.liveSpeedAccurate"),
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-black" disabled={!liveEnabled}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fast">{t("settings.liveSpeedFast")}</SelectItem>
+                    <SelectItem value="balanced">{t("settings.liveSpeedBalanced")}</SelectItem>
+                    <SelectItem value="accurate">{t("settings.liveSpeedAccurate")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+            </div>
+          </SettingsCard>
+        </TabsContent>
+      </Tabs>
 
       {isRecordingShortcut && (
         <div

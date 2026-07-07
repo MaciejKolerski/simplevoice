@@ -598,7 +598,7 @@ fn search_commands(app_handle: &tauri::AppHandle) -> Vec<crate::search::SearchCo
     all.into_iter().filter(|c| c.enabled).collect()
 }
 
-/// Reads the voice-search wake-word prefix from config.json (default "hej"). An
+/// Reads the voice-search wake-word prefix from config.json (default "hey"). An
 /// empty stored value means no wake word is required (keyword-only matching).
 fn search_command_prefix(app_handle: &tauri::AppHandle) -> String {
     app_handle
@@ -612,7 +612,7 @@ fn search_command_prefix(app_handle: &tauri::AppHandle) -> String {
                 .and_then(|s| s.as_str())
                 .map(|s| s.trim().to_string())
         })
-        .unwrap_or_else(|| "hej".to_string())
+        .unwrap_or_else(|| "hey".to_string())
 }
 
 /// Returns the built-in voice-search commands so the frontend can seed the config

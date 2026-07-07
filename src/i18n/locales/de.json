@@ -190,7 +190,13 @@
     "barPositionResetError": "Leistenposition konnte nicht zurückgesetzt werden",
     "searchPrefix": "Präfix für Sprachsuche",
     "searchPrefixDesc": "Das Wort vor dem Dienstnamen — z. B. „hey“ in „hey Google“. Leer lassen, um Befehle ohne Präfix auszulösen.",
-    "searchPrefixPlaceholder": "hej"
+    "searchPrefixPlaceholder": "hey",
+    "tabGeneral": "Allgemein",
+    "tabShortcuts": "Kürzel",
+    "tabRecording": "Aufnahme",
+    "tabText": "Text",
+    "tabOutput": "Ausgabe",
+    "advanced": "Erweitert"
   },
   "hud": {
     "recording": "Aufnahme",
@@ -358,13 +364,17 @@
     "voiceSearchEmpty": "Keine Suchregeln. Füge eine eigene hinzu oder stelle die Standardwerte wieder her.",
     "colName": "Name",
     "namePlaceholder": "z. B. Facebook",
-    "triggersPlaceholder": "z. B. facebook, fb",
+    "triggersPlaceholder": "z. B. facebook",
     "urlPlaceholder": "https://…/?q=%s",
     "urlHint": "Die URL der Suchseite. Setze %s an die Stelle, an die deine gesprochene Anfrage soll.",
     "addSearch": "Eigene Regel hinzufügen",
     "restoreDefaults": "Standard wiederherstellen",
     "prefixHint": "Befehle starten nach „{{prefix}}“ — z. B. „{{prefix}} google, wie ist das Wetter“. Den Präfix änderst du in den Einstellungen.",
-    "prefixHintNone": "Befehle starten ohne Präfix — nur Dienstname und Anfrage. Einen Präfix legst du in den Einstellungen fest."
+    "prefixHintNone": "Befehle starten ohne Präfix — nur Dienstname und Anfrage. Einen Präfix legst du in den Einstellungen fest.",
+    "tabSearch": "Sprachsuche",
+    "tabDictionary": "Wörterbuch",
+    "noTriggers": "— Stichwort hinzufügen —",
+    "editCommand": "Bearbeiten"
   },
   "onboarding": {
     "stepCounter": "Schritt {{current}} / {{total}}",

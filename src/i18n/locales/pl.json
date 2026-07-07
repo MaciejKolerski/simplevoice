@@ -189,8 +189,14 @@
     "barPositionResetDone": "Pozycja paska została zresetowana",
     "barPositionResetError": "Nie udało się zresetować pozycji paska",
     "searchPrefix": "Prefiks wyszukiwania głosem",
-    "searchPrefixDesc": "Słowo wypowiadane przed nazwą serwisu — np. „hej” w „hej Google”. Zostaw puste, aby komendy działały bez prefiksu.",
-    "searchPrefixPlaceholder": "hej"
+    "searchPrefixDesc": "Słowo wypowiadane przed nazwą serwisu — np. „hey” w „hey Google”. Zostaw puste, aby komendy działały bez prefiksu.",
+    "searchPrefixPlaceholder": "hey",
+    "tabGeneral": "Ogólne",
+    "tabShortcuts": "Skróty",
+    "tabRecording": "Nagrywanie",
+    "tabText": "Tekst",
+    "tabOutput": "Wynik",
+    "advanced": "Zaawansowane"
   },
   "hud": {
     "recording": "Nagrywanie",
@@ -358,13 +364,17 @@
     "voiceSearchEmpty": "Brak reguł wyszukiwania. Dodaj własną lub przywróć domyślne.",
     "colName": "Nazwa",
     "namePlaceholder": "np. Facebook",
-    "triggersPlaceholder": "np. facebook, fejs",
+    "triggersPlaceholder": "np. facebook",
     "urlPlaceholder": "https://…/?q=%s",
     "urlHint": "Adres strony wyszukiwania. Wpisz %s w miejscu, w które ma trafić Twoje zapytanie.",
     "addSearch": "Dodaj własną regułę",
     "restoreDefaults": "Przywróć domyślne",
     "prefixHint": "Komendy uruchamiają się po słowie „{{prefix}}” — np. „{{prefix}} google, jaka jest pogoda”. Prefiks zmienisz w Ustawieniach.",
-    "prefixHintNone": "Komendy uruchamiają się bez prefiksu — wystarczy nazwa serwisu i zapytanie. Prefiks ustawisz w Ustawieniach."
+    "prefixHintNone": "Komendy uruchamiają się bez prefiksu — wystarczy nazwa serwisu i zapytanie. Prefiks ustawisz w Ustawieniach.",
+    "tabSearch": "Wyszukiwanie głosem",
+    "tabDictionary": "Słownik",
+    "noTriggers": "— dodaj frazę —",
+    "editCommand": "Edytuj"
   },
   "onboarding": {
     "stepCounter": "Krok {{current}} / {{total}}",
