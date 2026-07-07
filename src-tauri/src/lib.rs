@@ -9,6 +9,7 @@ mod wayland_type;
 mod evdev_shortcuts;
 mod media_control;
 mod logging;
+mod search;
 pub mod stt;
 use audio::AudioController;
 use base64::Engine;
@@ -563,6 +564,79 @@ fn dictionary_rules(app_handle: &tauri::AppHandle) -> Vec<crate::stt::text::Dict
             .collect();
     }
     Vec::new()
+}
+
+/// Reads the enabled voice-search commands from config.json. The master
+/// `search_commands_enabled` flag (default on) gates the whole feature; when the
+/// `search_commands` array is absent (fresh install, Dictionary tab never opened)
+/// the built-in defaults are used so "hej google …" works out of the box. Returns
+/// only enabled commands, so the matcher never has to know about the flags.
+fn search_commands(app_handle: &tauri::AppHandle) -> Vec<crate::search::SearchCommand> {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return Vec::new();
+    };
+    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
+        // No config yet: defaults are enabled.
+        return crate::search::default_search_commands();
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return Vec::new();
+    };
+    // Master toggle: only an explicit `false` disables the feature.
+    if v.get("search_commands_enabled").and_then(|b| b.as_bool()) == Some(false) {
+        return Vec::new();
+    }
+    let all = match v.get("search_commands").and_then(|a| a.as_array()) {
+        Some(arr) => arr
+            .iter()
+            .filter_map(|item| {
+                serde_json::from_value::<crate::search::SearchCommand>(item.clone()).ok()
+            })
+            .collect(),
+        None => crate::search::default_search_commands(),
+    };
+    all.into_iter().filter(|c| c.enabled).collect()
+}
+
+/// Reads the voice-search wake-word prefix from config.json (default "hej"). An
+/// empty stored value means no wake word is required (keyword-only matching).
+fn search_command_prefix(app_handle: &tauri::AppHandle) -> String {
+    app_handle
+        .path()
+        .app_local_data_dir()
+        .ok()
+        .and_then(|dir| std::fs::read_to_string(dir.join("config.json")).ok())
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|v| {
+            v.get("search_command_prefix")
+                .and_then(|s| s.as_str())
+                .map(|s| s.trim().to_string())
+        })
+        .unwrap_or_else(|| "hej".to_string())
+}
+
+/// Returns the built-in voice-search commands so the frontend can seed the config
+/// on first run and offer a "restore defaults" action. Backend is the single
+/// source of truth for the default list.
+#[tauri::command]
+fn get_default_search_commands() -> Vec<crate::search::SearchCommand> {
+    crate::search::default_search_commands()
+}
+
+/// Clears the "transcribing" indicators (backend flag, macOS App Nap activity,
+/// frontend status event, tray menu, recording overlay) at the end of a
+/// transcription — whether it produced text, fired a voice-search command, or was
+/// empty. Centralized so every exit path from `transcribe_audio` leaves the UI in
+/// the same idle state.
+fn finish_transcribing(app_handle: &tauri::AppHandle, audio_controller: &AudioController) {
+    audio_controller.set_transcribing(false);
+    #[cfg(target_os = "macos")]
+    {
+        *TRANSCRIBE_ACTIVITY.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+    let _ = app_handle.emit("transcribing-status", false);
+    let _ = rebuild_tray_menu(app_handle);
+    update_recording_window_visibility(app_handle);
 }
 
 /// Reads `decode_accurate` from config.json and sets the Whisper beam width (beam
@@ -2396,6 +2470,26 @@ async fn transcribe_audio(
         }
     };
 
+    // Voice search commands (Dictionary → Voice search): if the utterance opens
+    // with the wake-word prefix and a site keyword ("hej google …"), open the site with
+    // the rest of the utterance as the query and skip the type/paste delivery below.
+    // Detected on the raw transcription so the query is exactly what was spoken,
+    // before any formatting/casing/LLM steps run. Batch path only — live-typing mode
+    // streams text as you speak and never routes through this command.
+    if let Some(url) = crate::search::match_search_command(
+        &text,
+        &search_command_prefix(&app_handle),
+        &search_commands(&app_handle),
+    ) {
+        tracing::info!("[transcribe_audio] voice search command matched; opening browser");
+        if let Err(e) = tauri_plugin_opener::open_url(&url, None::<&str>) {
+            tracing::error!("[transcribe_audio] failed to open search URL: {e}");
+        }
+        play_backend_sound(&app_handle, "done");
+        finish_transcribing(&app_handle, audio_controller.inner());
+        return Ok(String::new());
+    }
+
     // Delivery-layer post-processing (config-gated; the eval-harness path through
     // transcribe_with_progress is not affected).
     // D4: OpenCC Simplified/Traditional Chinese conversion first, so later steps
@@ -2518,17 +2612,10 @@ async fn transcribe_audio(
         play_backend_sound(&app_handle, "done");
     }
 
-    // Clear the transcribing indicator from the backend too, so it never stays
+    // Clear the transcribing indicators from the backend too, so they never stay
     // stuck waiting on the frontend's finally block (which only runs once the
     // deferred response finally reaches the webview).
-    audio_controller.set_transcribing(false);
-    #[cfg(target_os = "macos")]
-    {
-        *TRANSCRIBE_ACTIVITY.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    }
-    let _ = app_handle.emit("transcribing-status", false);
-    let _ = rebuild_tray_menu(&app_handle);
-    update_recording_window_visibility(&app_handle);
+    finish_transcribing(&app_handle, audio_controller.inner());
 
     Ok(text)
 }
@@ -3755,7 +3842,8 @@ pub fn run() {
             stt::downloader::download_model,
             stt::downloader::pause_download,
             stt::downloader::cancel_download,
-            stt::downloader::discard_download
+            stt::downloader::discard_download,
+            get_default_search_commands
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

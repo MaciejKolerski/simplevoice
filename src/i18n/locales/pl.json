@@ -11,7 +11,9 @@
     "cancel": "Anuluj",
     "save": "Zapisz",
     "close": "Zamknij",
-    "loading": "Ładowanie…"
+    "loading": "Ładowanie…",
+    "on": "Wł.",
+    "off": "Wył."
   },
   "languages": {
     "en": "English",
@@ -185,7 +187,10 @@
     "barPositionResetDesc": "Przywróć pasek do domyślnego położenia.",
     "barPositionReset": "Resetuj",
     "barPositionResetDone": "Pozycja paska została zresetowana",
-    "barPositionResetError": "Nie udało się zresetować pozycji paska"
+    "barPositionResetError": "Nie udało się zresetować pozycji paska",
+    "searchPrefix": "Prefiks wyszukiwania głosem",
+    "searchPrefixDesc": "Słowo wypowiadane przed nazwą serwisu — np. „hej” w „hej Google”. Zostaw puste, aby komendy działały bez prefiksu.",
+    "searchPrefixPlaceholder": "hej"
   },
   "hud": {
     "recording": "Nagrywanie",
@@ -347,7 +352,19 @@
     "empty": "Brak reguł. Dodaj pierwszą, aby zacząć.",
     "colTrigger": "Fraza",
     "colAction": "Typ",
-    "colValue": "Zamiana"
+    "colValue": "Zamiana",
+    "voiceSearchTitle": "Wyszukiwanie głosem",
+    "voiceSearchDescription": "Powiedz prefiks i nazwę serwisu, a potem zapytanie — otworzy się przeglądarka z wynikami. Poniżej podajesz same słowa kluczowe (np. „google”, „youtube”).",
+    "voiceSearchEmpty": "Brak reguł wyszukiwania. Dodaj własną lub przywróć domyślne.",
+    "colName": "Nazwa",
+    "namePlaceholder": "np. Facebook",
+    "triggersPlaceholder": "np. facebook, fejs",
+    "urlPlaceholder": "https://…/?q=%s",
+    "urlHint": "Adres strony wyszukiwania. Wpisz %s w miejscu, w które ma trafić Twoje zapytanie.",
+    "addSearch": "Dodaj własną regułę",
+    "restoreDefaults": "Przywróć domyślne",
+    "prefixHint": "Komendy uruchamiają się po słowie „{{prefix}}” — np. „{{prefix}} google, jaka jest pogoda”. Prefiks zmienisz w Ustawieniach.",
+    "prefixHintNone": "Komendy uruchamiają się bez prefiksu — wystarczy nazwa serwisu i zapytanie. Prefiks ustawisz w Ustawieniach."
   },
   "onboarding": {
     "stepCounter": "Krok {{current}} / {{total}}",

@@ -139,6 +139,7 @@ export function SettingsView() {
   const [fillerRemovalEnabled, setFillerRemovalEnabled] = useState(false);
   const [sentenceCaseEnabled, setSentenceCaseEnabled] = useState(false);
   const [formattingCommandsEnabled, setFormattingCommandsEnabled] = useState(false);
+  const [searchPrefix, setSearchPrefix] = useState("hej");
   const [decodeAccurate, setDecodeAccurate] = useState(false);
   const [trailingSpace, setTrailingSpace] = useState(false);
   const [modelUnload, setModelUnload] = useState(false);
@@ -273,6 +274,7 @@ export function SettingsView() {
     setFillerRemovalEnabled(getConfig("filler_removal_enabled", false) === true);
     setSentenceCaseEnabled(getConfig("sentence_case_enabled", false) === true);
     setFormattingCommandsEnabled(getConfig("formatting_commands_enabled", false) === true);
+    setSearchPrefix(String(getConfig("search_command_prefix", "hej")));
     setDecodeAccurate(getConfig("decode_accurate", false) === true);
     setTrailingSpace(getConfig("append_trailing_space", false) === true);
     setModelUnload(getConfig("model_unload_enabled", false) === true);
@@ -602,6 +604,11 @@ export function SettingsView() {
   const handleFormattingCommandsToggle = (checked: boolean) => {
     setFormattingCommandsEnabled(checked);
     updateConfig("formatting_commands_enabled", checked);
+  };
+
+  const handleSearchPrefixChange = (value: string) => {
+    setSearchPrefix(value);
+    updateConfig("search_command_prefix", value);
   };
 
   const handleDecodeAccurateToggle = (checked: boolean) => {
@@ -1014,6 +1021,18 @@ export function SettingsView() {
 
           <SettingRow title={t("settings.formattingCommands")} description={t("settings.formattingCommandsDesc")}>
             <Switch checked={formattingCommandsEnabled} onCheckedChange={handleFormattingCommandsToggle} />
+          </SettingRow>
+
+          <SettingRow title={t("settings.searchPrefix")} description={t("settings.searchPrefixDesc")}>
+            <Input
+              value={searchPrefix}
+              onChange={(e) => handleSearchPrefixChange(e.target.value)}
+              placeholder={t("settings.searchPrefixPlaceholder")}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              className="w-40 bg-black"
+            />
           </SettingRow>
 
           <SettingRow title={t("settings.accurateMode")} description={t("settings.accurateModeDesc")}>

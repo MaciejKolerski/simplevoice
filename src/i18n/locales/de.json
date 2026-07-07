@@ -11,7 +11,9 @@
     "cancel": "Abbrechen",
     "save": "Speichern",
     "close": "Schließen",
-    "loading": "Wird geladen…"
+    "loading": "Wird geladen…",
+    "on": "An",
+    "off": "Aus"
   },
   "languages": {
     "en": "English",
@@ -185,7 +187,10 @@
     "barPositionResetDesc": "Setzt die Leiste auf ihre Standardposition zurück.",
     "barPositionReset": "Zurücksetzen",
     "barPositionResetDone": "Leistenposition wurde zurückgesetzt",
-    "barPositionResetError": "Leistenposition konnte nicht zurückgesetzt werden"
+    "barPositionResetError": "Leistenposition konnte nicht zurückgesetzt werden",
+    "searchPrefix": "Präfix für Sprachsuche",
+    "searchPrefixDesc": "Das Wort vor dem Dienstnamen — z. B. „hey“ in „hey Google“. Leer lassen, um Befehle ohne Präfix auszulösen.",
+    "searchPrefixPlaceholder": "hej"
   },
   "hud": {
     "recording": "Aufnahme",
@@ -347,7 +352,19 @@
     "empty": "Noch keine Regeln. Füge eine hinzu, um zu starten.",
     "colTrigger": "Auslöser",
     "colAction": "Aktion",
-    "colValue": "Ersetzung"
+    "colValue": "Ersetzung",
+    "voiceSearchTitle": "Sprachsuche",
+    "voiceSearchDescription": "Sage den Präfix und einen Dienstnamen, dann deine Anfrage — der Browser öffnet die Ergebnisse. Unten legst du nur das Stichwort fest (z. B. „google“, „youtube“).",
+    "voiceSearchEmpty": "Keine Suchregeln. Füge eine eigene hinzu oder stelle die Standardwerte wieder her.",
+    "colName": "Name",
+    "namePlaceholder": "z. B. Facebook",
+    "triggersPlaceholder": "z. B. facebook, fb",
+    "urlPlaceholder": "https://…/?q=%s",
+    "urlHint": "Die URL der Suchseite. Setze %s an die Stelle, an die deine gesprochene Anfrage soll.",
+    "addSearch": "Eigene Regel hinzufügen",
+    "restoreDefaults": "Standard wiederherstellen",
+    "prefixHint": "Befehle starten nach „{{prefix}}“ — z. B. „{{prefix}} google, wie ist das Wetter“. Den Präfix änderst du in den Einstellungen.",
+    "prefixHintNone": "Befehle starten ohne Präfix — nur Dienstname und Anfrage. Einen Präfix legst du in den Einstellungen fest."
   },
   "onboarding": {
     "stepCounter": "Schritt {{current}} / {{total}}",
