@@ -103,6 +103,7 @@ fn action_for_id(action_id: &str) -> Result<ShortcutAction, String> {
     match action_id {
         "toggle" => Ok(ShortcutAction::Record),
         "copy" => Ok(ShortcutAction::CopyLast),
+        "movebar" => Ok(ShortcutAction::MoveBar),
         other => Err(format!("unknown shortcut action '{other}'")),
     }
 }
@@ -111,6 +112,7 @@ fn action_key(action: &ShortcutAction) -> u8 {
     match action {
         ShortcutAction::Record => 0,
         ShortcutAction::CopyLast => 1,
+        ShortcutAction::MoveBar => 2,
     }
 }
 
@@ -280,6 +282,10 @@ fn dispatch(app: &AppHandle, action: &ShortcutAction) {
                     let _ = app.emit("copy-last-success", t);
                 }
             }
+        }
+        ShortcutAction::MoveBar => {
+            let next = !crate::is_recording_window_locked(app);
+            let _ = crate::set_recording_window_locked(next, app.clone());
         }
     }
 }

@@ -14,9 +14,9 @@
       {
         "label": "main",
         "title": "Simplevoice",
-        "width": 800,
-        "height": 600,
-        "minWidth": 800,
+        "width": 1040,
+        "height": 700,
+        "minWidth": 940,
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,

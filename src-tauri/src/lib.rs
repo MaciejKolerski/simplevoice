@@ -41,6 +41,10 @@ pub struct LastTranscription {
 enum ShortcutAction {
     Record,
     CopyLast,
+    /// Toggle the recording overlay (wavebar) between locked and movable, so it
+    /// can be dragged to a new spot and pinned again — a keyboard alternative to
+    /// the modifier-drag / lock switch.
+    MoveBar,
 }
 
 struct ShortcutEntry {
@@ -1957,6 +1961,63 @@ fn register_copy_shortcut(
     Ok(())
 }
 
+/// Registers the global shortcut that toggles the recording overlay's lock (move
+/// mode). Mirrors `register_copy_shortcut`; an empty string clears it.
+#[tauri::command]
+fn register_move_bar_shortcut(
+    shortcut_str: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let registry = app_handle.state::<ShortcutRegistry>();
+    let mut entries = registry.entries.lock().unwrap();
+
+    // Remove existing MoveBar entry
+    entries.retain(|e| e.action != ShortcutAction::MoveBar);
+
+    if !shortcut_str.trim().is_empty() {
+        let shortcut: Shortcut = shortcut_str
+            .parse()
+            .map_err(|e| format!("Failed to parse shortcut '{}': {}", shortcut_str, e))?;
+        entries.push(ShortcutEntry {
+            shortcut,
+            action: ShortcutAction::MoveBar,
+        });
+    }
+
+    drop(entries);
+    let sync_res = sync_all_shortcuts(&app_handle);
+
+    #[cfg(target_os = "linux")]
+    {
+        let de = linux_shortcuts::detect_desktop_environment();
+        if linux_uses_evdev(&de) {
+            evdev_shortcuts::set_shortcut("movebar", &shortcut_str)?;
+        } else if shortcut_str.trim().is_empty() {
+            let _ = linux_shortcuts::unregister_native_shortcut("movebar");
+        } else {
+            let exe_path = std::env::current_exe()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let move_cmd = format!("\"{}\" --toggle-bar", exe_path);
+            let _ = linux_shortcuts::register_native_shortcut(
+                "SimpleVoice Move Recording Bar",
+                &move_cmd,
+                &shortcut_str,
+                "movebar",
+            );
+        }
+    }
+
+    sync_res?;
+
+    println!(
+        "Successfully registered global move-bar shortcut: {}",
+        shortcut_str
+    );
+    Ok(())
+}
+
 #[tauri::command]
 fn set_last_transcription(text: String, last_transcription: tauri::State<'_, LastTranscription>) {
     let mut t = last_transcription.text.lock().unwrap();
@@ -3535,6 +3596,12 @@ pub fn run() {
                         }
                     }
                 }
+                Some(ShortcutAction::MoveBar) => {
+                    if state == ShortcutState::Pressed {
+                        let next = !is_recording_window_locked(app);
+                        let _ = set_recording_window_locked(next, app.clone());
+                    }
+                }
                 Some(ShortcutAction::Record) | None => {
                     // Push-to-talk (C2): hold to record, release to stop. When off,
                     // the record shortcut press-toggles recording as before.
@@ -3568,6 +3635,9 @@ pub fn run() {
             }) {
                 let last_transcription = app.state::<LastTranscription>();
                 let _ = copy_last_transcription(last_transcription, app.clone());
+            } else if argv.iter().any(|arg| arg == "--toggle-bar" || arg == "toggle-bar") {
+                let next = !is_recording_window_locked(app);
+                let _ = set_recording_window_locked(next, app.clone());
             } else if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
@@ -3828,6 +3898,7 @@ pub fn run() {
             paste_text,
             type_text,
             register_copy_shortcut,
+            register_move_bar_shortcut,
             set_last_transcription,
             copy_last_transcription,
             check_accessibility_permission,

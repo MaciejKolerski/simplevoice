@@ -196,7 +196,11 @@
     "tabRecording": "Aufnahme",
     "tabText": "Text",
     "tabOutput": "Ausgabe",
-    "advanced": "Erweitert"
+    "advanced": "Erweitert",
+    "tabWavebar": "Wellenleiste",
+    "moveBar": "Aufnahmeleiste verschieben",
+    "moveBarDesc": "Ein Kürzel, das die Leiste zwischen fixiert und beweglich umschaltet — nach dem Entsperren an eine neue Stelle ziehen und wieder fixieren.",
+    "overlayMoveBar": "Aufnahmeleiste verschieben"
   },
   "hud": {
     "recording": "Aufnahme",

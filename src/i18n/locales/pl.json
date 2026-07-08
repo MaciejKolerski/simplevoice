@@ -196,7 +196,11 @@
     "tabRecording": "Nagrywanie",
     "tabText": "Tekst",
     "tabOutput": "Wynik",
-    "advanced": "Zaawansowane"
+    "advanced": "Zaawansowane",
+    "tabWavebar": "Pasek fali",
+    "moveBar": "Przesuwanie paska nagrywania",
+    "moveBarDesc": "Skrót przełącza pasek między zablokowanym a ruchomym — po odblokowaniu przeciągnij go w nowe miejsce, a następnie zablokuj ponownie.",
+    "overlayMoveBar": "Przesuwanie paska nagrywania"
   },
   "hud": {
     "recording": "Nagrywanie",

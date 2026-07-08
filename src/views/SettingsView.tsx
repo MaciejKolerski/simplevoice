@@ -9,6 +9,7 @@ import {
   Type,
   ClipboardPaste,
   SlidersHorizontal,
+  AudioWaveform,
   ChevronDown,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -244,7 +245,7 @@ export function SettingsView() {
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
   const [shortcutTarget, setShortcutTarget] = useState<
-    "record" | "copy" | null
+    "record" | "copy" | "movebar" | null
   >(null);
   const [shortcutText, setShortcutText] = useState(
     "CommandOrControl+Shift+Space",
@@ -252,14 +253,16 @@ export function SettingsView() {
   const [copyShortcutText, setCopyShortcutText] = useState(
     "CommandOrControl+Shift+C",
   );
+  // The move-bar shortcut is opt-in (no default): empty until the user assigns one.
+  const [moveBarShortcutText, setMoveBarShortcutText] = useState("");
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const isCompletedRef = useRef(false);
-  const shortcutTargetRef = useRef<"record" | "copy" | null>(null);
+  const shortcutTargetRef = useRef<"record" | "copy" | "movebar" | null>(null);
 
-  const startRecordingShortcut = (target: "record" | "copy") => {
+  const startRecordingShortcut = (target: "record" | "copy" | "movebar") => {
     setShortcutTarget(target);
     setIsRecordingShortcut(true);
     setActiveKeys([]);
@@ -276,6 +279,7 @@ export function SettingsView() {
   const isMac = platform === "macos";
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [copyShortcutError, setCopyShortcutError] = useState<string | null>(null);
+  const [moveBarShortcutError, setMoveBarShortcutError] = useState<string | null>(null);
   const [showManualWMInstructions, setShowManualWMInstructions] = useState(false);
 
   // During onboarding, jump to the tab that hosts the step's spotlight target so
@@ -319,6 +323,18 @@ export function SettingsView() {
         setCopyShortcutError(String(err));
       },
     );
+
+    // Opt-in: only register the move-bar shortcut when the user has set one.
+    const savedMoveBar = localStorage.getItem("global_move_bar_shortcut") || "";
+    setMoveBarShortcutText(savedMoveBar);
+    if (savedMoveBar) {
+      invoke("register_move_bar_shortcut", { shortcutStr: savedMoveBar }).catch(
+        (err) => {
+          console.error("Failed to register move-bar shortcut on mount:", err);
+          setMoveBarShortcutError(String(err));
+        },
+      );
+    }
 
     const savedVad = localStorage.getItem("vad_enabled") === "true";
     setVadEnabled(savedVad);
@@ -500,11 +516,15 @@ export function SettingsView() {
         const commandName =
           currentTarget === "copy"
             ? "register_copy_shortcut"
-            : "register_shortcut";
+            : currentTarget === "movebar"
+              ? "register_move_bar_shortcut"
+              : "register_shortcut";
         const storageKey =
           currentTarget === "copy"
             ? "global_copy_shortcut"
-            : "global_record_shortcut";
+            : currentTarget === "movebar"
+              ? "global_move_bar_shortcut"
+              : "global_record_shortcut";
 
         invoke(commandName, { shortcutStr: shortcutStr })
           .then(() => {
@@ -512,6 +532,9 @@ export function SettingsView() {
             if (currentTarget === "copy") {
               setCopyShortcutText(shortcutStr);
               setCopyShortcutError(null);
+            } else if (currentTarget === "movebar") {
+              setMoveBarShortcutText(shortcutStr);
+              setMoveBarShortcutError(null);
             } else {
               setShortcutText(shortcutStr);
               setShortcutError(null);
@@ -847,6 +870,7 @@ export function SettingsView() {
     { value: "general", label: t("settings.tabGeneral"), Icon: SlidersHorizontal },
     { value: "shortcuts", label: t("settings.tabShortcuts"), Icon: Keyboard },
     { value: "recording", label: t("settings.tabRecording"), Icon: Mic },
+    { value: "wavebar", label: t("settings.tabWavebar"), Icon: AudioWaveform },
     { value: "text", label: t("settings.tabText"), Icon: Type },
     { value: "output", label: t("settings.tabOutput"), Icon: ClipboardPaste },
   ];
@@ -1105,6 +1129,19 @@ export function SettingsView() {
             </SettingRow>
 
             <SettingRow
+              title={t("settings.moveBar")}
+              description={t("settings.moveBarDesc")}
+            >
+              <button
+                onClick={() => startRecordingShortcut("movebar")}
+                className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                title={t("settings.clickToChangeShortcut")}
+              >
+                {formatShortcutDisplay(moveBarShortcutText, t("settings.shortcutNone"))}
+              </button>
+            </SettingRow>
+
+            <SettingRow
               title={t("settings.pushToTalk")}
               description={t("settings.pushToTalkDesc")}
             >
@@ -1158,11 +1195,11 @@ export function SettingsView() {
             ) : null)}
 
           {/* Generic registration error (non-Linux) */}
-          {platform !== "linux" && (shortcutError || copyShortcutError) && (
+          {platform !== "linux" && (shortcutError || copyShortcutError || moveBarShortcutError) && (
             <Alert variant="destructive" className="border-danger/20 bg-danger/5">
               <Shield />
               <AlertTitle>{t("settings.shortcutRegistrationError")}</AlertTitle>
-              <AlertDescription>{shortcutError || copyShortcutError}</AlertDescription>
+              <AlertDescription>{shortcutError || copyShortcutError || moveBarShortcutError}</AlertDescription>
             </Alert>
           )}
         </TabsContent>
@@ -1210,12 +1247,20 @@ export function SettingsView() {
                 <Switch checked={gpuEnabled} onCheckedChange={handleGpuToggle} />
               </SettingRow>
             )}
-          </SettingsCard>
 
-          <CollapsibleCard title={t("settings.advanced")}>
+            <SettingRow title={t("settings.modelUnload")} description={t("settings.modelUnloadDesc")}>
+              <Switch checked={modelUnload} onCheckedChange={handleModelUnloadToggle} />
+            </SettingRow>
+          </SettingsCard>
+        </TabsContent>
+
+        {/* ── Recording window (wavebar) ──────────────────────────────────── */}
+        <TabsContent value="wavebar" className="flex flex-col gap-6">
+          <SettingsCard>
             {(isMac || platform === "linux" || platform === "windows") && (
               <>
                 <SettingRow
+                  layout="column"
                   title={t("settings.recordingOverlayWindow")}
                   description={t("settings.recordingOverlayWindowDesc")}
                 >
@@ -1224,7 +1269,7 @@ export function SettingsView() {
                     onValueChange={(v) => handleRecordingWindowModeChange(v ?? "always")}
                     items={recordingModeLabels}
                   >
-                    <SelectTrigger className="w-48 bg-black shrink-0">
+                    <SelectTrigger className="w-full bg-black">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1267,10 +1312,7 @@ export function SettingsView() {
                 </SettingRow>
               </>
             )}
-            <SettingRow title={t("settings.modelUnload")} description={t("settings.modelUnloadDesc")}>
-              <Switch checked={modelUnload} onCheckedChange={handleModelUnloadToggle} />
-            </SettingRow>
-          </CollapsibleCard>
+          </SettingsCard>
         </TabsContent>
 
         {/* ── Text ────────────────────────────────────────────────────────── */}
@@ -1442,7 +1484,9 @@ export function SettingsView() {
             <div className="text-muted-dark font-mono text-[10px] uppercase tracking-[0.2em] mb-5 select-none">
               {shortcutTarget === "copy"
                 ? t("settings.overlayCopyLastTranscription")
-                : t("settings.overlayStartStopRecording")}
+                : shortcutTarget === "movebar"
+                  ? t("settings.overlayMoveBar")
+                  : t("settings.overlayStartStopRecording")}
             </div>
             <div className="flex items-center justify-center gap-2 h-16 w-full mb-6">
               {activeKeys.length === 0 ? (

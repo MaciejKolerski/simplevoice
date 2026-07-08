@@ -196,7 +196,11 @@
     "tabRecording": "Recording",
     "tabText": "Text",
     "tabOutput": "Output",
-    "advanced": "Advanced"
+    "advanced": "Advanced",
+    "tabWavebar": "Wavebar",
+    "moveBar": "Move recording bar",
+    "moveBarDesc": "A shortcut that toggles the bar between locked and movable — once unlocked, drag it to a new spot, then lock it again.",
+    "overlayMoveBar": "Move recording bar"
   },
   "hud": {
     "recording": "Recording",
