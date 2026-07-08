@@ -229,7 +229,10 @@
     "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten.",
     "updateNow": "Jetzt aktualisieren",
     "updating": "Wird aktualisiert…",
-    "relaunching": "Wird neu gestartet…"
+    "relaunching": "Wird neu gestartet…",
+    "packageManagerBody": "Diese Kopie von Simplevoice wurde über deinen Paketmanager installiert und wird auch darüber aktualisiert — nicht aus der App heraus. Führe im Terminal aus:",
+    "copyCommand": "Kopieren",
+    "copied": "Kopiert"
   },
   "usage": {
     "overview": "Übersicht",

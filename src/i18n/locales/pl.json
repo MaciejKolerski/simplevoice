@@ -229,7 +229,10 @@
     "unexpectedError": "Wystąpił nieoczekiwany błąd.",
     "updateNow": "Aktualizuj teraz",
     "updating": "Aktualizowanie…",
-    "relaunching": "Ponowne uruchamianie…"
+    "relaunching": "Ponowne uruchamianie…",
+    "packageManagerBody": "Ta kopia Simplevoice została zainstalowana przez menedżer pakietów, więc aktualizuje się tą samą drogą — nie z poziomu aplikacji. Uruchom w terminalu:",
+    "copyCommand": "Kopiuj",
+    "copied": "Skopiowano"
   },
   "usage": {
     "overview": "Przegląd",

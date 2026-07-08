@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { check, Update } from "@tauri-apps/plugin-updater";
+import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -16,6 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
+// Shown to Linux users whose copy is managed by their package manager (the in-app
+// updater can't self-install there). Matches the AUR package this app publishes.
+const PACKAGE_MANAGER_UPDATE_CMD = "yay -S simplevoice-bin";
+
 export function Updater() {
   const { t } = useTranslation();
   const [updateInfo, setUpdateInfo] = useState<Update | null>(null);
@@ -23,6 +28,24 @@ export function Updater() {
   const [status, setStatus] = useState<"idle" | "checking" | "available" | "downloading" | "installing" | "completed" | "error">("idle");
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // False on a package-manager Linux install: the dialog then points the user at
+  // their package manager instead of a self-install that would fail.
+  const [canSelfUpdate, setCanSelfUpdate] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    invoke<boolean>("can_self_update").then(setCanSelfUpdate).catch(() => {});
+  }, []);
+
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(PACKAGE_MANAGER_UPDATE_CMD);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard write can be blocked; the command stays visible to copy manually.
+    }
+  };
 
   // Read the latest status inside runCheck without re-creating the callback
   // (which would re-arm the startup timer and the manual-trigger listener).
@@ -191,6 +214,24 @@ export function Updater() {
           </div>
         )}
 
+        {status === "available" && !canSelfUpdate && (
+          <div className="rounded-lg border border-border bg-background/60 p-3 text-[13px] leading-relaxed text-foreground/80">
+            <p className="mb-2.5">{t("updater.packageManagerBody")}</p>
+            <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-black/40 px-3 py-2">
+              <code className="mono text-[12px] text-foreground truncate">
+                {PACKAGE_MANAGER_UPDATE_CMD}
+              </code>
+              <button
+                type="button"
+                onClick={copyCommand}
+                className="shrink-0 text-[11px] font-medium text-muted transition-colors hover:text-foreground"
+              >
+                {copied ? t("updater.copied") : t("updater.copyCommand")}
+              </button>
+            </div>
+          </div>
+        )}
+
         {(status === "downloading" || status === "installing" || status === "completed") && (
           <div className="flex flex-col gap-2 py-1">
             <div className="flex justify-between text-[12px] font-medium">
@@ -214,17 +255,22 @@ export function Updater() {
         )}
 
         <DialogFooter>
-          {status === "available" && (
-            <>
-              <Button variant="ghost" onClick={() => setIsOpen(false)}>
-                {t("common.skip")}
+          {status === "available" &&
+            (canSelfUpdate ? (
+              <>
+                <Button variant="ghost" onClick={() => setIsOpen(false)}>
+                  {t("common.skip")}
+                </Button>
+                <Button onClick={handleInstall}>
+                  <Download size={14} />
+                  {t("updater.updateNow")}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={() => setIsOpen(false)}>
+                {t("common.close")}
               </Button>
-              <Button onClick={handleInstall}>
-                <Download size={14} />
-                {t("updater.updateNow")}
-              </Button>
-            </>
-          )}
+            ))}
 
           {status === "error" && (
             <Button variant="outline" onClick={() => setIsOpen(false)}>

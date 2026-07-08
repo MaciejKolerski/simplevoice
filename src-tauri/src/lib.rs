@@ -627,6 +627,26 @@ fn get_default_search_commands() -> Vec<crate::search::SearchCommand> {
     crate::search::default_search_commands()
 }
 
+/// Whether the in-app updater can download and install an update itself. False for
+/// Linux installs that are NOT AppImages — a .deb/AUR/pacman-managed copy is owned
+/// by the system package manager, so a self-install fails (no write access to the
+/// system prefix, and it would desync the package database). Those users update
+/// through their package manager instead, so the UI points them there rather than
+/// running a self-update that is bound to fail. macOS and Windows always self-update.
+#[tauri::command]
+fn can_self_update() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        // AppImage sets APPIMAGE to its own path; that's the one Linux packaging
+        // the Tauri updater can replace in place.
+        std::env::var_os("APPIMAGE").is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
 /// Clears the "transcribing" indicators (backend flag, macOS App Nap activity,
 /// frontend status event, tray menu, recording overlay) at the end of a
 /// transcription — whether it produced text, fired a voice-search command, or was
@@ -3930,7 +3950,8 @@ pub fn run() {
             stt::downloader::pause_download,
             stt::downloader::cancel_download,
             stt::downloader::discard_download,
-            get_default_search_commands
+            get_default_search_commands,
+            can_self_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

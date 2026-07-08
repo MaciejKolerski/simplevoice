@@ -229,7 +229,10 @@
     "unexpectedError": "An unexpected error occurred.",
     "updateNow": "Update now",
     "updating": "Updating…",
-    "relaunching": "Relaunching…"
+    "relaunching": "Relaunching…",
+    "packageManagerBody": "This copy of Simplevoice was installed by your package manager, so it updates from there — not from inside the app. Run this in a terminal:",
+    "copyCommand": "Copy",
+    "copied": "Copied"
   },
   "usage": {
     "overview": "Overview",
