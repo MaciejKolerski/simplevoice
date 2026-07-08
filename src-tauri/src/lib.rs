@@ -2563,14 +2563,30 @@ async fn transcribe_audio(
         text
     };
     // Dictionary rules: substitute spoken trigger phrases with text / current
-    // time / current date. Reuses the rules read for biasing above.
+    // time / current date / clipboard contents. Reuses the rules read for biasing.
     let text = if dict_rules.is_empty() {
         text
     } else {
+        // Read the clipboard only when a Clipboard rule exists, so ordinary
+        // dictations never touch it (arboard spins up a background server on
+        // Wayland). This runs before our own text is placed on the clipboard, so
+        // it captures whatever the user had copied.
+        let clipboard = if dict_rules
+            .iter()
+            .any(|r| r.action == crate::stt::text::RuleAction::Clipboard)
+        {
+            arboard::Clipboard::new()
+                .ok()
+                .and_then(|mut c| c.get_text().ok())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
         crate::stt::text::apply_dictionary_rules(
             &text,
             &dict_rules,
             chrono::Local::now().naive_local(),
+            &clipboard,
         )
     };
     let text = if is_formatting_commands_enabled(&app_handle) {

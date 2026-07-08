@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type RuleAction = "text" | "time" | "date";
+type RuleAction = "text" | "time" | "date" | "clipboard";
 
 interface DictionaryRule {
   trigger: string;
@@ -36,7 +36,7 @@ interface SearchCommand {
   builtin: boolean;
 }
 
-const ACTIONS: RuleAction[] = ["text", "time", "date"];
+const ACTIONS: RuleAction[] = ["text", "time", "date", "clipboard"];
 
 const genId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -235,6 +235,7 @@ export function DictionaryView() {
     text: t("dictionary.actionText"),
     time: t("dictionary.actionTime"),
     date: t("dictionary.actionDate"),
+    clipboard: t("dictionary.actionClipboard"),
   };
   const previews = actionPreviews();
 
@@ -463,6 +464,10 @@ export function DictionaryView() {
                         placeholder={t("dictionary.valuePlaceholder")}
                         className="w-full bg-black"
                       />
+                    ) : rule.action === "clipboard" ? (
+                      <span className="font-mono text-[13px] text-muted">
+                        → {t("dictionary.clipboardPreview")}
+                      </span>
                     ) : (
                       <span className="font-mono text-[13px] text-muted">
                         → {previews[rule.action]}

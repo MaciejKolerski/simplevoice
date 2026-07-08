@@ -351,7 +351,7 @@
   },
   "dictionary": {
     "title": "Słownik własny",
-    "description": "Zamieniaj wypowiedziane frazy na tekst, aktualną godzinę lub datę.",
+    "description": "Zamieniaj wypowiedziane frazy na tekst, aktualną godzinę, datę lub zawartość schowka.",
     "addRule": "Dodaj regułę",
     "remove": "Usuń",
     "triggerPlaceholder": "Fraza wyzwalająca",
@@ -378,7 +378,9 @@
     "tabSearch": "Wyszukiwanie głosem",
     "tabDictionary": "Słownik",
     "noTriggers": "— dodaj frazę —",
-    "editCommand": "Edytuj"
+    "editCommand": "Edytuj",
+    "actionClipboard": "Zawartość schowka",
+    "clipboardPreview": "zawartość schowka"
   },
   "onboarding": {
     "stepCounter": "Krok {{current}} / {{total}}",

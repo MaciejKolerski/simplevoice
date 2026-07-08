@@ -351,7 +351,7 @@
   },
   "dictionary": {
     "title": "Dictionary",
-    "description": "Replace spoken trigger phrases with text, the current time, or the current date.",
+    "description": "Replace spoken trigger phrases with text, the current time, the current date, or the clipboard contents.",
     "addRule": "Add rule",
     "remove": "Remove",
     "triggerPlaceholder": "Trigger phrase",
@@ -378,7 +378,9 @@
     "tabSearch": "Voice search",
     "tabDictionary": "Dictionary",
     "noTriggers": "— add a keyword —",
-    "editCommand": "Edit"
+    "editCommand": "Edit",
+    "actionClipboard": "Clipboard",
+    "clipboardPreview": "clipboard contents"
   },
   "onboarding": {
     "stepCounter": "Step {{current}} / {{total}}",

@@ -351,7 +351,7 @@
   },
   "dictionary": {
     "title": "Wörterbuch",
-    "description": "Ersetze gesprochene Auslöser-Phrasen durch Text, die aktuelle Uhrzeit oder das aktuelle Datum.",
+    "description": "Ersetze gesprochene Auslöser-Phrasen durch Text, die aktuelle Uhrzeit, das aktuelle Datum oder den Inhalt der Zwischenablage.",
     "addRule": "Regel hinzufügen",
     "remove": "Entfernen",
     "triggerPlaceholder": "Auslöser-Phrase",
@@ -378,7 +378,9 @@
     "tabSearch": "Sprachsuche",
     "tabDictionary": "Wörterbuch",
     "noTriggers": "— Stichwort hinzufügen —",
-    "editCommand": "Bearbeiten"
+    "editCommand": "Bearbeiten",
+    "actionClipboard": "Zwischenablage",
+    "clipboardPreview": "Inhalt der Zwischenablage"
   },
   "onboarding": {
     "stepCounter": "Schritt {{current}} / {{total}}",

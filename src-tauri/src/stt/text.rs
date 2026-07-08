@@ -157,7 +157,8 @@ pub(crate) fn apply_formatting_commands(text: &str, lang: Option<&str>) -> Strin
 }
 
 /// A single user dictionary rule: a spoken trigger phrase mapped to an action.
-/// `value` is the replacement for `Text` rules and ignored for `Time`/`Date`.
+/// `value` is the replacement for `Text` rules and ignored for the dynamic actions
+/// (`Time`/`Date`/`Clipboard`).
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct DictionaryRule {
     pub trigger: String,
@@ -174,6 +175,8 @@ pub(crate) enum RuleAction {
     Text,
     Time,
     Date,
+    /// Insert the current clipboard text where the trigger was spoken.
+    Clipboard,
     #[serde(other)]
     Unknown,
 }
@@ -184,15 +187,18 @@ fn token_core(token: &str) -> String {
 }
 
 /// Replaces spoken trigger phrases with their action result: literal text, the
-/// current time (`%H:%M:%S`), or the current date (`%Y-%m-%d`). Matching is
-/// case-insensitive, on word boundaries, and multi-word (the longest trigger wins).
-/// Single-word `Text` rules also snap near-miss typos via the same fuzzy rule the
-/// former `apply_custom_words` used. `now` is injected for deterministic tests.
-/// Off when `rules` is empty (the caller skips the call).
+/// current time (`%H:%M:%S`), the current date (`%Y-%m-%d`), or the current
+/// clipboard text. Matching is case-insensitive, on word boundaries, and
+/// multi-word (the longest trigger wins). Single-word `Text` rules also snap
+/// near-miss typos via the same fuzzy rule the former `apply_custom_words` used.
+/// `now` and `clipboard` are injected for deterministic tests; an empty
+/// `clipboard` leaves a `Clipboard` trigger untouched (nothing to insert). Off
+/// when `rules` is empty (the caller skips the call).
 pub(crate) fn apply_dictionary_rules(
     text: &str,
     rules: &[DictionaryRule],
     now: chrono::NaiveDateTime,
+    clipboard: &str,
 ) -> String {
     struct Prepared {
         cores: Vec<String>,
@@ -218,6 +224,12 @@ pub(crate) fn apply_dictionary_rules(
             },
             RuleAction::Time => now.format("%H:%M:%S").to_string(),
             RuleAction::Date => now.format("%Y-%m-%d").to_string(),
+            RuleAction::Clipboard => {
+                if clipboard.is_empty() {
+                    continue;
+                }
+                clipboard.to_string()
+            }
             RuleAction::Unknown => continue,
         };
         prepared.push(Prepared { cores, replacement, is_text: matches!(r.action, RuleAction::Text) });
@@ -383,13 +395,13 @@ mod tests {
     #[test]
     fn dict_text_single_word_case_insensitive() {
         let r = vec![rule("chatgpt", RuleAction::Text, Some("ChatGPT"))];
-        assert_eq!(apply_dictionary_rules("i use chatgpt daily", &r, now_fixed()), "i use ChatGPT daily");
+        assert_eq!(apply_dictionary_rules("i use chatgpt daily", &r, now_fixed(), ""), "i use ChatGPT daily");
     }
 
     #[test]
     fn dict_text_multiword_phrase() {
         let r = vec![rule("czat dżi pi ti", RuleAction::Text, Some("ChatGPT"))];
-        assert_eq!(apply_dictionary_rules("powiedz czat dżi pi ti teraz", &r, now_fixed()), "powiedz ChatGPT teraz");
+        assert_eq!(apply_dictionary_rules("powiedz czat dżi pi ti teraz", &r, now_fixed(), ""), "powiedz ChatGPT teraz");
     }
 
     #[test]
@@ -398,34 +410,48 @@ mod tests {
             rule("new", RuleAction::Text, Some("NEW")),
             rule("new york", RuleAction::Text, Some("NYC")),
         ];
-        assert_eq!(apply_dictionary_rules("i love new york today", &r, now_fixed()), "i love NYC today");
-        assert_eq!(apply_dictionary_rules("a new day", &r, now_fixed()), "a NEW day");
+        assert_eq!(apply_dictionary_rules("i love new york today", &r, now_fixed(), ""), "i love NYC today");
+        assert_eq!(apply_dictionary_rules("a new day", &r, now_fixed(), ""), "a NEW day");
     }
 
     #[test]
     fn dict_word_boundary_no_false_positive() {
         let r = vec![rule("cat", RuleAction::Text, Some("CAT"))];
-        assert_eq!(apply_dictionary_rules("category cat", &r, now_fixed()), "category CAT");
+        assert_eq!(apply_dictionary_rules("category cat", &r, now_fixed(), ""), "category CAT");
     }
 
     #[test]
     fn dict_preserves_attached_punctuation() {
         let r = vec![rule("kubernetes", RuleAction::Text, Some("Kubernetes"))];
-        assert_eq!(apply_dictionary_rules("deploy kubernetes, now", &r, now_fixed()), "deploy Kubernetes, now");
+        assert_eq!(apply_dictionary_rules("deploy kubernetes, now", &r, now_fixed(), ""), "deploy Kubernetes, now");
     }
 
     #[test]
     fn dict_time_and_date() {
         let rt = vec![rule("obecna godzina", RuleAction::Time, None)];
-        assert_eq!(apply_dictionary_rules("teraz obecna godzina koniec", &rt, now_fixed()), "teraz 15:00:39 koniec");
+        assert_eq!(apply_dictionary_rules("teraz obecna godzina koniec", &rt, now_fixed(), ""), "teraz 15:00:39 koniec");
         let rd = vec![rule("dzisiejsza data", RuleAction::Date, None)];
-        assert_eq!(apply_dictionary_rules("dzisiejsza data", &rd, now_fixed()), "2026-06-21");
+        assert_eq!(apply_dictionary_rules("dzisiejsza data", &rd, now_fixed(), ""), "2026-06-21");
+    }
+
+    #[test]
+    fn dict_clipboard_inserts_content_or_skips_when_empty() {
+        let r = vec![rule("wklej schowek", RuleAction::Clipboard, None)];
+        assert_eq!(
+            apply_dictionary_rules("teraz wklej schowek koniec", &r, now_fixed(), "TREŚĆ"),
+            "teraz TREŚĆ koniec"
+        );
+        // Empty clipboard: the trigger is left as-is (nothing to insert).
+        assert_eq!(
+            apply_dictionary_rules("teraz wklej schowek koniec", &r, now_fixed(), ""),
+            "teraz wklej schowek koniec"
+        );
     }
 
     #[test]
     fn dict_fuzzy_for_single_word_text_rules() {
         let r = vec![rule("kubernetes", RuleAction::Text, Some("Kubernetes"))];
-        assert_eq!(apply_dictionary_rules("deploy kubernetis today", &r, now_fixed()), "deploy Kubernetes today");
+        assert_eq!(apply_dictionary_rules("deploy kubernetis today", &r, now_fixed(), ""), "deploy Kubernetes today");
     }
 
     #[test]
@@ -434,8 +460,8 @@ mod tests {
         // A near-miss of a multi-word trigger must NOT match — multi-word triggers
         // are exact-only; only single-word Text rules get fuzzy snapping. The exact
         // phrase still substitutes mid-sentence.
-        assert_eq!(apply_dictionary_rules("visit new yor today", &r, now_fixed()), "visit new yor today");
-        assert_eq!(apply_dictionary_rules("visit new york today", &r, now_fixed()), "visit NYC today");
+        assert_eq!(apply_dictionary_rules("visit new yor today", &r, now_fixed(), ""), "visit new yor today");
+        assert_eq!(apply_dictionary_rules("visit new york today", &r, now_fixed(), ""), "visit NYC today");
     }
 
     #[test]
@@ -443,17 +469,17 @@ mod tests {
         let r = vec![rule("godzina", RuleAction::Time, None)];
         // Fuzzy snapping is Text-only; a near-miss of a Time/Date trigger stays put,
         // while the exact trigger still fires.
-        assert_eq!(apply_dictionary_rules("powiedz godzin teraz", &r, now_fixed()), "powiedz godzin teraz");
-        assert_eq!(apply_dictionary_rules("powiedz godzina teraz", &r, now_fixed()), "powiedz 15:00:39 teraz");
+        assert_eq!(apply_dictionary_rules("powiedz godzin teraz", &r, now_fixed(), ""), "powiedz godzin teraz");
+        assert_eq!(apply_dictionary_rules("powiedz godzina teraz", &r, now_fixed(), ""), "powiedz 15:00:39 teraz");
     }
 
     #[test]
     fn dict_empty_and_invalid_rules_passthrough() {
-        assert_eq!(apply_dictionary_rules("nothing here", &[], now_fixed()), "nothing here");
+        assert_eq!(apply_dictionary_rules("nothing here", &[], now_fixed(), ""), "nothing here");
         let r = vec![
             rule("x", RuleAction::Unknown, Some("Y")),
             rule("z", RuleAction::Text, None),
         ];
-        assert_eq!(apply_dictionary_rules("x z stays", &r, now_fixed()), "x z stays");
+        assert_eq!(apply_dictionary_rules("x z stays", &r, now_fixed(), ""), "x z stays");
     }
 }
