@@ -143,6 +143,18 @@ function App() {
         console.error("Failed to register copy-last shortcut on mount:", err);
       });
     }
+
+    // Opt-in: the move-bar shortcut has no default, register only when saved.
+    const savedMoveBarShortcut = localStorage.getItem(
+      "global_move_bar_shortcut",
+    );
+    if (savedMoveBarShortcut) {
+      invoke("register_move_bar_shortcut", {
+        shortcutStr: savedMoveBarShortcut,
+      }).catch((err) => {
+        console.error("Failed to register move-bar shortcut on mount:", err);
+      });
+    }
   }, []);
 
   useEffect(() => {

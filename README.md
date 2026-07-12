@@ -141,6 +141,8 @@ Configure global hotkeys under **Settings → Keyboard Shortcuts**:
 | Toggle recording | `Ctrl/Cmd + Shift + Space` |
 | Copy last transcription | `Ctrl/Cmd + Shift + C` |
 
+> **Linux:** on GNOME, KDE Plasma, XFCE, Cinnamon and MATE the shortcuts are registered in the desktop's own keybinding settings. On Wayland window managers (niri, Hyprland, Sway, i3) SimpleVoice reads the keyboard directly (evdev) when your user can access `/dev/input` — i.e. is in the `input` group — and otherwise automatically maintains a marked `SIMPLEVOICE` section with the binds in your compositor config. The active mechanism is shown under **Settings → Keyboard Shortcuts**.
+
 The floating recording bar can be repositioned by dragging; its position controls live under **Settings → Recording & Feedback**.
 
 ---

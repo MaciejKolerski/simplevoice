@@ -1859,17 +1859,117 @@ fn sync_all_shortcuts(app_handle: &tauri::AppHandle) -> Result<(), String> {
     }
 }
 
-/// On Wayland window-manager sessions (and unknown environments) we grab global
-/// hotkeys natively via evdev rather than editing the compositor config. Full
-/// desktop environments keep their dedicated native integration (gsettings,
-/// kglobalshortcutsrc, xfconf), which suppresses the keypress and integrates
-/// with their settings UI.
+/// How global shortcuts are delivered on this Linux session.
 #[cfg(target_os = "linux")]
-fn linux_uses_evdev(desktop_env: &str) -> bool {
-    matches!(
-        desktop_env,
-        "niri" | "sway" | "hyprland" | "i3" | "unknown"
-    )
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum LinuxShortcutMechanism {
+    /// Keypresses read straight from /dev/input (Wayland WMs, needs read
+    /// access to the input nodes — typically the `input` group).
+    Evdev,
+    /// Marker-delimited binds written into the compositor config
+    /// (niri/hyprland/sway/i3) that spawn the binary with --toggle etc.
+    WmConfig,
+    /// Full desktop environments' own keybinding stores (gsettings,
+    /// kglobalshortcutsrc, xfconf), which suppress the keypress and integrate
+    /// with their settings UI.
+    Desktop,
+    /// No delivery mechanism: no readable input devices and no supported
+    /// native integration. Surfaced in Settings so the user can fix it.
+    Unavailable,
+}
+
+/// Picks the shortcut mechanism once per app run. Wayland window-manager
+/// sessions (and unknown environments) prefer evdev so no user config is
+/// edited, but that only works when the input nodes are readable — when they
+/// are not (the default on most installs), fall back to compositor config
+/// binds rather than failing silently.
+#[cfg(target_os = "linux")]
+fn linux_shortcut_mechanism() -> LinuxShortcutMechanism {
+    static MECHANISM: std::sync::OnceLock<LinuxShortcutMechanism> = std::sync::OnceLock::new();
+    *MECHANISM.get_or_init(|| {
+        let de = linux_shortcuts::detect_desktop_environment();
+        if !matches!(
+            de.as_str(),
+            "niri" | "sway" | "hyprland" | "i3" | "unknown"
+        ) {
+            return LinuxShortcutMechanism::Desktop;
+        }
+
+        let probe = evdev_shortcuts::probe();
+        if probe.keyboards > 0 {
+            return LinuxShortcutMechanism::Evdev;
+        }
+
+        if matches!(de.as_str(), "niri" | "sway" | "hyprland" | "i3") {
+            tracing::warn!(
+                denied_nodes = probe.denied,
+                desktop_env = %de,
+                "no readable keyboard under /dev/input (user not in the 'input' \
+                 group?); falling back to compositor config binds"
+            );
+            LinuxShortcutMechanism::WmConfig
+        } else {
+            tracing::warn!(
+                denied_nodes = probe.denied,
+                "no readable keyboard under /dev/input and no supported native \
+                 shortcut integration for this environment; global shortcuts \
+                 are unavailable"
+            );
+            LinuxShortcutMechanism::Unavailable
+        }
+    })
+}
+
+/// Routes one shortcut action to the mechanism picked at startup. `evdev_id`
+/// is the evdev action id ("toggle"/"copy"/"movebar"), `cli_flag` the argument
+/// the compositor/DE bind passes to the binary (forwarded to this instance by
+/// the single-instance plugin).
+#[cfg(target_os = "linux")]
+fn apply_linux_shortcut(
+    evdev_id: &str,
+    display_name: &str,
+    cli_flag: &str,
+    shortcut_str: &str,
+) -> Result<(), String> {
+    match linux_shortcut_mechanism() {
+        LinuxShortcutMechanism::Evdev => evdev_shortcuts::set_shortcut(evdev_id, shortcut_str),
+        LinuxShortcutMechanism::Unavailable => {
+            if shortcut_str.trim().is_empty() {
+                Ok(())
+            } else {
+                Err(
+                    "Global shortcuts are unavailable: this app cannot read /dev/input and \
+                     this desktop environment has no supported native keybinding integration. \
+                     Add your user to the 'input' group (sudo usermod -aG input $USER) and \
+                     log in again."
+                        .to_string(),
+                )
+            }
+        }
+        LinuxShortcutMechanism::WmConfig | LinuxShortcutMechanism::Desktop => {
+            // The register commands run concurrently and the WM path
+            // read-modify-writes one config file — serialize to not lose one
+            // action's section to the other's write.
+            static NATIVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+            let _guard = NATIVE_LOCK.lock().unwrap();
+            if shortcut_str.trim().is_empty() {
+                let _ = linux_shortcuts::unregister_native_shortcut(evdev_id);
+                Ok(())
+            } else {
+                let exe_path = std::env::current_exe()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let command = format!("\"{}\" {}", exe_path, cli_flag);
+                linux_shortcuts::register_native_shortcut(
+                    display_name,
+                    &command,
+                    shortcut_str,
+                    evdev_id,
+                )
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -1894,28 +1994,12 @@ fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Resu
     let sync_res = sync_all_shortcuts(&app_handle);
 
     #[cfg(target_os = "linux")]
-    {
-        let de = linux_shortcuts::detect_desktop_environment();
-        if linux_uses_evdev(&de) {
-            // niri/sway/hyprland/i3/unknown: grab the key natively via evdev
-            // instead of editing the compositor config.
-            evdev_shortcuts::set_shortcut("toggle", &shortcut_str)?;
-        } else if shortcut_str.trim().is_empty() {
-            let _ = linux_shortcuts::unregister_native_shortcut("toggle");
-        } else {
-            let exe_path = std::env::current_exe()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let toggle_cmd = format!("\"{}\" --toggle", exe_path);
-            let _ = linux_shortcuts::register_native_shortcut(
-                "SimpleVoice Toggle Recording",
-                &toggle_cmd,
-                &shortcut_str,
-                "toggle",
-            );
-        }
-    }
+    apply_linux_shortcut(
+        "toggle",
+        "SimpleVoice Toggle Recording",
+        "--toggle",
+        &shortcut_str,
+    )?;
 
     sync_res?;
 
@@ -1951,26 +2035,12 @@ fn register_copy_shortcut(
     let sync_res = sync_all_shortcuts(&app_handle);
 
     #[cfg(target_os = "linux")]
-    {
-        let de = linux_shortcuts::detect_desktop_environment();
-        if linux_uses_evdev(&de) {
-            evdev_shortcuts::set_shortcut("copy", &shortcut_str)?;
-        } else if shortcut_str.trim().is_empty() {
-            let _ = linux_shortcuts::unregister_native_shortcut("copy");
-        } else {
-            let exe_path = std::env::current_exe()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let copy_cmd = format!("\"{}\" --copy-last", exe_path);
-            let _ = linux_shortcuts::register_native_shortcut(
-                "SimpleVoice Copy Last Transcription",
-                &copy_cmd,
-                &shortcut_str,
-                "copy",
-            );
-        }
-    }
+    apply_linux_shortcut(
+        "copy",
+        "SimpleVoice Copy Last Transcription",
+        "--copy-last",
+        &shortcut_str,
+    )?;
 
     sync_res?;
 
@@ -2008,26 +2078,12 @@ fn register_move_bar_shortcut(
     let sync_res = sync_all_shortcuts(&app_handle);
 
     #[cfg(target_os = "linux")]
-    {
-        let de = linux_shortcuts::detect_desktop_environment();
-        if linux_uses_evdev(&de) {
-            evdev_shortcuts::set_shortcut("movebar", &shortcut_str)?;
-        } else if shortcut_str.trim().is_empty() {
-            let _ = linux_shortcuts::unregister_native_shortcut("movebar");
-        } else {
-            let exe_path = std::env::current_exe()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            let move_cmd = format!("\"{}\" --toggle-bar", exe_path);
-            let _ = linux_shortcuts::register_native_shortcut(
-                "SimpleVoice Move Recording Bar",
-                &move_cmd,
-                &shortcut_str,
-                "movebar",
-            );
-        }
-    }
+    apply_linux_shortcut(
+        "movebar",
+        "SimpleVoice Move Recording Bar",
+        "--toggle-bar",
+        &shortcut_str,
+    )?;
 
     sync_res?;
 
@@ -3294,6 +3350,9 @@ struct PermissionsStatus {
     desktop_env: String,
     /// The active GDK backend
     gdk_backend: String,
+    /// How global shortcuts are delivered: "evdev", "wm-config", "desktop" or
+    /// "unavailable" on Linux; "system" on the other platforms
+    shortcut_mechanism: String,
 }
 
 /// Returns the aggregated permissions status for the current platform.
@@ -3365,6 +3424,23 @@ fn check_permissions_status() -> PermissionsStatus {
 
     let gdk_backend = std::env::var("GDK_BACKEND").unwrap_or_else(|_| "default".to_string());
 
+    let shortcut_mechanism = {
+        #[cfg(target_os = "linux")]
+        {
+            match linux_shortcut_mechanism() {
+                LinuxShortcutMechanism::Evdev => "evdev",
+                LinuxShortcutMechanism::WmConfig => "wm-config",
+                LinuxShortcutMechanism::Desktop => "desktop",
+                LinuxShortcutMechanism::Unavailable => "unavailable",
+            }
+            .to_string()
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            "system".to_string()
+        }
+    };
+
     PermissionsStatus {
         accessibility,
         microphone,
@@ -3372,6 +3448,7 @@ fn check_permissions_status() -> PermissionsStatus {
         is_wayland,
         desktop_env,
         gdk_backend,
+        shortcut_mechanism,
     }
 }
 
@@ -3831,14 +3908,26 @@ pub fn run() {
                 // Repair any malformed shell comments (#) to correct C-style comments (//) in KDL config on startup
                 linux_shortcuts::repair_wm_configs();
 
-                let de = linux_shortcuts::detect_desktop_environment();
-                if linux_uses_evdev(&de) {
-                    // We now grab hotkeys via evdev. Remove any binds previous
-                    // versions wrote into the compositor config so they don't
-                    // fire the action a second time.
-                    let _ = linux_shortcuts::unregister_native_shortcut("toggle");
-                    let _ = linux_shortcuts::unregister_native_shortcut("copy");
-                    evdev_shortcuts::init(app.handle().clone());
+                match linux_shortcut_mechanism() {
+                    LinuxShortcutMechanism::Evdev => {
+                        // Hotkeys come from evdev. Remove any binds a previous
+                        // run (or the WmConfig fallback) wrote into the
+                        // compositor config so they don't fire the action a
+                        // second time.
+                        let _ = linux_shortcuts::unregister_native_shortcut("toggle");
+                        let _ = linux_shortcuts::unregister_native_shortcut("copy");
+                        let _ = linux_shortcuts::unregister_native_shortcut("movebar");
+                        evdev_shortcuts::init(app.handle().clone());
+                        tracing::info!("global shortcuts: evdev capture active");
+                    }
+                    LinuxShortcutMechanism::WmConfig => {
+                        tracing::info!(
+                            "global shortcuts: compositor config binds active \
+                             (evdev unavailable)"
+                        );
+                    }
+                    LinuxShortcutMechanism::Desktop => {}
+                    LinuxShortcutMechanism::Unavailable => {}
                 }
 
                 update_recording_window_visibility(app.handle());

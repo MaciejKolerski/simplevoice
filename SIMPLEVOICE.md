@@ -73,7 +73,7 @@ Bar position: `data-tauri-drag-region` on the pill; macOS Cmd-hold toggles click
 
 ### Linux-specific
 
-- Global shortcuts implemented via native desktop integration + CLI flags `--toggle` and `--copy-last` on the built binary.
+- Global shortcuts pick a mechanism once per run (`lib.rs::linux_shortcut_mechanism()`): full DEs (GNOME/KDE/XFCE/Cinnamon/MATE) register in the desktop's own keybinding store; Wayland WMs (niri/hyprland/sway/i3) capture via evdev when `/dev/input` is readable (user in the `input` group), otherwise fall back to marker-delimited binds in the compositor config that spawn the binary with `--toggle` / `--copy-last` / `--toggle-bar` (forwarded by the single-instance plugin). The active mechanism is exposed to the UI via `check_permissions_status.shortcut_mechanism` and shown in Settings.
 - Auto-paste strongly prefers `wtype` on Wayland.
 
 ## Key Gotchas
@@ -83,7 +83,7 @@ Bar position: `data-tauri-drag-region` on the pill; macOS Cmd-hold toggles click
 - **Tray menu**: rebuilt on every state change (`rebuild_tray_menu`). Uses custom status dot drawing. Must reflect recording/transcribing/saving state.
 - **macOS recording window**: converts to `NSPanel`, sets high level, ignores cursor events. Position saved in `config.json`. First show does dynamic bottom-center placement.
 - **Sounds**: `resolve_sound_file` checks bundled resources first, then falls back to system sounds. `sound_feedback_enabled` and `pause_audio_on_record` read from `config.json`.
-- **Global shortcuts on Linux**: handled in `linux_shortcuts.rs` + desktop config (example in README). Do not rely only on Tauri plugin.
+- **Global shortcuts on Linux**: never rely on the Tauri plugin. `lib.rs::linux_shortcut_mechanism()` decides once per run: evdev capture (`evdev_shortcuts.rs`, requires readable `/dev/input` — probed at startup) with automatic fallback to compositor-config binds (`linux_shortcuts.rs`) when the probe fails. The evdev path handles push-to-talk via key release.
 - **VAD + auto-stop**: recording stops automatically on silence. Test edge cases (short utterances, background noise).
 - **StrictMode in dev**: expect double `useEffect` calls for model loading and recording window init.
 

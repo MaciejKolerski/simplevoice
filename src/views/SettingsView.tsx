@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   AudioWaveform,
   ChevronDown,
+  TriangleAlert,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
@@ -151,6 +152,13 @@ const TAB_FOR_TOUR_TARGET: Record<string, string> = {
   "recording-section": "recording",
 };
 
+const WM_DISPLAY_NAMES: Record<string, string> = {
+  niri: "niri",
+  hyprland: "Hyprland",
+  sway: "Sway",
+  i3: "i3",
+};
+
 /** A card whose body is hidden until the user opens it — used to tuck advanced,
  * rarely-touched knobs out of the way so a tab isn't overwhelming at a glance. */
 function CollapsibleCard({
@@ -276,6 +284,7 @@ export function SettingsView() {
   const [microphoneGranted, setMicrophoneGranted] = useState(true);
   const [platform, setPlatform] = useState("unknown");
   const [desktopEnv, setDesktopEnv] = useState("none");
+  const [shortcutMechanism, setShortcutMechanism] = useState("system");
   const isMac = platform === "macos";
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [copyShortcutError, setCopyShortcutError] = useState<string | null>(null);
@@ -426,11 +435,13 @@ export function SettingsView() {
           platform: string;
           is_wayland: boolean;
           desktop_env: string;
+          shortcut_mechanism: string;
         }>("check_permissions_status");
         setAccessibilityGranted(status.accessibility);
         setMicrophoneGranted(status.microphone);
         setPlatform(status.platform);
         setDesktopEnv(status.desktop_env);
+        setShortcutMechanism(status.shortcut_mechanism);
       } catch (err) {
         console.error("Failed to check permissions:", err);
       }
@@ -1149,9 +1160,9 @@ export function SettingsView() {
             </SettingRow>
           </SettingsCard>
 
-          {/* Linux Native / Wayland status */}
+          {/* Linux status: the active shortcut delivery mechanism */}
           {platform === "linux" &&
-            (["niri", "hyprland", "sway", "i3", "unknown"].includes(desktopEnv) ? (
+            (shortcutMechanism === "evdev" ? (
               <div className="p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
                 <div className="font-semibold flex items-center gap-1.5 text-sm">
                   <Check size={14} /> {t("settings.nativeGlobalHotkeysActive")}
@@ -1173,7 +1184,24 @@ export function SettingsView() {
                   </div>
                 )}
               </div>
-            ) : ["gnome", "kde", "xfce", "cinnamon", "mate"].includes(desktopEnv) ? (
+            ) : shortcutMechanism === "wm-config" ? (
+              <div className="p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
+                <div className="font-semibold flex items-center gap-1.5 text-sm">
+                  <Check size={14} />{" "}
+                  {t("settings.wmConfigShortcutsActive", {
+                    env: WM_DISPLAY_NAMES[desktopEnv] ?? desktopEnv,
+                  })}
+                </div>
+                <p className="text-success/85">
+                  <Trans
+                    i18nKey="settings.wmConfigShortcutsActiveDesc"
+                    values={{ env: WM_DISPLAY_NAMES[desktopEnv] ?? desktopEnv }}
+                    components={{ strong: <strong /> }}
+                  />
+                </p>
+                <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-warning/90 overflow-x-auto mt-1">sudo usermod -aG input $USER</pre>
+              </div>
+            ) : shortcutMechanism === "desktop" ? (
               <div className="p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
                 <div className="font-semibold flex items-center gap-1.5 text-sm">
                   <Check size={14} /> {t("settings.nativeLinuxShortcutIntegrationActive")}
@@ -1192,10 +1220,20 @@ export function SettingsView() {
                   />
                 </p>
               </div>
+            ) : shortcutMechanism === "unavailable" ? (
+              <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg text-danger text-xs leading-relaxed flex flex-col gap-1.5">
+                <div className="font-semibold flex items-center gap-1.5 text-sm">
+                  <TriangleAlert size={14} /> {t("settings.shortcutsUnavailable")}
+                </div>
+                <p className="text-danger/85">
+                  <Trans i18nKey="settings.shortcutsUnavailableDesc" components={{ strong: <strong /> }} />
+                </p>
+                <pre className="bg-black/50 p-2.5 rounded font-mono text-[11px] text-warning/90 overflow-x-auto mt-1">sudo usermod -aG input $USER</pre>
+              </div>
             ) : null)}
 
-          {/* Generic registration error (non-Linux) */}
-          {platform !== "linux" && (shortcutError || copyShortcutError || moveBarShortcutError) && (
+          {/* Shortcut registration errors */}
+          {(shortcutError || copyShortcutError || moveBarShortcutError) && (
             <Alert variant="destructive" className="border-danger/20 bg-danger/5">
               <Shield />
               <AlertTitle>{t("settings.shortcutRegistrationError")}</AlertTitle>

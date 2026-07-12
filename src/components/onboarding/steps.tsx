@@ -11,6 +11,7 @@ export interface PermissionsStatus {
   platform: string;
   is_wayland: boolean;
   desktop_env: string;
+  shortcut_mechanism: string;
 }
 
 interface ModelStatus {

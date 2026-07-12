@@ -11,6 +11,11 @@
 //! are world-readable, otherwise the user must be in the `input` group), and the
 //! keypress is observed rather than consumed, so it still reaches the focused
 //! application — pick a dedicated combination accordingly.
+//!
+//! Because most users are not in the `input` group, `probe()` checks at startup
+//! whether any keyboard node is readable. When none is, `lib.rs` falls back to
+//! marker-delimited binds in the compositor config (`linux_shortcuts.rs`)
+//! instead of initializing this module.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -56,9 +61,54 @@ struct State {
     combos: Mutex<Vec<Combo>>,
     last_fire: Mutex<HashMap<u8, Instant>>, // keyed by action discriminant
     handled: Mutex<HashSet<PathBuf>>,       // device nodes with a live listener
+    ptt_key_down: Mutex<Option<u16>>,       // Record key held in push-to-talk mode
 }
 
 static STATE: OnceLock<State> = OnceLock::new();
+
+/// Outcome of scanning `/dev/input` for usable keyboards.
+pub struct Probe {
+    /// Keyboard devices we can open and read.
+    pub keyboards: usize,
+    /// Event nodes that failed to open with a permission error — typically
+    /// the user is not in the `input` group.
+    pub denied: usize,
+}
+
+/// Checks whether evdev capture is currently possible. Used at startup to pick
+/// the shortcut mechanism before committing to `init`.
+pub fn probe() -> Probe {
+    let mut result = Probe {
+        keyboards: 0,
+        denied: 0,
+    };
+    let Ok(entries) = std::fs::read_dir("/dev/input") else {
+        return result;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_event_node = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with("event"))
+            .unwrap_or(false);
+        if !is_event_node {
+            continue;
+        }
+        match Device::open(&path) {
+            Ok(device) => {
+                if is_keyboard(&device) {
+                    result.keyboards += 1;
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+                result.denied += 1;
+            }
+            Err(_) => {}
+        }
+    }
+    result
+}
 
 /// Start the evdev listener. Safe to call once at startup; spawns a manager
 /// thread that watches for keyboard devices (including hotplugged ones).
@@ -68,6 +118,7 @@ pub fn init(app: AppHandle) {
         combos: Mutex::new(Vec::new()),
         last_fire: Mutex::new(HashMap::new()),
         handled: Mutex::new(HashSet::new()),
+        ptt_key_down: Mutex::new(None),
     };
     if STATE.set(state).is_err() {
         return; // already initialized
@@ -191,6 +242,7 @@ fn device_loop(path: PathBuf, mut device: Device) {
                 }
                 0 => {
                     pressed.remove(&code);
+                    handle_release(code);
                 }
                 _ => {} // value 2 == autorepeat: ignore
             }
@@ -249,9 +301,23 @@ fn handle_press(code: u16, pressed: &HashSet<u16>) {
 
     for action in matched {
         if debounce_ok(state, &action) {
-            dispatch(&state.app, &action);
+            dispatch(&state.app, &action, code);
         }
     }
+}
+
+/// Push-to-talk: releasing the Record key stops the recording that its press
+/// started. Other releases (or PTT off) are ignored.
+fn handle_release(code: u16) {
+    let Some(state) = STATE.get() else { return };
+    {
+        let mut held = state.ptt_key_down.lock().unwrap();
+        if *held != Some(code) {
+            return;
+        }
+        *held = None;
+    }
+    crate::stop_recording_action(&state.app);
 }
 
 fn debounce_ok(state: &State, action: &ShortcutAction) -> bool {
@@ -267,9 +333,18 @@ fn debounce_ok(state: &State, action: &ShortcutAction) -> bool {
     true
 }
 
-fn dispatch(app: &AppHandle, action: &ShortcutAction) {
+fn dispatch(app: &AppHandle, action: &ShortcutAction, key_code: u16) {
     match action {
-        ShortcutAction::Record => crate::toggle_recording(app),
+        ShortcutAction::Record => {
+            if crate::is_push_to_talk_enabled(app) {
+                if let Some(state) = STATE.get() {
+                    *state.ptt_key_down.lock().unwrap() = Some(key_code);
+                }
+                crate::start_recording_action(app);
+            } else {
+                crate::toggle_recording(app);
+            }
+        }
         ShortcutAction::CopyLast => {
             let last = app.state::<LastTranscription>();
             let text = last.text.lock().unwrap().clone();
