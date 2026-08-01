@@ -4,6 +4,7 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@/lib/utils"
+import { useSettingRowLabelId } from "@/components/ui/setting-row"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 const Select = SelectPrimitive.Root
@@ -36,6 +37,11 @@ function SelectTrigger({
 }: SelectPrimitive.Trigger.Props & {
   size?: "sm" | "default"
 }) {
+  // See Switch: inherit the enclosing SettingRow's title as the accessible name.
+  const rowLabelId = useSettingRowLabelId()
+  const labelledBy =
+    props["aria-labelledby"] ?? (props["aria-label"] ? undefined : rowLabelId)
+
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
@@ -45,6 +51,7 @@ function SelectTrigger({
         className
       )}
       {...props}
+      {...(labelledBy ? { "aria-labelledby": labelledBy } : {})}
     >
       {children}
       <SelectPrimitive.Icon

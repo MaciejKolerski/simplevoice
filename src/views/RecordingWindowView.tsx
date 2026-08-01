@@ -35,6 +35,13 @@ export function RecordingWindowView() {
   const statusRef = useRef<Status>("idle");
   const amplitudeRef = useRef<number>(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Assigned by the canvas effect. The render loop parks itself once there is
+  // nothing left to animate, so every status change has to poke it awake.
+  const wakeRef = useRef<() => void>(() => {});
+  const setStatus = (next: Status) => {
+    statusRef.current = next;
+    wakeRef.current();
+  };
 
   const { t } = useTranslation();
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -88,7 +95,7 @@ export function RecordingWindowView() {
     };
 
     const unlistenStarted = listen("recording-started", () => {
-      statusRef.current = "recording";
+      setStatus("recording");
       setCommitted("");
       setTentative("");
       setProgress(null);
@@ -106,7 +113,7 @@ export function RecordingWindowView() {
     });
 
     const unlistenStopped = listen("recording-stopped", () => {
-      statusRef.current = "transcribing";
+      setStatus("transcribing");
       amplitudeRef.current = 0;
       stopTimer();
       setElapsed(null);
@@ -115,7 +122,7 @@ export function RecordingWindowView() {
     });
 
     const unlistenTranscribing = listen<boolean>("transcribing-status", (event) => {
-      statusRef.current = applyTranscribingStatus(statusRef.current, event.payload);
+      setStatus(applyTranscribingStatus(statusRef.current, event.payload));
       if (!event.payload) {
         // Clear the finished transcription's progress panel even mid-recording,
         // but leave the live amplitude alone while a recording is active.
@@ -187,7 +194,9 @@ export function RecordingWindowView() {
 
   // Canvas render loop. Drawing on a fixed-size canvas and clearing every frame
   // avoids the partial-repaint ghosting that animated DOM elements suffer from
-  // on transparent WebKitGTK (Linux) windows.
+  // on transparent WebKitGTK (Linux) windows. The loop parks itself as soon as
+  // the picture stops changing: in the default `always` mode this window stays
+  // visible for the whole session, and idle frames are identical.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -206,8 +215,13 @@ export function RecordingWindowView() {
     const rootStyles = getComputedStyle(document.documentElement);
     const waveFrom = rootStyles.getPropertyValue("--wave-from").trim() || "#6366f1";
     const waveTo = rootStyles.getPropertyValue("--wave-to").trim() || "#a855f7";
+    const idleFill = rootStyles.getPropertyValue("--muted").trim() || "#888888";
+
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let reduceMotion = motionQuery.matches;
 
     let raf = 0;
+    let running = false;
     let displayAmp = 0; // smoothed amplitude, lerped toward the target each frame
 
     const drawBar = (x: number, h: number, fill: string | CanvasGradient, alpha: number) => {
@@ -247,9 +261,9 @@ export function RecordingWindowView() {
           fill = g;
           alpha = 0.3 + MULTIPLIERS[i] * 0.7;
         } else if (status === "transcribing") {
-          // Gentle traveling pulse, 1s period with per-bar phase offset.
-          const phase = (t / 1000 + i * 0.1) * Math.PI * 2;
-          const pulse = (Math.sin(phase) + 1) / 2; // 0..1
+          // Gentle traveling pulse, 1s period with per-bar phase offset. Under
+          // reduced motion it holds the mid-height silhouette instead.
+          const pulse = reduceMotion ? 0.5 : (Math.sin((t / 1000 + i * 0.1) * Math.PI * 2) + 1) / 2;
           h = 6 + pulse * 6; // 6px..12px
           const g = ctx.createLinearGradient(0, (CANVAS_H + h) / 2, 0, (CANVAS_H - h) / 2);
           g.addColorStop(0, waveFrom);
@@ -259,18 +273,47 @@ export function RecordingWindowView() {
         } else {
           // idle: tiny dots
           h = 3;
-          fill = "rgba(255, 255, 255, 0.4)";
-          alpha = 1;
+          fill = idleFill;
+          alpha = 0.6;
         }
 
         drawBar(x, h, fill, alpha);
       }
 
+      // Park once the frame is static: idle bars are fixed, and a finished
+      // recording has settled back to zero amplitude.
+      const settled = Math.abs(displayAmp) < 0.002;
+      const stillMoving =
+        status === "recording" || (status === "transcribing" && !reduceMotion);
+      if (!stillMoving && settled) {
+        displayAmp = 0;
+        running = false;
+        return;
+      }
+
       raf = requestAnimationFrame(frame);
     };
 
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    const wake = () => {
+      if (running) return;
+      running = true;
+      raf = requestAnimationFrame(frame);
+    };
+    wakeRef.current = wake;
+
+    const onMotionChange = (e: MediaQueryListEvent) => {
+      reduceMotion = e.matches;
+      wake();
+    };
+    motionQuery.addEventListener("change", onMotionChange);
+
+    wake();
+    return () => {
+      motionQuery.removeEventListener("change", onMotionChange);
+      wakeRef.current = () => {};
+      running = false;
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   // In "recent" mode show only the last few words (committed + tentative),
@@ -306,8 +349,8 @@ export function RecordingWindowView() {
     <div className="w-full h-full flex flex-col items-center justify-start pt-3 select-none pointer-events-none">
       <div
         data-tauri-drag-region
-        className={`flex items-center justify-center px-5 h-[36px] rounded-full border bg-[#0d0d0e]/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing ${
-          !locked ? "border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : "border-white/10"
+        className={`flex items-center justify-center px-5 h-[36px] rounded-full border bg-surface/75 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.1)] transition-all duration-300 pointer-events-auto cursor-grab active:cursor-grabbing ${
+          !locked ? "border-warning/80 shadow-[0_0_12px_rgba(251,191,36,0.4)]" : "border-white/10"
         }`}
       >
         <canvas ref={canvasRef} className="block" />
@@ -318,7 +361,7 @@ export function RecordingWindowView() {
         )}
       </div>
       {progress && progress.total > 1 && (
-        <div className="mt-2 w-[184px] rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+        <div className="mt-2 w-[184px] rounded-2xl border border-white/10 bg-surface/80 backdrop-blur-xl px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
           <p className="text-[11px] leading-snug text-white/85 tabular-nums">
             {t("overlay.transcribing", {
               percent: Math.round((progress.done / progress.total) * 100),
@@ -333,20 +376,20 @@ export function RecordingWindowView() {
         </div>
       )}
       {warningSecs !== null && (
-        <div className="mt-2 rounded-2xl border border-amber-500/40 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
-          <p className="text-[11px] leading-snug text-amber-400/95">
+        <div className="mt-2 rounded-2xl border border-warning/40 bg-surface/80 backdrop-blur-xl px-3 py-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <p className="text-[11px] leading-snug text-warning">
             {t("overlay.timeWarning", { time: formatElapsed(warningSecs) })}
           </p>
         </div>
       )}
       {hasText && (
         <div
-          className={`mt-2 flex w-[184px] ${warningSecs !== null ? "max-h-[76px]" : "max-h-[120px]"} flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d0e]/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]`}
+          className={`mt-2 flex w-[184px] ${warningSecs !== null ? "max-h-[76px]" : "max-h-[120px]"} flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-surface/80 backdrop-blur-xl px-3 py-2 text-left shadow-[0_12px_40px_rgba(0,0,0,0.6)]`}
         >
           <p className="text-[12px] leading-snug break-words text-white/95">
             {dispCommitted}
             {dispTentative && (
-              <span className="text-white/45 italic">
+              <span className="text-white/70 italic">
                 {dispCommitted ? " " : ""}
                 {dispTentative}
               </span>

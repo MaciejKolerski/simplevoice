@@ -204,7 +204,8 @@
     "tabWavebar": "Wavebar",
     "moveBar": "Move recording bar",
     "moveBarDesc": "A shortcut that toggles the bar between locked and movable — once unlocked, drag it to a new spot, then lock it again.",
-    "overlayMoveBar": "Move recording bar"
+    "overlayMoveBar": "Move recording bar",
+    "shortcutCaptureTitle": "Assign a shortcut"
   },
   "hud": {
     "recording": "Recording",
@@ -217,7 +218,10 @@
     "timeWarning": "Recording will stop in {{time}}"
   },
   "titlebar": {
-    "toggleSidebar": "Toggle sidebar"
+    "toggleSidebar": "Toggle sidebar",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "close": "Close"
   },
   "updater": {
     "upToDate": "You're on the latest version.",
@@ -259,7 +263,8 @@
     "durationMinutesSeconds": "{{minutes}}m {{seconds}}s",
     "durationSeconds": "{{value}}s",
     "emptyTitle": "No activity yet",
-    "emptyHint": "Transcriptions you make will show up here."
+    "emptyHint": "Transcriptions you make will show up here.",
+    "chartLabel": "Time transcribed per period. Use arrow keys or Tab to read each bar."
   },
   "models": {
     "folder": "Folder",
@@ -332,7 +337,16 @@
       "whisperLargeV3Turbo": "Newest large model tuned for speed. Near large-v3 quality, much faster.",
       "whisperLargeV2": "Proven previous flagship. Excellent multilingual accuracy.",
       "whisperLargeV3": "Most accurate multilingual Whisper. Top quality, highest resource use."
-    }
+    },
+    "apiKeyReplace": "Type a new key to replace",
+    "keyStoredHint": "Saved in the system keyring",
+    "keySaved": "API key saved",
+    "keySaveFailed": "Could not save the API key",
+    "removeKey": "Remove key",
+    "keyRemoved": "API key removed",
+    "keyRemoveFailed": "Could not remove the API key",
+    "removeKeyConfirmTitle": "Remove the stored API key?",
+    "removeKeyConfirmBody": "{{provider}} transcription stops working until you enter a new key. The key is deleted from the system keyring."
   },
   "transcriptions": {
     "title": "History",
@@ -354,7 +368,8 @@
     "copyFailed": "Couldn't copy to clipboard",
     "historyCleared": "History cleared",
     "clearFailed": "Failed to clear history",
-    "deleteFailed": "Failed to delete transcription"
+    "deleteFailed": "Failed to delete transcription",
+    "toggleDetails": "Show recording and details"
   },
   "dictionary": {
     "title": "Dictionary",

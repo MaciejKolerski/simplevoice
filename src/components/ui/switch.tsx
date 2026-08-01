@@ -1,6 +1,7 @@
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
 
 import { cn } from "@/lib/utils"
+import { useSettingRowLabelId } from "@/components/ui/setting-row"
 
 function Switch({
   className,
@@ -9,6 +10,12 @@ function Switch({
 }: SwitchPrimitive.Root.Props & {
   size?: "sm" | "default"
 }) {
+  // Fall back to the enclosing SettingRow's title so a bare <Switch> in a
+  // settings row is never announced as an unnamed control.
+  const rowLabelId = useSettingRowLabelId()
+  const labelledBy =
+    props["aria-labelledby"] ?? (props["aria-label"] ? undefined : rowLabelId)
+
   return (
     <SwitchPrimitive.Root
       data-slot="switch"
@@ -18,6 +25,7 @@ function Switch({
         className
       )}
       {...props}
+      {...(labelledBy ? { "aria-labelledby": labelledBy } : {})}
     >
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"

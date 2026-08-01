@@ -1,5 +1,7 @@
 import {
   CSSProperties,
+  useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -95,6 +97,8 @@ export function OnboardingOverlay() {
   const rect = useSpotlight(step?.target, active, index);
 
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const titleId = useId();
+  const bodyId = useId();
   const [cardSize, setCardSize] = useState({ w: CARD_WIDTH, h: 200 });
   // Hold the last good rect for the CURRENT target only, so transient nulls
   // within a step do not flicker. Drop the hold when the target changes so the
@@ -125,6 +129,27 @@ export function OnboardingOverlay() {
     return () => ro.disconnect();
   }, [active, step, rect]);
 
+  // Escape leaves the tour: the overlay covers the whole app, so it needs the
+  // keyboard dismissal every modal dialog is expected to honour.
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        skip();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [active, skip]);
+
+  // Pull focus into the card on every step so keyboard and screen-reader users
+  // land on the instructions instead of wherever focus happened to be.
+  useEffect(() => {
+    if (!active) return;
+    cardRef.current?.focus({ preventScroll: true });
+  }, [active, index]);
+
   if (!active || !step) return null;
 
   const isLast = index === total - 1;
@@ -137,14 +162,17 @@ export function OnboardingOverlay() {
       <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
         {t("onboarding.stepCounter", { current: index + 1, total })}
       </div>
-      <h2 className="mb-2 text-lg font-medium tracking-tight text-white">
+      <h2 id={titleId} className="mb-2 text-lg font-medium tracking-tight text-white">
         {step.title}
       </h2>
-      <p className="mb-5 text-sm leading-normal text-muted">{step.body}</p>
+      <p id={bodyId} className="mb-5 text-sm leading-normal text-muted">
+        {step.body}
+      </p>
       <div className="flex items-center justify-between gap-2">
         <button
+          type="button"
           onClick={skip}
-          className="cursor-pointer bg-transparent text-xs text-muted-foreground transition-colors hover:text-white"
+          className="cursor-pointer rounded-md bg-transparent px-1 py-0.5 text-xs text-muted transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
         >
           {t("onboarding.skipTour")}
         </button>
@@ -166,7 +194,12 @@ export function OnboardingOverlay() {
     <div
       ref={cardRef}
       style={style}
-      className="pointer-events-auto flex w-[340px] max-w-[calc(100vw-32px)] flex-col overflow-y-auto rounded-2xl border border-border bg-popover/95 p-5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.85)] backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
+      tabIndex={-1}
+      className="pointer-events-auto flex w-[340px] max-w-[calc(100vw-32px)] flex-col overflow-y-auto rounded-2xl border border-border bg-popover/95 p-5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.85)] backdrop-blur-md outline-none"
     >
       {cardBody}
     </div>
@@ -214,8 +247,11 @@ export function OnboardingOverlay() {
   const vh = window.innerHeight;
   const pos = placeCard(display, cardSize.w, cardSize.h, vw, vh);
 
+  // No backdrop-filter: these are four full-screen layers that resize on every
+  // step, so blurring each one is disproportionately expensive. They stay
+  // pointer-events-auto so only the spotlit hole is clickable.
   const maskClass =
-    "pointer-events-auto absolute bg-black/60 backdrop-blur-[1px] transition-all duration-200 ease-out";
+    "pointer-events-auto absolute bg-black/60 transition-[top,left,width,height] duration-200 ease-out";
 
   const rightW = vw - (display.left + display.width);
   const belowH = vh - (display.top + display.height);

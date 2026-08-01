@@ -204,7 +204,8 @@
     "tabWavebar": "Pasek fali",
     "moveBar": "Przesuwanie paska nagrywania",
     "moveBarDesc": "Skrót przełącza pasek między zablokowanym a ruchomym — po odblokowaniu przeciągnij go w nowe miejsce, a następnie zablokuj ponownie.",
-    "overlayMoveBar": "Przesuwanie paska nagrywania"
+    "overlayMoveBar": "Przesuwanie paska nagrywania",
+    "shortcutCaptureTitle": "Przypisz skrót"
   },
   "hud": {
     "recording": "Nagrywanie",
@@ -217,7 +218,10 @@
     "timeWarning": "Nagranie zatrzyma się za {{time}}"
   },
   "titlebar": {
-    "toggleSidebar": "Przełącz pasek boczny"
+    "toggleSidebar": "Przełącz pasek boczny",
+    "minimize": "Minimalizuj",
+    "maximize": "Maksymalizuj",
+    "close": "Zamknij"
   },
   "updater": {
     "upToDate": "Masz najnowszą wersję.",
@@ -259,7 +263,8 @@
     "durationMinutesSeconds": "{{minutes}} min {{seconds}} s",
     "durationSeconds": "{{value}} s",
     "emptyTitle": "Brak aktywności",
-    "emptyHint": "Twoje transkrypcje pojawią się tutaj."
+    "emptyHint": "Twoje transkrypcje pojawią się tutaj.",
+    "chartLabel": "Czas transkrypcji w kolejnych okresach. Tab lub strzałki pozwalają odczytać każdy słupek."
   },
   "models": {
     "folder": "Folder",
@@ -332,7 +337,16 @@
       "whisperLargeV3Turbo": "Najnowszy duży model zoptymalizowany pod kątem szybkości. Jakość zbliżona do large-v3, znacznie szybszy.",
       "whisperLargeV2": "Sprawdzony, poprzedni flagowy model. Doskonała dokładność wielojęzyczna.",
       "whisperLargeV3": "Najdokładniejszy, wielojęzyczny Whisper. Najwyższa jakość, największe zużycie zasobów."
-    }
+    },
+    "apiKeyReplace": "Wpisz nowy klucz, aby podmienić",
+    "keyStoredHint": "Zapisany w keyringu systemu",
+    "keySaved": "Klucz API zapisany",
+    "keySaveFailed": "Nie udało się zapisać klucza API",
+    "removeKey": "Usuń klucz",
+    "keyRemoved": "Klucz API usunięty",
+    "keyRemoveFailed": "Nie udało się usunąć klucza API",
+    "removeKeyConfirmTitle": "Usunąć zapisany klucz API?",
+    "removeKeyConfirmBody": "Transkrypcja przez {{provider}} przestanie działać, dopóki nie wpiszesz nowego klucza. Klucz zostanie usunięty z keyringu systemu."
   },
   "transcriptions": {
     "title": "Historia",
@@ -354,7 +368,8 @@
     "copyFailed": "Nie udało się skopiować do schowka",
     "historyCleared": "Historia wyczyszczona",
     "clearFailed": "Nie udało się wyczyścić historii",
-    "deleteFailed": "Nie udało się usunąć transkrypcji"
+    "deleteFailed": "Nie udało się usunąć transkrypcji",
+    "toggleDetails": "Pokaż nagranie i szczegóły"
   },
   "dictionary": {
     "title": "Słownik własny",

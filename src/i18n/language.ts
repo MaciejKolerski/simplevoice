@@ -4,6 +4,14 @@ import i18n from "./index";
 import { isSupported, Language } from "./detect";
 import { pushTrayLabels } from "./tray";
 
+// Keep the document language in sync with the UI language: screen readers pick
+// pronunciation from it, and index.html can only carry a static default.
+function applyDocumentLanguage(lang: string): void {
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = lang;
+  }
+}
+
 // Read the persisted ui_language from config.json. If present, apply it. If absent
 // (first run), persist whatever the OS-detected default resolved to at init.
 export async function applyPersistedLanguage(): Promise<void> {
@@ -18,6 +26,7 @@ export async function applyPersistedLanguage(): Promise<void> {
   } catch (err) {
     console.error("i18n: failed to apply persisted language:", err);
   }
+  applyDocumentLanguage(i18n.language);
   await pushTrayLabels();
 }
 
@@ -29,6 +38,7 @@ async function persistLanguage(lang: Language): Promise<void> {
 
 export async function changeLanguage(lang: Language): Promise<void> {
   await i18n.changeLanguage(lang);
+  applyDocumentLanguage(lang);
   await persistLanguage(lang);
   await pushTrayLabels();
   emit("ui-language-changed", lang).catch(() => {});

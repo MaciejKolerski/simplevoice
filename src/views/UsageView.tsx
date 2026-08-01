@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BarChart3, Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -126,7 +126,12 @@ export function UsageView() {
     };
   }, []);
 
-  const numberFormat = new Intl.NumberFormat(i18n.language);
+  // Intl formatters are expensive to construct; this component re-renders on
+  // every stats event, so build one per language instead of one per render.
+  const numberFormat = useMemo(
+    () => new Intl.NumberFormat(i18n.language),
+    [i18n.language],
+  );
 
   const formatDuration = (seconds: number): string => {
     if (seconds <= 0) return t("usage.durationSeconds", { value: 0 });
@@ -415,34 +420,26 @@ export function UsageView() {
 
   const renderTrend = (value: number) => {
     if (timeRange === "all") {
-      return (
-        <span className="text-muted opacity-70">
-          {t("usage.allTimeStatistics")}
-        </span>
-      );
+      return <span className="text-muted">{t("usage.allTimeStatistics")}</span>;
     }
 
     if (value > 0) {
       return (
         <>
           <span className="trend up flex items-center gap-0.5 text-success font-semibold whitespace-nowrap shrink-0">
-            <TrendingUp size={12} /> +{numberFormat.format(value)}%
+            <TrendingUp size={12} aria-hidden="true" /> +{numberFormat.format(value)}%
           </span>
-          <span className="truncate opacity-70">
-            {t("usage.vsLastPeriod")}
-          </span>
+          <span className="truncate">{t("usage.vsLastPeriod")}</span>
         </>
       );
     } else if (value < 0) {
       return (
         <>
           <span className="trend down flex items-center gap-0.5 text-danger font-semibold whitespace-nowrap shrink-0">
-            <TrendingUp size={12} className="rotate-180" />{" "}
+            <TrendingUp size={12} aria-hidden="true" className="rotate-180" />{" "}
             {numberFormat.format(value)}%
           </span>
-          <span className="truncate opacity-70">
-            {t("usage.vsLastPeriod")}
-          </span>
+          <span className="truncate">{t("usage.vsLastPeriod")}</span>
         </>
       );
     } else {
@@ -451,9 +448,7 @@ export function UsageView() {
           <span className="trend flat flex items-center gap-0.5 text-muted font-semibold whitespace-nowrap shrink-0">
             — {numberFormat.format(0)}%
           </span>
-          <span className="truncate opacity-70">
-            {t("usage.vsLastPeriod")}
-          </span>
+          <span className="truncate">{t("usage.vsLastPeriod")}</span>
         </>
       );
     }
@@ -467,7 +462,7 @@ export function UsageView() {
 
   return (
     <div className="flex flex-col w-full animate-[fadeIn_0.3s_ease-out]">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pr-1">
+      <div className="flex justify-between items-center gap-4 mb-6 pr-1">
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
           {t("usage.overview")}
         </h1>
@@ -476,8 +471,11 @@ export function UsageView() {
           onValueChange={(v) => setTimeRange(v as typeof timeRange)}
           items={timeRanges}
         >
-          <SelectTrigger className="w-full sm:w-[160px] bg-secondary text-xs">
-            <Calendar size={13} className="text-muted" />
+          <SelectTrigger
+            aria-label={t("usage.overview")}
+            className="w-[160px] shrink-0 bg-secondary text-xs"
+          >
+            <Calendar size={13} aria-hidden="true" className="text-muted" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -493,7 +491,7 @@ export function UsageView() {
         <Card className="p-6 gap-0 min-w-0">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">{t("usage.timeTranscribed")}</span>
-            <Clock size={14} className="text-muted-dark shrink-0" />
+            <Clock size={14} aria-hidden="true" className="text-muted shrink-0" />
           </div>
           <div className="stat-value mono truncate">
             {formatDuration(totalDuration)}
@@ -505,7 +503,7 @@ export function UsageView() {
         <Card className="p-6 gap-0 min-w-0">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">{t("usage.wordsGenerated")}</span>
-            <FileText size={14} className="text-muted-dark shrink-0" />
+            <FileText size={14} aria-hidden="true" className="text-muted shrink-0" />
           </div>
           <div className="stat-value mono truncate">
             {numberFormat.format(totalWords)}
@@ -517,7 +515,7 @@ export function UsageView() {
         <Card className="p-6 gap-0 min-w-0 md:col-span-2 lg:col-span-1">
           <div className="label-text flex justify-between items-center mb-3">
             <span className="truncate">{t("usage.activeModel")}</span>
-            <Cpu size={14} className="text-muted-dark shrink-0" />
+            <Cpu size={14} aria-hidden="true" className="text-muted shrink-0" />
           </div>
           <div className="text-xl leading-tight pt-1 tracking-tight text-white font-medium truncate">
             {loadingModel
@@ -528,6 +526,7 @@ export function UsageView() {
           </div>
           <div className="text-xs mt-3 flex items-center gap-1.5 text-muted-foreground">
             <span
+              aria-hidden="true"
               className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
                 loadingModel
                   ? "bg-info animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.5)]"
@@ -536,7 +535,7 @@ export function UsageView() {
                     : "bg-success"
               }`}
             ></span>
-            <span className="truncate opacity-70">
+            <span className="truncate">
               {loadingModel
                 ? t("usage.initializingEngine")
                 : activeModel === "None"
@@ -549,15 +548,19 @@ export function UsageView() {
         </Card>
       </div>
 
-      {/* Activity Details Chart */}
-      <div className="bg-secondary border border-border rounded-xl p-6 relative min-h-[340px] lg:min-h-[420px] 2xl:min-h-[500px] flex flex-col w-full overflow-hidden">
+      {/* No `overflow-hidden` on this card: a bar's tooltip sits above the plot
+          area and would be clipped at the card's edge. */}
+      <div className="bg-secondary border border-border rounded-xl p-6 relative min-h-[340px] lg:min-h-[420px] 2xl:min-h-[500px] flex flex-col w-full">
         <div className="flex justify-between items-center mb-6">
           <h2 className="m-0 text-base text-white font-medium">
             {t("usage.activityDetails")}
           </h2>
-          <div className="hidden sm:flex gap-4">
+          <div className="flex gap-4">
             <div className="flex items-center gap-2 text-xs text-muted font-medium">
-              <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.4)]"></div>
+              <div
+                aria-hidden="true"
+                className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.4)]"
+              ></div>
               {t("usage.timeTranscribed")}
             </div>
           </div>
@@ -566,14 +569,14 @@ export function UsageView() {
         {/* covers entire card when there is no data in the selected range */}
         {totalDuration === 0 && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center rounded-xl bg-secondary/60 backdrop-blur-[2px]">
-            <BarChart3 size={24} className="text-muted-dark mb-3" />
+            <BarChart3 size={24} aria-hidden="true" className="text-muted mb-3" />
             <p className="text-muted text-sm">{t("usage.emptyTitle")}</p>
-            <p className="text-muted-dark text-xs mt-1">{t("usage.emptyHint")}</p>
+            <p className="text-muted text-xs mt-1">{t("usage.emptyHint")}</p>
           </div>
         )}
 
         <div className="flex-1 flex relative mt-4 min-w-0">
-          <div className="flex flex-col justify-between pr-4 pb-6 text-[11px] font-mono text-muted-dark text-right w-16 select-none shrink-0">
+          <div className="flex flex-col justify-between pr-4 pb-6 text-[11px] font-mono text-muted text-right w-16 select-none shrink-0">
             {yLabels.map((lbl, idx) => (
               <span key={idx}>{lbl}</span>
             ))}
@@ -586,31 +589,51 @@ export function UsageView() {
             <div className="h-px w-full border-t border-border-hover"></div>
           </div>
 
-          <div className="flex-1 flex justify-between items-end pb-6 relative z-10 min-w-0 gap-1.5 sm:gap-2 pl-2">
-            {bars.map((day, i) => (
-              <div
-                key={i}
-                className="flex-1 flex flex-col items-center justify-end h-full relative group min-w-0"
-              >
-                <div className="absolute -top-9 bg-white text-black px-2.5 py-1 rounded-md text-[10px] sm:text-xs font-mono font-bold opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-2 group-hover:translate-y-0 pointer-events-none z-20 shadow-lg whitespace-nowrap">
-                  {day.tooltip}
-                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 border-l-4 border-r-4 border-l-transparent border-r-transparent border-t-4 border-t-white"></div>
-                </div>
+          <div
+            role="group"
+            aria-label={t("usage.chartLabel")}
+            className="flex-1 flex justify-between items-end pb-6 relative z-10 min-w-0 gap-2 pl-2"
+          >
+            {bars.map((day, i) => {
+              // Anchor the tooltip inside the plot area at both ends; a centred
+              // one would hang past the card on the first and last bar.
+              const edge =
+                i === 0
+                  ? "left-0"
+                  : i === bars.length - 1
+                    ? "right-0"
+                    : "left-1/2 -translate-x-1/2";
+              return (
                 <div
-                  className={`w-full max-w-[56px] sm:max-w-[72px] lg:max-w-[100px] xl:max-w-[132px] 2xl:max-w-[176px] h-full rounded-lg flex items-end relative overflow-hidden transition-colors duration-200 ${day.today ? "bg-white/5" : "bg-white/[0.03]"} group-hover:bg-white/10`}
+                  key={i}
+                  tabIndex={0}
+                  role="img"
+                  aria-label={day.tooltip}
+                  className="flex-1 flex flex-col items-center justify-end h-full relative group min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
                 >
                   <div
-                    className={`w-full rounded-lg transition-all duration-300 relative ${day.today ? "bg-gradient-to-t from-white/40 to-white shadow-[0_-4px_24px_rgba(255,255,255,0.18)]" : "bg-gradient-to-t from-white/15 to-white/85 group-hover:to-white"}`}
-                    style={{ height: `${day.val}%` }}
-                  ></div>
+                    aria-hidden="true"
+                    className={`absolute -top-9 ${edge} bg-white text-black px-2.5 py-1 rounded-md text-xs font-mono font-bold opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 pointer-events-none z-20 shadow-lg whitespace-nowrap`}
+                  >
+                    {day.tooltip}
+                  </div>
+                  <div
+                    className={`w-full max-w-[72px] lg:max-w-[100px] xl:max-w-[132px] 2xl:max-w-[176px] h-full rounded-lg flex items-end relative overflow-hidden transition-colors duration-200 ${day.today ? "bg-white/5" : "bg-white/[0.03]"} group-hover:bg-white/10 group-focus-within:bg-white/10`}
+                  >
+                    <div
+                      className={`w-full rounded-lg transition-all duration-300 relative ${day.today ? "bg-gradient-to-t from-white/40 to-white shadow-[0_-4px_24px_rgba(255,255,255,0.18)]" : "bg-gradient-to-t from-white/15 to-white/85 group-hover:to-white"}`}
+                      style={{ height: `${day.val}%` }}
+                    ></div>
+                  </div>
+                  <div
+                    aria-hidden="true"
+                    className={`absolute -bottom-6 w-full text-center text-xs transition-colors duration-200 ${day.today ? "text-white font-semibold" : "text-muted group-hover:text-white"}`}
+                  >
+                    {day.label}
+                  </div>
                 </div>
-                <div
-                  className={`absolute -bottom-6 w-full text-center text-[10px] sm:text-xs transition-colors duration-200 ${day.today ? "text-white font-semibold" : "text-muted group-hover:text-white"}`}
-                >
-                  {day.label}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

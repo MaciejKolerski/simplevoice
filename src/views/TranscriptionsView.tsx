@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,20 +38,31 @@ export function TranscriptionsView() {
     useState<TranscriptionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [audioCache, setAudioCache] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  // Single entry, not a map: only one row is expanded at a time, and a base64
+  // WAV of a long recording is tens to hundreds of megabytes in the webview.
+  const [audio, setAudio] = useState<{ id: string; data: string } | null>(null);
 
   useEffect(() => {
-    if (expandedId && !audioCache[expandedId]) {
-      const item = history.find((h) => h.id === expandedId);
-      if (item?.wav_path) {
-        invoke<string>("get_audio_base64", { path: item.wav_path })
-          .then((base64) => {
-            setAudioCache((prev) => ({ ...prev, [expandedId]: base64 }));
-          })
-          .catch((err) => console.error("Failed to load audio:", err));
-      }
+    if (!expandedId) {
+      setAudio(null);
+      return;
     }
-  }, [expandedId, history, audioCache]);
+    if (audio?.id === expandedId) return;
+
+    const item = history.find((h) => h.id === expandedId);
+    if (!item?.wav_path) return;
+
+    let cancelled = false;
+    invoke<string>("get_audio_base64", { path: item.wav_path })
+      .then((base64) => {
+        if (!cancelled) setAudio({ id: expandedId, data: base64 });
+      })
+      .catch((err) => console.error("Failed to load audio:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedId, history, audio?.id]);
 
   const loadHistory = async (reset = false) => {
     const newOffset = reset ? 0 : offset;
@@ -69,6 +81,8 @@ export function TranscriptionsView() {
       setHasMore(data.length === 20);
     } catch (err) {
       console.error("Failed to load history:", err);
+    } finally {
+      if (reset) setLoading(false);
     }
   };
 
@@ -164,7 +178,7 @@ export function TranscriptionsView() {
 
   return (
     <div className="flex flex-col w-full animate-[fadeIn_0.3s_ease-out]">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6">
+      <div className="flex justify-between items-end gap-4 mb-6">
         <div>
           <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
             {t("transcriptions.title")}
@@ -186,7 +200,29 @@ export function TranscriptionsView() {
         )}
       </div>
 
-      {history.length === 0 ? (
+      {loading ? (
+        // Skeleton rather than a spinner: the list has a known shape, so hold
+        // its place instead of reflowing once rows arrive.
+        <div
+          role="status"
+          aria-label={t("common.loading")}
+          className="border border-border rounded-xl overflow-hidden bg-secondary"
+        >
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex flex-col gap-2.5 p-5 border-b border-border last:border-b-0"
+            >
+              <div className="flex gap-2.5">
+                <div className="h-3 w-28 rounded bg-surface-active" />
+                <div className="h-3 w-20 rounded bg-surface-active" />
+              </div>
+              <div className="h-3 w-full max-w-xl rounded bg-surface-active" />
+              <div className="h-3 w-2/3 max-w-md rounded bg-surface-active" />
+            </div>
+          ))}
+        </div>
+      ) : history.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-secondary">
           <div className="flex size-14 items-center justify-center rounded-full bg-surface-active text-muted mb-4">
             <History size={26} />
@@ -203,26 +239,20 @@ export function TranscriptionsView() {
           {history.map((item) => {
             const isExpanded = expandedId === item.id;
             return (
+              // Not role="button": the row holds its own Delete and Copy
+              // buttons, and nesting controls inside a control is invalid ARIA.
+              // The chevron is the keyboard toggle; the row click is mouse-only.
               <div
                 key={item.id}
-                className={`group flex flex-col p-5 transition-colors hover:bg-surface-hover border-b border-border last:border-b-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60 ${
+                className={`group flex flex-col p-5 transition-colors hover:bg-surface-hover border-b border-border last:border-b-0 cursor-pointer ${
                   isExpanded ? "bg-surface-hover" : ""
                 }`}
-                role="button"
-                tabIndex={0}
-                aria-expanded={isExpanded}
                 onClick={() => toggleExpanded(item.id)}
-                onKeyDown={(e) => {
-                  if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
-                    e.preventDefault();
-                    toggleExpanded(item.id);
-                  }
-                }}
               >
                 <div className="flex items-start gap-6">
                   <div className="flex-1 min-w-0">
                     <div className="mb-2 flex flex-wrap gap-2.5 items-center">
-                      <span className="mono text-muted-dark text-xs">
+                      <span className="mono text-muted text-xs">
                         {item.date}, {item.timestamp}
                       </span>
                       <Badge
@@ -231,7 +261,7 @@ export function TranscriptionsView() {
                       >
                         {item.model}
                       </Badge>
-                      {item.duration_sec && (
+                      {item.duration_sec != null && (
                         <span className="text-[10px] text-muted font-mono">
                           {t("transcriptions.durationSeconds", {
                             seconds: item.duration_sec.toFixed(1),
@@ -239,32 +269,50 @@ export function TranscriptionsView() {
                         </span>
                       )}
                     </div>
-                    <div className="text-fg leading-relaxed text-[13px] break-words select-text pr-12">
-                      "{item.text}"
+                    <div className="text-foreground leading-relaxed text-[13px] break-words select-text pr-12">
+                      {item.text}
                     </div>
                   </div>
                   <div className="flex-none flex items-center gap-2 self-start pt-1">
-                    <ChevronDown
-                      size={18}
-                      className={`text-muted transition-transform group-hover:text-fg ${isExpanded ? "rotate-180" : ""}`}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
+                    <button
+                      type="button"
+                      aria-expanded={isExpanded}
+                      aria-label={t("transcriptions.toggleDetails")}
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteItem(item);
+                        toggleExpanded(item.id);
                       }}
-                      disabled={isDeleting === item.id}
-                      className="text-danger hover:text-danger hover:bg-danger/10"
-                      title={t("transcriptions.delete")}
+                      className="flex size-8 items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-surface-active transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                     >
-                      {isDeleting === item.id ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={14} />
-                      )}
-                    </Button>
+                      <ChevronDown
+                        size={18}
+                        className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteItem(item);
+                            }}
+                            disabled={isDeleting === item.id}
+                            className="text-danger hover:text-danger hover:bg-danger/10"
+                            aria-label={t("transcriptions.delete")}
+                          >
+                            {isDeleting === item.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>{t("transcriptions.delete")}</TooltipContent>
+                    </Tooltip>
                     <Button
                       variant="outline"
                       size="sm"
@@ -281,10 +329,10 @@ export function TranscriptionsView() {
 
                 {isExpanded && item.wav_path && (
                   <div className="mt-4 pt-4 border-t border-border/50">
-                    {audioCache[item.id] ? (
+                    {audio?.id === item.id ? (
                       <div className="bg-surface-active rounded-xl p-4">
                         <audio
-                          src={`data:audio/wav;base64,${audioCache[item.id]}`}
+                          src={`data:audio/wav;base64,${audio.data}`}
                           controls
                           className="w-full accent-success"
                           onClick={(e) => e.stopPropagation()}

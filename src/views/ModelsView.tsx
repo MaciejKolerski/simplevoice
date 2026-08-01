@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Download,
   Loader2,
+  Check,
   Eye,
   EyeOff,
   X,
@@ -43,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SettingRow } from "@/components/ui/setting-row";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ModelStatus {
   active: string | null;
@@ -231,7 +233,12 @@ export function ModelsView() {
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
   const [scanning, setScanning] = useState<boolean>(false);
   const [asrEngine, setAsrEngine] = useState<"local" | "openai-cloud">("local");
-  const [providerKey, setProviderKey] = useState<string>("••••••••••••••••");
+  // The stored key never round-trips into the UI: `hasStoredKey` is presence
+  // only, `keyDraft` is the pending input. A masked value in the field would be
+  // indistinguishable from a real one and get committed as the key.
+  const [hasStoredKey, setHasStoredKey] = useState<boolean>(false);
+  const [keyDraft, setKeyDraft] = useState<string>("");
+  const [removeKeyOpen, setRemoveKeyOpen] = useState<boolean>(false);
 
   const [activeModelPath, setActiveModelPath] = useState<string | null>(null);
   const [loadingModelPath, setLoadingModelPath] = useState<string | null>(null);
@@ -307,19 +314,43 @@ export function ModelsView() {
   const loadSecureKeysForProvider = async (provider: string) => {
     try {
       const hasKey = await invoke<boolean>("has_secure_api_key", { provider });
-      setProviderKey(hasKey ? "••••••••••••••••" : "");
+      setHasStoredKey(hasKey);
+      setKeyDraft("");
     } catch (err) {
       console.error(`Failed to check secure API key for ${provider}:`, err);
     }
   };
 
-  const saveProviderKey = async (provider: string, val: string) => {
+  // Committed on blur, never per keystroke, so a half-typed key never reaches
+  // the system keyring.
+  const commitProviderKey = async () => {
+    const key = keyDraft.trim();
+    if (!key) return;
     try {
-      if (val === "••••••••••••••••") return;
-      await invoke("set_secure_api_key", { provider, key: val });
+      await invoke("set_secure_api_key", { provider: asrProvider, key });
+      setKeyDraft("");
+      setHasStoredKey(true);
+      toast.success(t("models.keySaved"));
       window.dispatchEvent(new Event("api-keys-changed"));
-    } catch (err) {
-      console.error(`Failed to save secure key for ${provider}:`, err);
+    } catch (err: any) {
+      console.error(`Failed to save secure key for ${asrProvider}:`, err);
+      toast.error(t("models.keySaveFailed"), { description: localizeError(err) });
+    }
+  };
+
+  const removeProviderKey = async () => {
+    setRemoveKeyOpen(false);
+    try {
+      await invoke("delete_secure_api_key", { provider: asrProvider });
+      setHasStoredKey(false);
+      setKeyDraft("");
+      setCloudModels([]);
+      setModelsFetchError(null);
+      toast.success(t("models.keyRemoved"));
+      window.dispatchEvent(new Event("api-keys-changed"));
+    } catch (err: any) {
+      console.error(`Failed to remove secure key for ${asrProvider}:`, err);
+      toast.error(t("models.keyRemoveFailed"), { description: localizeError(err) });
     }
   };
 
@@ -403,14 +434,14 @@ export function ModelsView() {
   // Debounced so typing a key doesn't fire a request per keystroke.
   useEffect(() => {
     if (asrEngine !== "openai-cloud") return;
-    if (!providerKey) return; // no key -> keep the curated fallback
+    if (!hasStoredKey) return; // no key -> keep the curated fallback
     if (asrProvider === "anthropic") return; // can't list/transcribe; keep fallback
     const handle = setTimeout(() => {
       fetchCloudModels().catch(() => {});
     }, 600);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asrEngine, asrProvider, asrBaseUrl, providerKey]);
+  }, [asrEngine, asrProvider, asrBaseUrl, hasStoredKey]);
 
   const handleProviderChange = (
     provider: "openai" | "openrouter" | "anthropic" | "gemini" | "custom",
@@ -725,20 +756,26 @@ export function ModelsView() {
       </div>
       <span className="text-xs font-mono text-muted shrink-0">{size}</span>
       {onDelete && (
-        <button
-          onClick={onDelete}
-          disabled={
-            loadingModelPath !== null ||
-            loadingPath !== null ||
-            convertingPath !== null ||
-            deletingPath !== null
-          }
-          className="shrink-0 text-muted hover:text-danger transition-colors cursor-pointer p-1 disabled:opacity-40 disabled:cursor-not-allowed rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-          title={t("models.delete")}
-          aria-label={t("models.delete")}
-        >
-          <Trash2 size={15} />
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                onClick={onDelete}
+                disabled={
+                  loadingModelPath !== null ||
+                  loadingPath !== null ||
+                  convertingPath !== null ||
+                  deletingPath !== null
+                }
+                className="shrink-0 flex size-8 items-center justify-center text-muted hover:text-danger transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                aria-label={t("models.delete")}
+              >
+                <Trash2 size={15} />
+              </button>
+            }
+          />
+          <TooltipContent>{t("models.delete")}</TooltipContent>
+        </Tooltip>
       )}
       <div className="shrink-0 w-24 flex justify-end">{action}</div>
     </div>
@@ -770,6 +807,27 @@ export function ModelsView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AlertDialog open={removeKeyOpen} onOpenChange={setRemoveKeyOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("models.removeKeyConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("models.removeKeyConfirmBody", {
+                provider: PROVIDER_LABELS[asrProvider] ?? asrProvider,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={removeProviderKey}
+              className="bg-danger text-white hover:bg-danger/90"
+            >
+              {t("models.removeKey")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
@@ -777,24 +835,33 @@ export function ModelsView() {
         </h1>
         {asrEngine === "local" && (
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleOpenFolder}
-              title={t("models.openFolderTooltip")}
-            >
-              <FolderOpen size={13} />
-              <span className="hidden sm:inline">{t("models.folder")}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              onClick={loadModelsList}
-              disabled={scanning}
-              title={t("models.rescanTooltip")}
-            >
-              <RefreshCw size={13} className={scanning ? "animate-spin" : ""} />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button variant="outline" size="sm" onClick={handleOpenFolder}>
+                    <FolderOpen size={13} />
+                    {t("models.folder")}
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("models.openFolderTooltip")}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={loadModelsList}
+                    disabled={scanning}
+                    aria-label={t("models.rescanTooltip")}
+                  >
+                    <RefreshCw size={13} className={scanning ? "animate-spin" : ""} />
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("models.rescanTooltip")}</TooltipContent>
+            </Tooltip>
           </div>
         )}
       </div>
@@ -805,7 +872,10 @@ export function ModelsView() {
         onValueChange={(v) => handleSelectEngine(v as "local" | "openai-cloud")}
         className="w-full"
       >
-        <TabsList variant="line" className="mb-6 border-b border-border w-full justify-start">
+        <TabsList
+          variant="line"
+          className="mb-6 border-b border-border w-full justify-start overflow-x-auto no-scrollbar"
+        >
           <TabsTrigger value="local" className="flex-none px-4">
             {t("models.tabLocal")}
           </TabsTrigger>
@@ -949,34 +1019,43 @@ export function ModelsView() {
                             downloadPaused ? "opacity-40" : ""
                           }`}
                         />
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {downloadPaused ? (
-                            <button
-                              onClick={() => handleResumeDownload(rec)}
-                              title={t("models.resume")}
-                              aria-label={t("models.resume")}
-                              className="text-muted hover:text-info transition-colors cursor-pointer"
-                            >
-                              <Play size={13} />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={handlePauseDownload}
-                              title={t("models.pause")}
-                              aria-label={t("models.pause")}
-                              className="text-muted hover:text-info transition-colors cursor-pointer"
-                            >
-                              <Pause size={13} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleCancelDownload(rec)}
-                            title={t("models.cancelDownload")}
-                            aria-label={t("models.cancelDownload")}
-                            className="text-muted hover:text-danger transition-colors cursor-pointer"
-                          >
-                            <X size={13} />
-                          </button>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  onClick={
+                                    downloadPaused
+                                      ? () => handleResumeDownload(rec)
+                                      : handlePauseDownload
+                                  }
+                                  aria-label={
+                                    downloadPaused ? t("models.resume") : t("models.pause")
+                                  }
+                                  className="flex size-6 items-center justify-center rounded-md text-muted hover:text-info transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                                >
+                                  {downloadPaused ? <Play size={13} /> : <Pause size={13} />}
+                                </button>
+                              }
+                            />
+                            <TooltipContent>
+                              {downloadPaused ? t("models.resume") : t("models.pause")}
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  onClick={() => handleCancelDownload(rec)}
+                                  aria-label={t("models.cancelDownload")}
+                                  className="flex size-6 items-center justify-center rounded-md text-muted hover:text-danger transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                                >
+                                  <X size={13} />
+                                </button>
+                              }
+                            />
+                            <TooltipContent>{t("models.cancelDownload")}</TooltipContent>
+                          </Tooltip>
                         </div>
                       </div>
                     );
@@ -1030,7 +1109,7 @@ export function ModelsView() {
               variant="outline"
               size="sm"
               onClick={handleTestConnection}
-              disabled={testing || !providerKey}
+              disabled={testing || !hasStoredKey}
             >
               {testing ? (
                 <Loader2 size={13} className="animate-spin" />
@@ -1069,32 +1148,75 @@ export function ModelsView() {
               title={t("models.apiKeyLabel")}
               description={t("models.apiKeyDesc")}
             >
-              <div className="flex gap-2 w-72 max-w-full shrink">
-                <Input
-                  type={showApiKey ? "text" : "password"}
-                  value={providerKey}
-                  onChange={(e) => {
-                    setProviderKey(e.target.value);
-                    saveProviderKey(asrProvider, e.target.value);
-                  }}
-                  placeholder={
-                    providerKey === "••••••••••••••••"
-                      ? ""
-                      : t("models.apiKeyPlaceholder", {
-                          provider: asrProvider.toUpperCase(),
-                        })
-                  }
-                  className="flex-1 bg-black font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  title={showApiKey ? t("models.hideKey") : t("models.showKey")}
-                >
-                  {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
-                </Button>
+              <div className="flex flex-col gap-1.5 w-72 max-w-full shrink">
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKey ? "text" : "password"}
+                    value={keyDraft}
+                    onChange={(e) => setKeyDraft(e.target.value)}
+                    onBlur={commitProviderKey}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    placeholder={
+                      hasStoredKey
+                        ? t("models.apiKeyReplace")
+                        : t("models.apiKeyPlaceholder", {
+                            provider: asrProvider.toUpperCase(),
+                          })
+                    }
+                    aria-label={t("models.apiKeyLabel")}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="flex-1 bg-black font-mono"
+                  />
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          aria-label={showApiKey ? t("models.hideKey") : t("models.showKey")}
+                        >
+                          {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>
+                      {showApiKey ? t("models.hideKey") : t("models.showKey")}
+                    </TooltipContent>
+                  </Tooltip>
+                  {hasStoredKey && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setRemoveKeyOpen(true)}
+                            aria-label={t("models.removeKey")}
+                            className="text-danger hover:text-danger hover:border-danger/40 hover:bg-danger/5"
+                          >
+                            <Trash2 size={15} />
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>{t("models.removeKey")}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+                {hasStoredKey && !keyDraft && (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] text-success">
+                    <Check size={12} className="shrink-0" />
+                    {t("models.keyStoredHint")}
+                  </span>
+                )}
               </div>
             </SettingRow>
 
@@ -1135,26 +1257,33 @@ export function ModelsView() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={handleRefreshModels}
-                    disabled={modelsLoading || !providerKey}
-                    title={t("models.refreshModels")}
-                  >
-                    <RefreshCw
-                      size={14}
-                      className={modelsLoading ? "animate-spin" : ""}
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={handleRefreshModels}
+                          disabled={modelsLoading || !hasStoredKey}
+                          aria-label={t("models.refreshModels")}
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={modelsLoading ? "animate-spin" : ""}
+                          />
+                        </Button>
+                      }
                     />
-                  </Button>
+                    <TooltipContent>{t("models.refreshModels")}</TooltipContent>
+                  </Tooltip>
                 </div>
                 {!modelsLoading && modelsFetchError && (
                   <span className="text-[11px] text-danger truncate" title={modelsFetchError}>
                     {modelsFetchError}
                   </span>
                 )}
-                {!modelsLoading && !modelsFetchError && cloudModels.length === 0 && providerKey && (
+                {!modelsLoading && !modelsFetchError && cloudModels.length === 0 && hasStoredKey && (
                   <span className="text-[11px] text-muted">
                     {t("models.usingFallbackModels")}
                   </span>

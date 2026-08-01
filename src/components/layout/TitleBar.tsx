@@ -36,6 +36,8 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
           <TooltipTrigger
             render={
               <button
+                type="button"
+                aria-label={t("titlebar.toggleSidebar")}
                 className="p-1.5 rounded-md text-muted hover:text-foreground hover:bg-accent transition-colors title-bar-no-drag"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -58,7 +60,9 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
         className="absolute left-1/2 -translate-x-1/2 h-full flex items-center gap-2 text-[12px] font-medium text-muted"
       >
         <span data-tauri-drag-region>Simplevoice</span>
-        <span data-tauri-drag-region className="text-muted-dark">/</span>
+        <span data-tauri-drag-region aria-hidden="true" className="text-muted">
+          /
+        </span>
         <span data-tauri-drag-region className="text-foreground">
           {activeViewName}
         </span>
@@ -68,19 +72,25 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
       {isWindows && (
         <div className="flex items-center h-full ml-auto title-bar-no-drag">
           <button
+            type="button"
+            aria-label={t("titlebar.minimize")}
             className="h-full px-4 text-muted hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center"
             onClick={() => invoke("minimize_window")}
           >
             <Minus size={14} />
           </button>
           <button
+            type="button"
+            aria-label={t("titlebar.maximize")}
             className="h-full px-4 text-muted hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center"
             onClick={() => invoke("maximize_window")}
           >
             <Square size={13} />
           </button>
           <button
-            className="h-full px-4 text-muted hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center"
+            type="button"
+            aria-label={t("titlebar.close")}
+            className="h-full px-4 text-muted hover:bg-danger hover:text-black transition-colors flex items-center justify-center"
             onClick={() => invoke("close_window")}
           >
             <X size={14} />

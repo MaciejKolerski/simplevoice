@@ -24,6 +24,10 @@ interface DictionaryRule {
   value: string;
 }
 
+/** A rule plus a client-side identity. The id is never persisted; it only gives
+ * React a stable key so editing one row cannot remount another and drop focus. */
+type RuleRow = DictionaryRule & { id: string };
+
 /** A voice-search command: site keyword(s) spoken after the prefix → open the
  * site with the rest of the utterance as the query. Mirrors the Rust
  * `SearchCommand` struct. */
@@ -90,7 +94,7 @@ function actionPreviews(): Record<"time" | "date", string> {
 
 export function DictionaryView() {
   const { t } = useTranslation();
-  const { config, getConfig, updateConfig } = useConfig();
+  const { config, getConfig, updateConfig, updateConfigDebounced } = useConfig();
 
   // The shared wake-word prefix (edited in Settings); surfaced here so the keyword
   // fields below read as the full spoken phrase ("hey" + "google").
@@ -136,8 +140,17 @@ export function DictionaryView() {
     setCommands(next);
     updateConfig("search_commands", next);
   };
+  /** Same as persistCommands, for edits driven by keystrokes. */
+  const persistCommandsDebounced = (next: SearchCommand[]) => {
+    setCommands(next);
+    updateConfigDebounced("search_commands", next);
+  };
   const patchCommand = (id: string, patch: Partial<SearchCommand>) =>
     persistCommands(commands.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  const patchCommandText = (id: string, patch: Partial<SearchCommand>) =>
+    persistCommandsDebounced(
+      commands.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+    );
   const removeCommand = (id: string) =>
     persistCommands(commands.filter((c) => c.id !== id));
   const addCommand = () => {
@@ -185,8 +198,11 @@ export function DictionaryView() {
   };
 
   // ─── Custom dictionary (text / time / date) ──────────────────────────────
-  const [rules, setRules] = useState<DictionaryRule[]>([]);
+  const [rules, setRules] = useState<RuleRow[]>([]);
   const rulesResolvedRef = useRef(false);
+  // The exact array last handed to updateConfig. When it comes back through the
+  // config effect we skip the rebuild, so typing never re-creates the rows.
+  const lastWrittenRulesRef = useRef<DictionaryRule[] | null>(null);
 
   // Sync from config once it (re)loads — same reason as the search commands
   // above: the view mounts before the async config arrives, so a mount-time
@@ -197,8 +213,10 @@ export function DictionaryView() {
       | null;
     if (Array.isArray(stored)) {
       rulesResolvedRef.current = true;
+      if (stored === lastWrittenRulesRef.current) return; // our own echo
       setRules(
         stored.map((r) => ({
+          id: genId(),
           trigger: r.trigger ?? "",
           action: ACTIONS.includes(r.action as RuleAction)
             ? (r.action as RuleAction)
@@ -211,25 +229,37 @@ export function DictionaryView() {
       rulesResolvedRef.current = true;
       const legacy = (getConfig("custom_words", []) as string[]) || [];
       if (legacy.length) {
-        setRules(legacy.map((w) => ({ trigger: w, action: "text" as RuleAction, value: w })));
+        setRules(
+          legacy.map((w) => ({
+            id: genId(),
+            trigger: w,
+            action: "text" as RuleAction,
+            value: w,
+          })),
+        );
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
-  const persist = (next: DictionaryRule[]) => {
+  const persist = (next: RuleRow[]) => {
     setRules(next);
-    updateConfig("dictionary_rules", next);
-    // Once the new shape is written, the legacy field is no longer used.
-    updateConfig("custom_words", []);
+    const payload = next.map(({ id: _id, ...rule }) => rule);
+    lastWrittenRulesRef.current = payload;
+    updateConfigDebounced("dictionary_rules", payload);
+    // The legacy field is dead once the new shape is written; only clear it when
+    // it still holds something, rather than rewriting an empty array every time.
+    const legacy = getConfig("custom_words", []) as string[];
+    if (Array.isArray(legacy) && legacy.length) {
+      updateConfigDebounced("custom_words", []);
+    }
   };
 
   const addRule = () =>
-    persist([...rules, { trigger: "", action: "text", value: "" }]);
-  const removeRule = (index: number) =>
-    persist(rules.filter((_, i) => i !== index));
-  const patchRule = (index: number, patch: Partial<DictionaryRule>) =>
-    persist(rules.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    persist([...rules, { id: genId(), trigger: "", action: "text", value: "" }]);
+  const removeRule = (id: string) => persist(rules.filter((r) => r.id !== id));
+  const patchRule = (id: string, patch: Partial<DictionaryRule>) =>
+    persist(rules.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   const actionLabels: Record<RuleAction, string> = {
     text: t("dictionary.actionText"),
@@ -244,7 +274,7 @@ export function DictionaryView() {
       <Tabs defaultValue="search" className="w-full max-w-3xl mx-auto">
         <TabsList
           variant="line"
-          className="mb-7 border-b border-border w-full justify-start"
+          className="mb-7 border-b border-border w-full justify-start overflow-x-auto no-scrollbar"
         >
           <TabsTrigger value="search" className="flex-none px-3.5 gap-1.5">
             <Search /> {t("dictionary.tabSearch")}
@@ -279,7 +309,9 @@ export function DictionaryView() {
             </label>
           </div>
 
-          <div className={cn("transition-opacity", !searchEnabled && "opacity-50")}>
+          {/* `inert` instead of a wrapper opacity: dimming the whole block drops
+              the hint copy and the URL fields to ~2:1 contrast. */}
+          <div inert={!searchEnabled || undefined}>
             {commands.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-10 text-center border border-dashed border-border rounded-xl bg-secondary">
                 <div className="flex size-14 items-center justify-center rounded-full bg-surface-active text-muted mb-4">
@@ -343,12 +375,13 @@ export function DictionaryView() {
 
                       {open && (
                         <div className="flex flex-col gap-2 px-4 pb-4 pt-1 bg-black/20">
-                          <div className="flex flex-col sm:flex-row gap-2">
+                          <div className="flex gap-2">
                             <Input
                               value={c.name}
-                              onChange={(e) => patchCommand(c.id, { name: e.target.value })}
+                              onChange={(e) => patchCommandText(c.id, { name: e.target.value })}
                               placeholder={t("dictionary.namePlaceholder")}
-                              className="bg-black font-medium sm:w-44 sm:shrink-0"
+                              aria-label={t("dictionary.colName")}
+                              className="bg-black font-medium w-44 shrink-0"
                             />
                             <Input
                               value={triggerText(c)}
@@ -357,17 +390,19 @@ export function DictionaryView() {
                               }
                               onBlur={() => commitTriggers(c)}
                               placeholder={t("dictionary.triggersPlaceholder")}
+                              aria-label={t("dictionary.triggersPlaceholder")}
                               className="bg-black flex-1"
                             />
                           </div>
                           <Input
                             value={c.url}
-                            onChange={(e) => patchCommand(c.id, { url: e.target.value })}
+                            onChange={(e) => patchCommandText(c.id, { url: e.target.value })}
                             placeholder={t("dictionary.urlPlaceholder")}
+                            aria-label={t("dictionary.urlPlaceholder")}
                             spellCheck={false}
                             autoCapitalize="off"
                             autoCorrect="off"
-                            className="bg-black font-mono text-[12px] text-muted"
+                            className="bg-black font-mono text-[12px] text-foreground"
                           />
                         </div>
                       )}
@@ -427,24 +462,25 @@ export function DictionaryView() {
                 <span className="size-8 shrink-0" aria-hidden="true" />
               </div>
 
-              {rules.map((rule, i) => (
+              {rules.map((rule) => (
                 <div
-                  key={i}
+                  key={rule.id}
                   className="flex items-center gap-3 px-5 py-3 border-b border-border/50 last:border-b-0 hover:bg-surface-hover transition-colors"
                 >
                   <Input
                     value={rule.trigger}
-                    onChange={(e) => patchRule(i, { trigger: e.target.value })}
+                    onChange={(e) => patchRule(rule.id, { trigger: e.target.value })}
                     placeholder={t("dictionary.triggerPlaceholder")}
+                    aria-label={t("dictionary.colTrigger")}
                     className="flex-1 bg-black"
                   />
 
                   <Select
                     value={rule.action}
-                    onValueChange={(v) => patchRule(i, { action: (v ?? "text") as RuleAction })}
+                    onValueChange={(v) => patchRule(rule.id, { action: (v ?? "text") as RuleAction })}
                     items={Object.fromEntries(ACTIONS.map((a) => [a, actionLabels[a]]))}
                   >
-                    <SelectTrigger className="w-40 shrink-0 bg-black">
+                    <SelectTrigger aria-label={t("dictionary.colAction")} className="w-40 shrink-0 bg-black">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -460,8 +496,9 @@ export function DictionaryView() {
                     {rule.action === "text" ? (
                       <Input
                         value={rule.value}
-                        onChange={(e) => patchRule(i, { value: e.target.value })}
+                        onChange={(e) => patchRule(rule.id, { value: e.target.value })}
                         placeholder={t("dictionary.valuePlaceholder")}
+                        aria-label={t("dictionary.colValue")}
                         className="w-full bg-black"
                       />
                     ) : rule.action === "clipboard" ? (
@@ -478,7 +515,7 @@ export function DictionaryView() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => removeRule(i)}
+                    onClick={() => removeRule(rule.id)}
                     aria-label={t("dictionary.remove")}
                     className="shrink-0 text-muted hover:text-danger"
                   >

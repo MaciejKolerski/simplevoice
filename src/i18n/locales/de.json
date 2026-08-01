@@ -204,7 +204,8 @@
     "tabWavebar": "Wellenleiste",
     "moveBar": "Aufnahmeleiste verschieben",
     "moveBarDesc": "Ein Kürzel, das die Leiste zwischen fixiert und beweglich umschaltet — nach dem Entsperren an eine neue Stelle ziehen und wieder fixieren.",
-    "overlayMoveBar": "Aufnahmeleiste verschieben"
+    "overlayMoveBar": "Aufnahmeleiste verschieben",
+    "shortcutCaptureTitle": "Kürzel zuweisen"
   },
   "hud": {
     "recording": "Aufnahme",
@@ -217,7 +218,10 @@
     "timeWarning": "Aufnahme stoppt in {{time}}"
   },
   "titlebar": {
-    "toggleSidebar": "Seitenleiste umschalten"
+    "toggleSidebar": "Seitenleiste umschalten",
+    "minimize": "Minimieren",
+    "maximize": "Maximieren",
+    "close": "Schließen"
   },
   "updater": {
     "upToDate": "Du verwendest die neueste Version.",
@@ -259,7 +263,8 @@
     "durationMinutesSeconds": "{{minutes}} Min. {{seconds}} Sek.",
     "durationSeconds": "{{value}} Sek.",
     "emptyTitle": "Noch keine Aktivität",
-    "emptyHint": "Deine Transkriptionen erscheinen hier."
+    "emptyHint": "Deine Transkriptionen erscheinen hier.",
+    "chartLabel": "Transkribierte Zeit pro Zeitraum. Mit Tab oder den Pfeiltasten lässt sich jeder Balken lesen."
   },
   "models": {
     "folder": "Ordner",
@@ -332,7 +337,16 @@
       "whisperLargeV3Turbo": "Neuestes großes Modell, optimiert auf Geschwindigkeit. Nahezu large-v3-Qualität, deutlich schneller.",
       "whisperLargeV2": "Bewährtes früheres Flaggschiff. Hervorragende mehrsprachige Genauigkeit.",
       "whisperLargeV3": "Genauestes mehrsprachiges Whisper. Höchste Qualität, höchster Ressourcenverbrauch."
-    }
+    },
+    "apiKeyReplace": "Neuen Schlüssel eingeben zum Ersetzen",
+    "keyStoredHint": "Im Systemschlüsselbund gespeichert",
+    "keySaved": "API-Schlüssel gespeichert",
+    "keySaveFailed": "API-Schlüssel konnte nicht gespeichert werden",
+    "removeKey": "Schlüssel entfernen",
+    "keyRemoved": "API-Schlüssel entfernt",
+    "keyRemoveFailed": "API-Schlüssel konnte nicht entfernt werden",
+    "removeKeyConfirmTitle": "Gespeicherten API-Schlüssel entfernen?",
+    "removeKeyConfirmBody": "Die Transkription über {{provider}} funktioniert erst wieder, wenn du einen neuen Schlüssel eingibst. Der Schlüssel wird aus dem Systemschlüsselbund gelöscht."
   },
   "transcriptions": {
     "title": "Verlauf",
@@ -354,7 +368,8 @@
     "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
     "historyCleared": "Verlauf gelöscht",
     "clearFailed": "Verlauf konnte nicht gelöscht werden",
-    "deleteFailed": "Transkription konnte nicht gelöscht werden"
+    "deleteFailed": "Transkription konnte nicht gelöscht werden",
+    "toggleDetails": "Aufnahme und Details anzeigen"
   },
   "dictionary": {
     "title": "Wörterbuch",

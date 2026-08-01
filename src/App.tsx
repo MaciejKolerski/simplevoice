@@ -45,6 +45,17 @@ function App() {
   }, [t]);
   const localizeError = (msg: string) => localizeBackendError(tRef.current, msg);
   const [activeView, setActiveView] = useState<ViewId>("usage");
+  // Views stay mounted once visited so their listeners keep the data warm, but
+  // nothing mounts before its first visit: otherwise every view's startup fetch
+  // and polling runs at launch for screens the user may never open.
+  const [mountedViews, setMountedViews] = useState<Set<ViewId>>(
+    () => new Set<ViewId>(["usage"]),
+  );
+  useEffect(() => {
+    setMountedViews((prev) =>
+      prev.has(activeView) ? prev : new Set(prev).add(activeView),
+    );
+  }, [activeView]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return localStorage.getItem("sidebar_collapsed") === "true";
   });
@@ -407,14 +418,10 @@ function App() {
     };
   }, []);
 
-  const getTitleName = (id: ViewId) => {
-    return id.charAt(0).toUpperCase() + id.slice(1);
-  };
-
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-black relative">
         <TitleBar
-          activeViewName={getTitleName(activeView)}
+          activeViewName={t(`nav.${activeView}`)}
           toggleSidebar={toggleSidebar}
         />
         <AlertDialog
@@ -457,38 +464,44 @@ function App() {
 
           <main className="main-content">
             <div className={`view ${activeView === "usage" ? "active" : ""}`}>
-              <UsageView />
+              {mountedViews.has("usage") && <UsageView />}
             </div>
             <div className={`view ${activeView === "models" ? "active" : ""}`}>
-              <ModelsView />
+              {mountedViews.has("models") && <ModelsView />}
             </div>
             <div
               className={`view ${activeView === "transcriptions" ? "active" : ""}`}
             >
-              <TranscriptionsView />
+              {mountedViews.has("transcriptions") && <TranscriptionsView />}
             </div>
             <div className={`view ${activeView === "settings" ? "active" : ""}`}>
-              <SettingsView />
+              {mountedViews.has("settings") && (
+                <SettingsView active={activeView === "settings"} />
+              )}
             </div>
             <div className={`view ${activeView === "dictionary" ? "active" : ""}`}>
-              <DictionaryView />
+              {mountedViews.has("dictionary") && <DictionaryView />}
             </div>
           </main>
         </div>
 
         {/* Global Recording / Transcribing HUD Overlay */}
         {(isRecording || isTranscribing) && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]"
+          >
             <div className="flex flex-col items-center justify-center bg-popover/95 border border-border rounded-2xl p-8 max-w-sm w-full mx-4 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.85)] backdrop-blur-md text-center">
               {isRecording ? (
                 <>
-                  <div className="relative mb-6">
+                  <div className="relative mb-6" aria-hidden="true">
                     {/* Pulsing outer ring */}
-                    <div className="absolute inset-[-12px] rounded-full bg-red-500/10 animate-ping"></div>
-                    <div className="absolute inset-[-6px] rounded-full bg-red-500/20 animate-pulse"></div>
+                    <div className="absolute inset-[-12px] rounded-full bg-danger/10 animate-ping"></div>
+                    <div className="absolute inset-[-6px] rounded-full bg-danger/20 animate-pulse"></div>
                     {/* Recording circle */}
-                    <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/30">
-                      <div className="w-6 h-6 bg-white rounded-[5px] animate-pulse"></div>
+                    <div className="w-16 h-16 rounded-full bg-danger flex items-center justify-center shadow-lg shadow-danger/30">
+                      <div className="w-6 h-6 bg-black rounded-[5px] animate-pulse"></div>
                     </div>
                   </div>
                   <h2 className="text-white text-lg font-medium mb-1 tracking-tight">

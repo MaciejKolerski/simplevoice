@@ -2,8 +2,14 @@ import * as React from "react"
 import { Input as InputPrimitive } from "@base-ui/react/input"
 
 import { cn } from "@/lib/utils"
+import { useSettingRowLabelId } from "@/components/ui/setting-row"
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+  // See Switch: inherit the enclosing SettingRow's title as the accessible name.
+  const rowLabelId = useSettingRowLabelId()
+  const labelledBy =
+    props["aria-labelledby"] ?? (props["aria-label"] ? undefined : rowLabelId)
+
   return (
     <InputPrimitive
       type={type}
@@ -13,6 +19,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         className
       )}
       {...props}
+      {...(labelledBy ? { "aria-labelledby": labelledBy } : {})}
     />
   )
 }

@@ -21,7 +21,11 @@
   --surface-active: #1f1f1f;
 
   --fg: #ededed;
+  /* Secondary text. 5.9:1 on --bg, 5.6:1 on --surface: the darkest value that
+     still clears WCAG AA, so it is the floor for anything readable. */
   --muted: #888888;
+  /* Non-text only (scrollbar thumb, hairlines). At 2.8:1 it fails AA for text;
+     never use it for labels, hints or placeholders. */
   --muted-dark: #555555;
 
   --border: #222222;
@@ -51,7 +55,7 @@
   --primary-foreground: var(--accent-primary-fg);
   --secondary: var(--surface);
   --secondary-foreground: var(--fg);
-  --muted-foreground: var(--muted-dark);
+  --muted-foreground: var(--muted);
   --accent: var(--surface-active);
   --accent-foreground: var(--fg);
   --destructive: var(--danger);
@@ -168,6 +172,15 @@
   .mono {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Horizontal strips (tab bars) that must scroll rather than clip when a
+     translation runs long, without showing a scrollbar inside the control. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 
   /* Custom scrollbar */
@@ -295,7 +308,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--muted-dark);
+  color: var(--muted);
   font-weight: 600;
   margin-bottom: 0.5rem;
 }
@@ -334,8 +347,28 @@
   50% { transform: scaleY(1.05); }
 }
 
+/* Collapse decorative animation and transitions to an instant state change.
+   Spinners are exempt: they are the only signal that a long backend job (model
+   load, download, transcription) is still running. The recording overlay's
+   canvas loop makes the same check in JS (RecordingWindowView). */
 @media (prefers-reduced-motion: reduce) {
-  .wavebar-eq rect { animation: none; }
+  *:not(.animate-spin),
+  *:not(.animate-spin)::before,
+  *:not(.animate-spin)::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  .wavebar-eq rect {
+    animation: none;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 /* Media Player Styling */
@@ -345,11 +378,11 @@ audio {
 }
 
 audio::-webkit-media-controls-panel {
-  background-color: #1a1a1a;
-  border-radius: 12px;
+  background-color: var(--surface-active);
+  border-radius: var(--radius);
 }
 
 audio::-webkit-media-controls-play-button,
 audio::-webkit-media-controls-mute-button {
-  color: #10b981;
+  color: var(--success);
 }

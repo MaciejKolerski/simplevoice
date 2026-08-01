@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, ReactNode } from "react";
+import { useEffect, useId, useState, useRef, ReactNode } from "react";
 import {
   Shield,
   Keyboard,
@@ -27,7 +27,8 @@ import { useOnboarding } from "@/components/onboarding/OnboardingProvider";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { SettingRow } from "@/components/ui/setting-row";
+import { SettingRow, useSettingRowLabelId } from "@/components/ui/setting-row";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -39,6 +40,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+/** Keeps a hand-typed number inside the range the backend accepts. */
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
 
 function formatShortcutDisplay(str: string, noneLabel: string): string {
   if (!str) return noneLabel;
@@ -159,6 +165,43 @@ const WM_DISPLAY_NAMES: Record<string, string> = {
   i3: "i3",
 };
 
+/** The keycap that opens the capture overlay for one shortcut. Its accessible
+ * name is the row title plus the current combination, so the assigned keys are
+ * announced and not just the affordance. */
+function ShortcutButton({
+  value,
+  onStart,
+  tour,
+}: {
+  value: string;
+  onStart: () => void;
+  tour?: string;
+}) {
+  const { t } = useTranslation();
+  const rowLabelId = useSettingRowLabelId();
+  const selfId = useId();
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            id={selfId}
+            data-tour={tour}
+            onClick={onStart}
+            aria-labelledby={rowLabelId ? `${rowLabelId} ${selfId}` : undefined}
+            className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          >
+            {formatShortcutDisplay(value, t("settings.shortcutNone"))}
+          </button>
+        }
+      />
+      <TooltipContent>{t("settings.clickToChangeShortcut")}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** A card whose body is hidden until the user opens it — used to tuck advanced,
  * rarely-touched knobs out of the way so a tab isn't overwhelming at a glance. */
 function CollapsibleCard({
@@ -212,8 +255,8 @@ function SettingsCard({
   );
 }
 
-export function SettingsView() {
-  const { updateConfig, getConfig, config } = useConfig();
+export function SettingsView({ active = true }: { active?: boolean }) {
+  const { updateConfig, updateConfigDebounced, getConfig, config } = useConfig();
   const { t, i18n } = useTranslation();
   const { active: onboardingActive, step: onboardingStep } = useOnboarding();
   const [activeTab, setActiveTab] = useState("general");
@@ -448,10 +491,13 @@ export function SettingsView() {
     };
     checkPermissions();
 
-    // Re-check every 5 seconds so the UI updates after the user grants access
+    // Re-check every 5 seconds so the UI updates after the user grants access,
+    // but only while the view is on screen: the poll crosses into the backend
+    // and on macOS into the system accessibility API.
+    if (!active) return;
     const interval = setInterval(checkPermissions, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     if (!isRecordingShortcut) return;
@@ -681,13 +727,13 @@ export function SettingsView() {
   const handleVadThresholdChange = (value: string) => {
     setVadThreshold(value);
     const n = parseFloat(value);
-    if (!isNaN(n)) updateConfig("vad_threshold", n);
+    if (!isNaN(n)) updateConfigDebounced("vad_threshold", clamp(n, 0, 1));
   };
 
   const handleVadSilenceChange = (value: string) => {
     setVadSilenceMs(value);
     const n = parseInt(value, 10);
-    if (!isNaN(n)) updateConfig("vad_silence_ms", n);
+    if (!isNaN(n)) updateConfigDebounced("vad_silence_ms", clamp(n, 100, 10000));
   };
 
   const handleLiveToggle = (checked: boolean) => {
@@ -735,7 +781,7 @@ export function SettingsView() {
 
   const handleSearchPrefixChange = (value: string) => {
     setSearchPrefix(value);
-    updateConfig("search_command_prefix", value);
+    updateConfigDebounced("search_command_prefix", value);
   };
 
   const handleDecodeAccurateToggle = (checked: boolean) => {
@@ -776,13 +822,13 @@ export function SettingsView() {
   const handlePasteDelayChange = (value: string) => {
     setPasteDelay(value);
     const n = parseInt(value, 10);
-    if (!isNaN(n)) updateConfig("paste_delay_ms", n);
+    if (!isNaN(n)) updateConfigDebounced("paste_delay_ms", clamp(n, 0, 5000));
   };
 
   const handlePasteKeyHoldChange = (value: string) => {
     setPasteKeyHold(value);
     const n = parseInt(value, 10);
-    if (!isNaN(n)) updateConfig("paste_key_hold_ms", n);
+    if (!isNaN(n)) updateConfigDebounced("paste_key_hold_ms", clamp(n, 0, 1000));
   };
 
   const handleOpenccChange = (value: string) => {
@@ -895,7 +941,7 @@ export function SettingsView() {
       >
         <TabsList
           variant="line"
-          className="mb-7 border-b border-border w-full justify-start"
+          className="mb-7 border-b border-border w-full justify-start overflow-x-auto no-scrollbar"
         >
           {tabs.map(({ value, label, Icon }) => (
             <TabsTrigger key={value} value={value} className="flex-none px-3.5 gap-1.5">
@@ -1116,40 +1162,31 @@ export function SettingsView() {
               title={t("settings.startStopRecording")}
               description={t("settings.startStopRecordingDesc")}
             >
-              <button
-                data-tour="record-shortcut"
-                onClick={() => startRecordingShortcut("record")}
-                className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                title={t("settings.clickToChangeShortcut")}
-              >
-                {formatShortcutDisplay(shortcutText, t("settings.shortcutNone"))}
-              </button>
+              <ShortcutButton
+                tour="record-shortcut"
+                value={shortcutText}
+                onStart={() => startRecordingShortcut("record")}
+              />
             </SettingRow>
 
             <SettingRow
               title={t("settings.copyLastTranscription")}
               description={t("settings.copyLastTranscriptionDesc")}
             >
-              <button
-                onClick={() => startRecordingShortcut("copy")}
-                className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                title={t("settings.clickToChangeShortcut")}
-              >
-                {formatShortcutDisplay(copyShortcutText, t("settings.shortcutNone"))}
-              </button>
+              <ShortcutButton
+                value={copyShortcutText}
+                onStart={() => startRecordingShortcut("copy")}
+              />
             </SettingRow>
 
             <SettingRow
               title={t("settings.moveBar")}
               description={t("settings.moveBarDesc")}
             >
-              <button
-                onClick={() => startRecordingShortcut("movebar")}
-                className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                title={t("settings.clickToChangeShortcut")}
-              >
-                {formatShortcutDisplay(moveBarShortcutText, t("settings.shortcutNone"))}
-              </button>
+              <ShortcutButton
+                value={moveBarShortcutText}
+                onStart={() => startRecordingShortcut("movebar")}
+              />
             </SettingRow>
 
             <SettingRow
@@ -1254,7 +1291,10 @@ export function SettingsView() {
                 <SettingRow title={t("settings.vadThreshold")} description={t("settings.vadThresholdDesc")}>
                   <Input
                     type="number"
+                    min="0"
+                    max="1"
                     step="0.001"
+                    inputMode="decimal"
                     value={vadThreshold}
                     onChange={(e) => handleVadThresholdChange(e.target.value)}
                     className="w-24"
@@ -1263,7 +1303,10 @@ export function SettingsView() {
                 <SettingRow title={t("settings.vadSilence")} description={t("settings.vadSilenceDesc")}>
                   <Input
                     type="number"
+                    min="100"
+                    max="10000"
                     step="100"
+                    inputMode="numeric"
                     value={vadSilenceMs}
                     onChange={(e) => handleVadSilenceChange(e.target.value)}
                     className="w-24"
@@ -1432,7 +1475,10 @@ export function SettingsView() {
             <SettingRow title={t("settings.pasteDelay")} description={t("settings.pasteDelayDesc")}>
               <Input
                 type="number"
+                min="0"
+                max="5000"
                 step="50"
+                inputMode="numeric"
                 value={pasteDelay}
                 onChange={(e) => handlePasteDelayChange(e.target.value)}
                 className="w-24"
@@ -1441,7 +1487,10 @@ export function SettingsView() {
             <SettingRow title={t("settings.pasteKeyHold")} description={t("settings.pasteKeyHoldDesc")}>
               <Input
                 type="number"
+                min="0"
+                max="1000"
                 step="10"
+                inputMode="numeric"
                 value={pasteKeyHold}
                 onChange={(e) => handlePasteKeyHoldChange(e.target.value)}
                 className="w-24"
@@ -1462,7 +1511,10 @@ export function SettingsView() {
               <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
             </SettingRow>
 
-            <div className={liveEnabled ? "" : "opacity-50 select-none"} inert={!liveEnabled || undefined}>
+            {/* `inert` plus the controls' own disabled styling carries the off
+                state. A wrapper opacity would compound with `disabled:opacity-50`
+                and drop the explanatory copy to ~2:1 contrast. */}
+            <div inert={!liveEnabled || undefined}>
               <SettingRow title={t("settings.liveAutopaste")} description={t("settings.liveAutopasteDesc")}>
                 <Switch checked={liveAutopaste} disabled={!liveEnabled} onCheckedChange={handleLiveAutopasteToggle} />
               </SettingRow>
@@ -1511,6 +1563,10 @@ export function SettingsView() {
       {isRecordingShortcut && (
         <div
           ref={overlayRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shortcut-capture-title"
+          aria-describedby="shortcut-capture-status"
           onClick={(e) => {
             if (e.target === overlayRef.current && !isCompleted) {
               setIsRecordingShortcut(false);
@@ -1519,7 +1575,11 @@ export function SettingsView() {
           className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl transition-all duration-300 animate-[fadeIn_0.2s_ease-out]"
         >
           <div className="flex flex-col items-center justify-center text-center max-w-sm w-full mx-4">
-            <div className="text-muted-dark font-mono text-[10px] uppercase tracking-[0.2em] mb-5 select-none">
+            <h2 className="sr-only">{t("settings.shortcutCaptureTitle")}</h2>
+            <div
+              id="shortcut-capture-title"
+              className="text-muted font-mono text-[10px] uppercase tracking-[0.2em] mb-5 select-none"
+            >
               {shortcutTarget === "copy"
                 ? t("settings.overlayCopyLastTranscription")
                 : shortcutTarget === "movebar"
@@ -1528,14 +1588,17 @@ export function SettingsView() {
             </div>
             <div className="flex items-center justify-center gap-2 h-16 w-full mb-6">
               {activeKeys.length === 0 ? (
-                <div className="text-white/20 font-mono text-[11px] tracking-[0.2em] animate-pulse select-none">
+                <div className="text-muted font-mono text-[11px] tracking-[0.2em] animate-pulse select-none">
                   {errorMessage ? t("settings.invalidCombination") : t("settings.pressKeys")}
                 </div>
               ) : (
                 activeKeys.map((key, index) => (
                   <span key={key} className="inline-flex items-center">
                     {index > 0 && (
-                      <span className="text-white/25 font-mono text-xs px-1 select-none animate-in fade-in duration-200">
+                      <span
+                        aria-hidden="true"
+                        className="text-muted font-mono text-xs px-1 select-none animate-in fade-in duration-200"
+                      >
                         +
                       </span>
                     )}
@@ -1553,17 +1616,22 @@ export function SettingsView() {
               )}
             </div>
 
-            <div className="h-10 flex items-center justify-center">
+            <div
+              id="shortcut-capture-status"
+              role="status"
+              aria-live="polite"
+              className="h-10 flex items-center justify-center"
+            >
               {isCompleted ? (
                 <span className="text-success font-mono text-[10px] uppercase tracking-[0.25em] animate-in zoom-in-95 duration-200">
                   {t("settings.shortcutSaved")}
                 </span>
               ) : errorMessage ? (
-                <span className="text-danger/90 font-mono text-[10px] leading-relaxed max-w-[280px] animate-in fade-in duration-200">
+                <span className="text-danger font-mono text-[10px] leading-relaxed max-w-[280px] animate-in fade-in duration-200">
                   {errorMessage}
                 </span>
               ) : (
-                <span className="text-white/30 font-mono text-[10px] uppercase tracking-[0.2em] select-none">
+                <span className="text-muted font-mono text-[10px] uppercase tracking-[0.2em] select-none">
                   {t("settings.pressKeysToAssign")}
                 </span>
               )}

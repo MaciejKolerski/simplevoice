@@ -1,6 +1,17 @@
-import { ReactNode } from "react";
+import { createContext, useContext, useId, ReactNode } from "react";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+
+/**
+ * Id of the row's title element. Form controls dropped into a SettingRow read
+ * it and point `aria-labelledby` at it, so a row's visible title is also its
+ * control's accessible name without every call site repeating an aria-label.
+ */
+const SettingRowLabelContext = createContext<string | undefined>(undefined);
+
+export function useSettingRowLabelId() {
+  return useContext(SettingRowLabelContext);
+}
 
 type SettingRowProps = {
   title: ReactNode;
@@ -25,15 +36,21 @@ export function SettingRow({
   className,
   ...rest
 }: SettingRowProps) {
+  const labelId = useId();
+
   if (layout === "column") {
     return (
       <div
         className={cn("flex flex-col p-5 border-b border-border last:border-b-0", className)}
         {...rest}
       >
-        <Label className={description ? "mb-1" : "mb-3"}>{title}</Label>
+        <Label id={labelId} className={description ? "mb-1" : "mb-3"}>
+          {title}
+        </Label>
         {description && <p className="text-muted text-[13px] mb-3">{description}</p>}
-        {children}
+        <SettingRowLabelContext.Provider value={labelId}>
+          {children}
+        </SettingRowLabelContext.Provider>
       </div>
     );
   }
@@ -44,12 +61,16 @@ export function SettingRow({
       {...rest}
     >
       <div className="flex-1 min-w-0">
-        <div className="text-fg font-medium mb-1">{title}</div>
+        <div id={labelId} className="text-foreground font-medium mb-1">
+          {title}
+        </div>
         {description && (
           <div className="text-muted text-[13px] leading-snug">{description}</div>
         )}
       </div>
-      {children}
+      <SettingRowLabelContext.Provider value={labelId}>
+        {children}
+      </SettingRowLabelContext.Provider>
     </div>
   );
 }
