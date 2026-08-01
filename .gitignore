@@ -26,3 +26,8 @@ dist-ssr
 
 # README screenshot intermediates
 assets/readme/_*
+
+# Local Apple signing credentials (.p12 base64, its password, app-specific password)
+.env
+.env.local
+*.p12

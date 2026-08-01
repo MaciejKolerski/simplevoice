@@ -81,6 +81,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple code signing + notarization. Unsigned macOS builds carry only
+          # the linker's ad-hoc signature, which Gatekeeper reports to users as
+          # "Simplevoice is damaged and can't be opened". Given APPLE_CERTIFICATE,
+          # tauri-action provisions a throwaway keychain, signs with the Hardened
+          # Runtime plus Entitlements.plist, notarizes and staples the ticket.
+          # Ignored on the Linux and Windows runners.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           # Reuse scripts/tauri.js so Windows gets its static-CRT / target-dir
           # fixes (no-op passthrough on macOS and Linux).
