@@ -2,7 +2,7 @@
 //!
 //! SV_EVAL_MANIFEST=/path/to/manifest.json \
 //! SIMPLEVOICE_MODEL=/path/to/model \
-//! cargo run --bin eval
+//! cargo run --example eval
 //!
 //! Optional: SV_EVAL_GPU=1, SV_EVAL_OUT=/path/to/results.json
 
