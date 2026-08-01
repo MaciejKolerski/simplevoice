@@ -6560,6 +6560,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols-misc",
  "whisper-rs",
+ "zbus 5.15.0",
 ]
 
 [[package]]

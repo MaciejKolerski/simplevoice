@@ -22,7 +22,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "2", features = [ "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
@@ -90,6 +90,10 @@ arboard = { version = "3", features = ["wayland-data-control"] }
 # Native global hotkeys on Wayland by reading /dev/input directly (no compositor
 # config edits, no external tools); works on niri and any compositor.
 evdev = "0.13"
+# Session-bus client for the MPRIS2 "pause system audio" feature. Already in the
+# tree via tauri-plugin-opener, so this adds no build cost — declaring it makes
+# the dependency explicit and drops the need for external dbus-send/playerctl.
+zbus = "5.15.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 whisper-rs = { version = "0.16.0", default-features = false }

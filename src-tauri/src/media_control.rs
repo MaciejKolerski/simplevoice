@@ -18,8 +18,14 @@
 //!                allows resume to send Play.
 //! - **Windows** — WinRT (PowerShell) to detect playback state + Win32 `keybd_event` FFI
 //!                 to send `VK_MEDIA_PLAY_PAUSE` (0xB3)
-//! - **Linux**  — MPRIS2 over D-Bus via `dbus-send` (present on every major desktop),
-//!                with `playerctl` as fallback
+//! - **Linux**  — MPRIS2 over the session D-Bus, spoken natively with `zbus`
+//!                (already in the tree via Tauri). Deliberately no external
+//!                binaries: `dbus-send` and `playerctl` are separate packages
+//!                that are not installed everywhere, their text output is not a
+//!                stable API, and shelling out costs 1 + 2N process spawns on
+//!                the latency-sensitive recording-start path. Only players
+//!                reporting `Playing` are paused, and resume only touches the
+//!                ones still reporting `Paused`.
 //!
 //! `pause_system_media()` returns a list of identifiers for what it paused.
 //! Pass that list to `resume_system_media()` so we only resume what *we* paused.
@@ -411,162 +417,150 @@ fn windows_send_media_play_pause() {
     }
 }
 
+/// Bus-name prefix every MPRIS2 media player registers under, e.g.
+/// `org.mpris.MediaPlayer2.spotify` or `…firefox.instance_1_96`.
+#[cfg(target_os = "linux")]
+const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
+
+#[cfg(target_os = "linux")]
+const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
+
+#[cfg(target_os = "linux")]
+const MPRIS_PLAYER_IFACE: &str = "org.mpris.MediaPlayer2.Player";
+
+/// Upper bound on one scan-and-pause pass. Session-bus round trips are
+/// sub-millisecond (a full pass measured ~1.5 ms), so this only stops a bus
+/// under load from delaying the start of a recording.
+#[cfg(target_os = "linux")]
+const PAUSE_BUDGET_MS: u64 = 400;
+
 #[cfg(target_os = "linux")]
 fn platform_pause() -> Vec<String> {
-    // Primary: MPRIS2 via dbus-send
-    // dbus-send ships with every major desktop environment (GNOME, KDE, XFCE,
-    // LXQt, MATE, Cinnamon …) and is available on Debian, Ubuntu, Fedora,
-    // Arch, openSUSE, Alpine, Void, Gentoo, etc.
-    if let Some(paused) = linux_mpris_pause() {
-        if !paused.is_empty() {
-            return paused;
+    let conn = match zbus::blocking::Connection::session() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("[media_control] no session bus, nothing to pause: {e}");
+            return Vec::new();
+        }
+    };
+    let players = match mpris_players(&conn) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("[media_control] could not list MPRIS players: {e}");
+            return Vec::new();
+        }
+    };
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(PAUSE_BUDGET_MS);
+    let mut paused = Vec::new();
+    for player in players {
+        if std::time::Instant::now() >= deadline {
+            tracing::warn!("[media_control] pause budget exhausted, remaining players skipped");
+            break;
+        }
+        match linux_pause_player(&conn, &player) {
+            Ok(true) => paused.push(player),
+            Ok(false) => {}
+            Err(e) => tracing::warn!("[media_control] could not pause {player}: {e}"),
         }
     }
-
-    // Fallback: playerctl
-    // playerctl is optional but widely packaged. It works as a high-level
-    // wrapper around MPRIS2 and covers edge cases dbus-send misses.
-    linux_playerctl_pause()
+    paused
 }
 
 #[cfg(target_os = "linux")]
 fn platform_resume(paused: &[String]) {
+    let conn = match zbus::blocking::Connection::session() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("[media_control] no session bus, cannot resume: {e}");
+            return;
+        }
+    };
+    // A player that quit during the recording no longer owns its bus name;
+    // addressing it would auto-launch it through D-Bus activation.
+    let alive = mpris_players(&conn).unwrap_or_default();
+
     for player in paused {
-        if player.starts_with("org.mpris.MediaPlayer2.") {
-            linux_mpris_play(player);
-        } else if player == "__playerctl__" {
-            let _ = std::process::Command::new("playerctl").arg("play").status();
+        if !alive.iter().any(|n| n == player) {
+            tracing::warn!("[media_control] not resuming {player}: player is gone");
+            continue;
+        }
+        if let Err(e) = linux_resume_player(&conn, player) {
+            tracing::warn!("[media_control] could not resume {player}: {e}");
         }
     }
 }
 
-/// Lists MPRIS2 players via `dbus-send`, checks each for `PlaybackStatus == Playing`,
-/// pauses those that are, and returns their D-Bus service names.
+/// Bus names of every MPRIS2 player currently registered on the session bus.
 #[cfg(target_os = "linux")]
-fn linux_mpris_pause() -> Option<Vec<String>> {
-    // List all names on the session bus
-    let list_out = std::process::Command::new("dbus-send")
-        .args([
-            "--session",
-            "--dest=org.freedesktop.DBus",
-            "--type=method_call",
-            "--print-reply",
-            "/org/freedesktop/DBus",
-            "org.freedesktop.DBus.ListNames",
-        ])
-        .output()
-        .ok()?;
-
-    if !list_out.status.success() {
-        return None;
-    }
-
-    let names_str = String::from_utf8_lossy(&list_out.stdout);
-
-    // Collect MPRIS player service names
-    let players: Vec<String> = names_str
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim().trim_matches('"');
-            if trimmed.starts_with("org.mpris.MediaPlayer2.") {
-                Some(trimmed.to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let mut paused = Vec::new();
-
-    for player in &players {
-        // Query PlaybackStatus property
-        let status_out = std::process::Command::new("dbus-send")
-            .args([
-                "--session",
-                &format!("--dest={}", player),
-                "--type=method_call",
-                "--print-reply",
-                "/org/mpris/MediaPlayer2",
-                "org.freedesktop.DBus.Properties.Get",
-                "string:org.mpris.MediaPlayer2.Player",
-                "string:PlaybackStatus",
-            ])
-            .output();
-
-        let is_playing = match status_out {
-            Ok(o) => String::from_utf8_lossy(&o.stdout).contains("\"Playing\""),
-            Err(_) => false,
-        };
-
-        if is_playing {
-            let pause_ok = std::process::Command::new("dbus-send")
-                .args([
-                    "--session",
-                    &format!("--dest={}", player),
-                    "--type=method_call",
-                    "/org/mpris/MediaPlayer2",
-                    "org.mpris.MediaPlayer2.Player.Pause",
-                ])
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-
-            if pause_ok {
-                paused.push(player.clone());
-            }
-        }
-    }
-
-    Some(paused)
+fn mpris_players(conn: &zbus::blocking::Connection) -> zbus::Result<Vec<String>> {
+    Ok(zbus::blocking::fdo::DBusProxy::new(conn)?
+        .list_names()?
+        .into_iter()
+        .map(|n| n.as_str().to_owned())
+        .filter(|n| n.starts_with(MPRIS_PREFIX))
+        .collect())
 }
 
-/// Resumes a specific MPRIS2 player using `dbus-send`.
 #[cfg(target_os = "linux")]
-fn linux_mpris_play(player: &str) {
-    let _ = std::process::Command::new("dbus-send")
-        .args([
-            "--session",
-            &format!("--dest={}", player),
-            "--type=method_call",
-            "/org/mpris/MediaPlayer2",
-            "org.mpris.MediaPlayer2.Player.Play",
-        ])
-        .status();
+fn mpris_properties<'a>(
+    conn: &zbus::blocking::Connection,
+    player: &str,
+) -> zbus::Result<zbus::blocking::fdo::PropertiesProxy<'a>> {
+    zbus::blocking::fdo::PropertiesProxy::builder(conn)
+        .destination(player.to_owned())?
+        .path(MPRIS_PATH)?
+        .build()
 }
 
-/// Fallback: use `playerctl` to pause if it is installed.
+/// `Playing`, `Paused` or `Stopped` per the MPRIS2 spec.
 #[cfg(target_os = "linux")]
-fn linux_playerctl_pause() -> Vec<String> {
-    // Check if playerctl is available
-    if std::process::Command::new("playerctl")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        return Vec::new();
+fn mpris_playback_status(props: &zbus::blocking::fdo::PropertiesProxy<'_>) -> zbus::Result<String> {
+    let iface = zbus::names::InterfaceName::from_static_str(MPRIS_PLAYER_IFACE)?;
+    let value = props.get(iface, "PlaybackStatus")?;
+    Ok(String::try_from(value).unwrap_or_default())
+}
+
+/// Pauses `player` if — and only if — it currently reports `Playing`.
+/// Returns whether a pause command was sent.
+#[cfg(target_os = "linux")]
+fn linux_pause_player(conn: &zbus::blocking::Connection, player: &str) -> zbus::Result<bool> {
+    let props = mpris_properties(conn, player)?;
+    if mpris_playback_status(&props)? != "Playing" {
+        return Ok(false);
     }
 
-    // Check if anything is currently playing
-    let status = std::process::Command::new("playerctl")
-        .arg("status")
-        .output();
+    // Live streams and web radios advertise CanPause=false and may treat Pause
+    // as a no-op, but still honour PlayPause. Assume pausable when the property
+    // is missing: that is the common case and Pause is the gentler command.
+    let iface = zbus::names::InterfaceName::from_static_str(MPRIS_PLAYER_IFACE)?;
+    let can_pause = props
+        .get(iface, "CanPause")
+        .ok()
+        .and_then(|v| bool::try_from(v).ok())
+        .unwrap_or(true);
 
-    match status {
-        Ok(o) if String::from_utf8_lossy(&o.stdout).trim() == "Playing" => {
-            let ok = std::process::Command::new("playerctl")
-                .arg("pause")
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
+    let proxy = zbus::blocking::Proxy::new(conn, player, MPRIS_PATH, MPRIS_PLAYER_IFACE)?;
+    proxy.call::<_, _, ()>(if can_pause { "Pause" } else { "PlayPause" }, &())?;
+    Ok(true)
+}
 
-            if ok {
-                vec!["__playerctl__".to_string()]
-            } else {
-                Vec::new()
-            }
-        }
-        _ => Vec::new(),
+/// Sends `Play` to a player we paused, unless it is no longer paused.
+#[cfg(target_os = "linux")]
+fn linux_resume_player(conn: &zbus::blocking::Connection, player: &str) -> zbus::Result<()> {
+    let props = mpris_properties(conn, player)?;
+    // Only `Paused` may be resumed: if the user pressed play themselves playback
+    // is already where they want it, and on `Stopped` a Play would restart the
+    // track from the beginning. A player that ignored our Pause never reaches
+    // this branch either, so we never start audio that was not playing before.
+    let status = mpris_playback_status(&props)?;
+    if status != "Paused" {
+        tracing::warn!("[media_control] not resuming {player}: status is {status}, not Paused");
+        return Ok(());
     }
+    zbus::blocking::Proxy::new(conn, player, MPRIS_PATH, MPRIS_PLAYER_IFACE)?
+        .call::<_, _, ()>("Play", &())?;
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]

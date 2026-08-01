@@ -162,9 +162,16 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
     if c.engine == "local" {
         let stt_state = stt.state.lock().unwrap();
         // An idle-unloaded model (C6) keeps `active_model_path` and is reloaded
-        // transparently on the next transcription, so only block when no model is
-        // selected at all — not merely when the engine is currently unloaded.
-        if stt_state.engine.is_none() && stt_state.active_model_path.is_none() {
+        // transparently, so only block when no model is selected at all — not
+        // merely when the engine is currently unloaded. A load that is still in
+        // flight (the seconds after launch, while the frontend restores the last
+        // model) also counts as selected: it will be ready long before the
+        // recording is stopped, and failing here is what produced the spurious
+        // "no model loaded" on the first shortcut press after a restart.
+        if stt_state.engine.is_none()
+            && stt_state.active_model_path.is_none()
+            && stt_state.loading_model_path.is_none()
+        {
             return Err("errors.no_model_loaded".to_string());
         }
     } else if c.engine == "openai-cloud" {
@@ -702,8 +709,22 @@ fn begin_live_session(app: &tauri::AppHandle) {
         return;
     }
     let stt = app.state::<SttController>();
-    let engine = { stt.state.lock().unwrap().engine.clone() };
-    let Some(engine) = engine else { return };
+    // The engine may be idle-unloaded (C6) right now. Handing the session a lazy
+    // handle installs the audio tap immediately — losing no speech — and the
+    // first re-decode reloads the model. Bailing out here instead (as this used
+    // to) left live mode with no session at all: the recording produced no text
+    // and the frontend, which skips the batch path in live mode, waited forever.
+    let engine: std::sync::Arc<dyn crate::stt::traits::AsrEngine> = {
+        let selected = {
+            let s = stt.state.lock().unwrap();
+            (s.engine.clone(), s.active_model_path.is_some())
+        };
+        match selected {
+            (Some(engine), _) => engine,
+            (None, true) => std::sync::Arc::new(crate::stt::LazyEngine::new(stt.inner().clone())),
+            (None, false) => return,
+        }
+    };
 
     let audio = app.state::<AudioController>();
     let (threshold, silence_ms) = {
@@ -1302,6 +1323,37 @@ fn warm_up_engine(app: &tauri::AppHandle) {
     }
 }
 
+/// Brings an idle-unloaded model (C6) back while the user is still speaking.
+///
+/// The reload used to happen inside the transcription, i.e. *after* the recording
+/// stopped, so every dictation that followed an idle period stalled for the whole
+/// model load before a single word was decoded. Doing it here overlaps the load
+/// with the recording; by the time the shortcut is pressed again the engine is
+/// usually loaded and warm. No-op when the engine is already loaded, when no model
+/// is selected, or for cloud transcription.
+fn preload_engine_for_recording(app: &tauri::AppHandle) {
+    {
+        let config = app.state::<AppConfig>();
+        if config.active.lock().unwrap().engine != "local" {
+            return;
+        }
+        let stt = app.state::<SttController>();
+        let s = stt.state.lock().unwrap();
+        if s.engine.is_some() || s.active_model_path.is_none() {
+            return;
+        }
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let stt = app.state::<SttController>();
+        match stt.ensure_loaded() {
+            Ok(Some(_)) => warm_up_engine(&app),
+            Ok(None) => {}
+            Err(e) => tracing::error!("failed to reload the idle-unloaded model: {}", e),
+        }
+    });
+}
+
 /// Applies the configurable VAD threshold / silence duration from config.json to the
 /// audio state at recording start (B4). Missing keys keep the current defaults; values
 /// are clamped to sane ranges.
@@ -1333,6 +1385,7 @@ fn start_recording(
     is_recording_allowed(&config, &stt)?;
     let pause_audio = is_pause_audio_enabled(&app_handle);
     controller.start_recording(app_handle.clone(), pause_audio)?;
+    preload_engine_for_recording(&app_handle);
     play_backend_sound(&app_handle, "start");
     let _ = rebuild_tray_menu(&app_handle);
     update_recording_window_visibility(&app_handle);
@@ -1734,6 +1787,7 @@ fn start_recording_action(app: &tauri::AppHandle) {
             let pause_audio = is_pause_audio_enabled(app);
             match controller.start_recording(app.clone(), pause_audio) {
                 Ok(()) => {
+                    preload_engine_for_recording(app);
                     play_backend_sound(app, "start");
                     let _ = app.emit("recording-started", ());
                     update_recording_window_visibility(app);
@@ -2210,6 +2264,13 @@ async fn load_model(
     stt_controller: tauri::State<'_, SttController>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    let use_gpu = app_handle
+        .state::<AppConfig>()
+        .active
+        .lock()
+        .unwrap()
+        .gpu_enabled;
+
     {
         let mut s = stt_controller.state.lock().unwrap();
         // Guard: block duplicate concurrent loads of the same model (React StrictMode double mount)
@@ -2227,8 +2288,6 @@ async fn load_model(
     let controller = stt_controller.inner().clone();
     let model_path_clone = model_path.clone();
 
-    let app_config = app_handle.state::<AppConfig>();
-    let use_gpu = app_config.active.lock().unwrap().gpu_enabled;
     let res = tauri::async_runtime::spawn_blocking(move || {
         if use_gpu {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -2250,7 +2309,11 @@ async fn load_model(
     let _ = app_handle.emit("model-status-changed", ());
 
     match res {
-        Ok(Ok(())) => Ok(()),
+        Ok(Ok(())) => {
+            // Persist the choice for the next launch (see remember_active_model).
+            remember_active_model(&app_handle, Some(&model_path));
+            Ok(())
+        }
         Ok(Err(e)) => Err(e),
         Err(e) => Err(e.to_string()),
     }
@@ -2303,6 +2366,8 @@ fn delete_model(
         if s.active_model_path.as_deref() == Some(path.as_str()) {
             s.engine = None;
             s.active_model_path = None;
+            drop(s);
+            remember_active_model(&app_handle, None);
         }
     }
 
@@ -2802,6 +2867,56 @@ fn write_config_atomic<C: AsRef<[u8]>>(
     Ok(())
 }
 
+/// config.json keys the backend owns: a frontend save (which posts its whole
+/// cached blob) must never overwrite them, only the dedicated commands may.
+const BACKEND_OWNED_CONFIG_KEYS: &[&str] = &["gpu_enabled", "active_model_path"];
+
+/// Records which local model is selected, in config.json, so the *backend* knows
+/// it at the next launch. The choice used to live only in the webview's
+/// localStorage, which means every moment the webview had not (yet) called
+/// `load_model` — the seconds right after launch, or a run where the webview
+/// crashed or was never shown — left the backend believing no model was selected,
+/// and the record shortcut failed with "errors.no_model_loaded".
+/// `None` clears the entry (the model was deleted).
+fn remember_active_model(app_handle: &tauri::AppHandle, model_path: Option<&str>) {
+    let Ok(dir) = app_handle.path().app_local_data_dir() else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    let config_path = dir.join("config.json");
+    let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut json = std::fs::read_to_string(&config_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .filter(|v| v.is_object())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    if let Some(obj) = json.as_object_mut() {
+        match model_path {
+            Some(p) => obj.insert("active_model_path".to_string(), serde_json::json!(p)),
+            None => obj.remove("active_model_path"),
+        };
+    }
+
+    if let Ok(serialized) = serde_json::to_string_pretty(&json) {
+        let _ = write_config_atomic(&config_path, serialized);
+    }
+}
+
+/// The remembered model path, if the file is still there. A model deleted outside
+/// the app would otherwise be "selected" forever and fail on every reload.
+fn remembered_active_model(app_handle: &tauri::AppHandle) -> Option<String> {
+    let dir = app_handle.path().app_local_data_dir().ok()?;
+    let content = std::fs::read_to_string(dir.join("config.json")).ok()?;
+    let path = serde_json::from_str::<serde_json::Value>(&content)
+        .ok()?
+        .get("active_model_path")?
+        .as_str()?
+        .to_string();
+    std::path::Path::new(&path).exists().then_some(path)
+}
+
 #[tauri::command]
 fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), String> {
     let app_local_data = app_handle
@@ -2817,8 +2932,10 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
     // back, so a plain overwrite silently drops keys it never loaded. Most
     // importantly `onboarding_completed` is written out-of-band: a stale settings
     // write would erase it and replay the tour on every launch. Merge the incoming
-    // config over what is already on disk so unknown keys survive. `gpu_enabled` is
-    // owned by the backend (set_gpu_enabled), so the on-disk value still wins for it.
+    // config over what is already on disk so unknown keys survive. `gpu_enabled`
+    // (set_gpu_enabled) and `active_model_path` (load_model) are owned by the
+    // backend, so for those the on-disk value still wins — a settings write from a
+    // snapshot taken before the user switched models must not resurrect the old one.
     let to_write = match serde_json::from_str::<serde_json::Value>(&config) {
         Ok(incoming) => {
             let mut merged = std::fs::read_to_string(&config_path)
@@ -2826,19 +2943,24 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
                 .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
                 .filter(|v| v.is_object())
                 .unwrap_or_else(|| serde_json::json!({}));
-            let disk_gpu = merged.get("gpu_enabled").cloned();
+            let backend_owned: Vec<(&str, Option<serde_json::Value>)> = BACKEND_OWNED_CONFIG_KEYS
+                .iter()
+                .map(|k| (*k, merged.get(*k).cloned()))
+                .collect();
             if let (Some(merged_obj), Some(incoming_obj)) =
                 (merged.as_object_mut(), incoming.as_object())
             {
                 for (k, v) in incoming_obj {
                     merged_obj.insert(k.clone(), v.clone());
                 }
-                match disk_gpu {
-                    Some(gpu) => {
-                        merged_obj.insert("gpu_enabled".to_string(), gpu);
-                    }
-                    None => {
-                        merged_obj.remove("gpu_enabled");
+                for (key, disk_value) in backend_owned {
+                    match disk_value {
+                        Some(v) => {
+                            merged_obj.insert(key.to_string(), v);
+                        }
+                        None => {
+                            merged_obj.remove(key);
+                        }
                     }
                 }
             }
@@ -3955,6 +4077,21 @@ pub fn run() {
                 }
             }
 
+            // Restore the selected local model (path only — the engine itself is
+            // loaded on demand, so a cloud user never pays for it). Recording is
+            // therefore allowed from the first second of the run, without waiting
+            // for the webview to call `load_model`.
+            if let Some(path) = remembered_active_model(&app_handle) {
+                let use_gpu = app_handle
+                    .try_state::<AppConfig>()
+                    .map(|c| c.active.lock().unwrap().gpu_enabled)
+                    .unwrap_or(false);
+                app_handle
+                    .state::<SttController>()
+                    .set_selected_model(&path, use_gpu);
+                tracing::info!("restored the selected ASR model from config: {}", path);
+            }
+
             // Initialize SQLite connection pool once (fixes connection leak)
             let pool = tauri::async_runtime::block_on(async {
                 let app_dir = app_handle
@@ -4082,6 +4219,27 @@ mod tests {
             is_recording_allowed(&local_config(), &stt),
             Err("errors.no_model_loaded".to_string())
         );
+    }
+
+    #[test]
+    fn a_model_still_loading_allows_recording() {
+        // The seconds right after launch: the frontend's `load_model` is in
+        // flight, so nothing is loaded yet. Pressing the record shortcut then used
+        // to fail with "no model loaded"; the model is ready long before the
+        // recording is stopped, so it must be allowed to start.
+        let stt = SttController::new();
+        stt.state.lock().unwrap().loading_model_path = Some("/models/whisper.bin".to_string());
+        assert!(is_recording_allowed(&local_config(), &stt).is_ok());
+    }
+
+    #[test]
+    fn a_model_restored_from_config_allows_recording() {
+        // A run whose webview never called `load_model` (crashed / not shown yet):
+        // the model restored from config.json is enough to start recording, the
+        // engine is loaded on demand.
+        let stt = SttController::new();
+        stt.set_selected_model("/models/whisper.bin", true);
+        assert!(is_recording_allowed(&local_config(), &stt).is_ok());
     }
 
     #[test]
