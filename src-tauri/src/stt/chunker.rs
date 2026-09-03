@@ -17,8 +17,18 @@ const SILENCE_WIN_MS: usize = 300;
 const SILENCE_HOPS_NEEDED: usize = SILENCE_WIN_MS / HOP_MS;
 
 pub fn split_at_silences(samples: &[f32]) -> Vec<Range<usize>> {
-    let max = CHUNK_MAX_SECS * SAMPLE_RATE;
-    let min = CHUNK_MIN_SECS * SAMPLE_RATE;
+    split_at_silences_with_limit(samples, CHUNK_MIN_SECS, CHUNK_MAX_SECS)
+}
+
+pub fn split_at_silences_with_limit(
+    samples: &[f32],
+    min_seconds: usize,
+    max_seconds: usize,
+) -> Vec<Range<usize>> {
+    let max_seconds = max_seconds.max(1);
+    let min_seconds = min_seconds.clamp(1, max_seconds);
+    let max = max_seconds * SAMPLE_RATE;
+    let min = min_seconds * SAMPLE_RATE;
     let mut ranges = Vec::new();
     let mut start = 0;
 
@@ -102,7 +112,10 @@ mod tests {
     fn assert_invariants(ranges: &[Range<usize>], input_len: usize) {
         let mut prev_end = 0;
         for r in ranges {
-            assert!(r.start >= prev_end, "ranges must be ordered and non-overlapping");
+            assert!(
+                r.start >= prev_end,
+                "ranges must be ordered and non-overlapping"
+            );
             assert!(r.end <= input_len);
             assert!(
                 r.end - r.start <= CHUNK_MAX_SECS * SAMPLE_RATE,
@@ -138,7 +151,10 @@ mod tests {
         assert_invariants(&ranges, input.len());
         assert!(ranges[0].end >= 60 * SAMPLE_RATE, "cut before the pause");
         assert!(ranges[0].end <= 62 * SAMPLE_RATE, "cut after the pause");
-        assert_eq!(ranges[1].start, ranges[0].end, "no samples lost between chunks");
+        assert_eq!(
+            ranges[1].start, ranges[0].end,
+            "no samples lost between chunks"
+        );
         assert_eq!(ranges[0].start, 0);
         assert_eq!(ranges[1].end, input.len());
     }
@@ -169,7 +185,10 @@ mod tests {
         assert_eq!(ranges.len(), 1);
         assert_invariants(&ranges, input.len());
         assert_eq!(ranges[0].start, 0);
-        assert!(ranges[0].end >= 50 * SAMPLE_RATE, "speech must not be cut off");
+        assert!(
+            ranges[0].end >= 50 * SAMPLE_RATE,
+            "speech must not be cut off"
+        );
     }
 
     #[test]
@@ -185,6 +204,18 @@ mod tests {
         assert_invariants(&ranges, input.len());
         assert_eq!(ranges[0].start, 0);
         assert_eq!(ranges[1].end, input.len());
+    }
+
+    #[test]
+    fn provider_limit_caps_chunks_without_changing_the_default_window() {
+        let input = tone(61);
+        let ranges = split_at_silences_with_limit(&input, 15, 30);
+        assert_eq!(ranges.len(), 4);
+        assert!(ranges
+            .iter()
+            .all(|range| range.end - range.start <= 30 * SAMPLE_RATE));
+        assert_eq!(ranges[0].start, 0);
+        assert_eq!(ranges.last().unwrap().end, input.len());
     }
 
     #[test]

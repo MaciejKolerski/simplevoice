@@ -8,18 +8,27 @@ importers:
 
   .:
     dependencies:
+      '@ai-sdk/assemblyai':
+        specifier: ^3.0.36
+        version: 3.0.36(zod@3.25.76)
       '@ai-sdk/deepgram':
         specifier: ^3.1.7
         version: 3.1.7(zod@3.25.76)
       '@ai-sdk/elevenlabs':
         specifier: ^3.0.37
         version: 3.0.37(zod@3.25.76)
+      '@ai-sdk/gladia':
+        specifier: ^3.0.36
+        version: 3.0.36(zod@3.25.76)
       '@ai-sdk/groq':
         specifier: ^4.0.37
         version: 4.0.37(zod@3.25.76)
       '@ai-sdk/openai':
         specifier: ^4.0.57
         version: 4.0.57(zod@3.25.76)
+      '@ai-sdk/revai':
+        specifier: ^3.0.36
+        version: 3.0.36(zod@3.25.76)
       '@base-ui/react':
         specifier: ^1.5.0
         version: 1.5.0(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -89,6 +98,9 @@ importers:
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
+      workers-ai-provider:
+        specifier: ^4.0.0
+        version: 4.0.0(@ai-sdk/openai@4.0.57(zod@3.25.76))(@ai-sdk/provider@4.0.10)(ai@7.0.91(zod@3.25.76))
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2
@@ -114,6 +126,12 @@ importers:
 
 packages:
 
+  '@ai-sdk/assemblyai@3.0.36':
+    resolution: {integrity: sha512-10ufsC1LNLg+wsQDJTdGBmXWAjt5Y0amkYlneHtxSmh5EfDSnR2hMCBA5nP9USbVcNmZWQCw1dmnh1ahzXvknQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/deepgram@3.1.7':
     resolution: {integrity: sha512-BLVL+EndVYCNNzF+VSg/cQH3IMWU232PFP4MZU1UcZsFw64HYiuyfaR7iU4xoE2L6f7SY860PEgRGpFf/rL8dA==}
     engines: {node: '>=22'}
@@ -128,6 +146,12 @@ packages:
 
   '@ai-sdk/gateway@4.0.73':
     resolution: {integrity: sha512-1Gp6QtVHfegKoMcf1pjk4fpgDg1cUdK5NnrEiUsYhLWa6owDMmF7kP+qL7ZgQNDYKTOijT+5cTeHrL281kUiiQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/gladia@3.0.36':
+    resolution: {integrity: sha512-9/o/exsETZLZ+9EfwcGbSZdDIxUyy2OvIlbT8BBbvZ2TrkJoIHW+2e7R75QE1ob9P4o+KHT+JatnF5AHs9dfLA==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -153,6 +177,12 @@ packages:
   '@ai-sdk/provider@4.0.10':
     resolution: {integrity: sha512-fX2ENAc7iDpZ+Wp4+Rk06Usn/Ys7dI9uAkGv0jlF6XVrW13NkRWx5Ou+U6lIM2E1fTLkCs16GGrUAaVvroag7A==}
     engines: {node: '>=22'}
+
+  '@ai-sdk/revai@3.0.36':
+    resolution: {integrity: sha512-OcOW/Px/X8bietnrgUxvt4vsFlwWgT0AxTVidzCSy2YmCqffqNc2xECtg6pgwdumFmH/CQH0y4jF61nDLsvxcg==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -2414,6 +2444,22 @@ packages:
     engines: {node: ^16.13.0 || >=18.0.0}
     hasBin: true
 
+  workers-ai-provider@4.0.0:
+    resolution: {integrity: sha512-FkhwMP1EP/MKXR8Jv1o7wLVKfTqu0h/PUaEmhZ7gyDiioib5Wsh3oPAKhG+7+SWfU3roTDHaEWlJpkJjpXu+fQ==}
+    peerDependencies:
+      '@ai-sdk/anthropic': ^4.0.0
+      '@ai-sdk/google': ^4.0.0
+      '@ai-sdk/openai': ^4.0.0
+      '@ai-sdk/provider': ^4.0.0
+      ai: ^7.0.0
+    peerDependenciesMeta:
+      '@ai-sdk/anthropic':
+        optional: true
+      '@ai-sdk/google':
+        optional: true
+      '@ai-sdk/openai':
+        optional: true
+
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
     engines: {node: '>=10'}
@@ -2458,6 +2504,12 @@ packages:
 
 snapshots:
 
+  '@ai-sdk/assemblyai@3.0.36(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.10
+      '@ai-sdk/provider-utils': 5.0.36(zod@3.25.76)
+      zod: 3.25.76
+
   '@ai-sdk/deepgram@3.1.7(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 4.0.10
@@ -2475,6 +2527,12 @@ snapshots:
       '@ai-sdk/provider': 4.0.10
       '@ai-sdk/provider-utils': 5.0.36(zod@3.25.76)
       '@vercel/oidc': 3.2.0
+      zod: 3.25.76
+
+  '@ai-sdk/gladia@3.0.36(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.10
+      '@ai-sdk/provider-utils': 5.0.36(zod@3.25.76)
       zod: 3.25.76
 
   '@ai-sdk/groq@4.0.37(zod@3.25.76)':
@@ -2501,6 +2559,12 @@ snapshots:
   '@ai-sdk/provider@4.0.10':
     dependencies:
       json-schema: 0.4.0
+
+  '@ai-sdk/revai@3.0.36(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.10
+      '@ai-sdk/provider-utils': 5.0.36(zod@3.25.76)
+      zod: 3.25.76
 
   '@babel/code-frame@7.29.0':
     dependencies:
@@ -4559,6 +4623,13 @@ snapshots:
   which@4.0.0:
     dependencies:
       isexe: 3.1.5
+
+  workers-ai-provider@4.0.0(@ai-sdk/openai@4.0.57(zod@3.25.76))(@ai-sdk/provider@4.0.10)(ai@7.0.91(zod@3.25.76)):
+    dependencies:
+      '@ai-sdk/provider': 4.0.10
+      ai: 7.0.91(zod@3.25.76)
+    optionalDependencies:
+      '@ai-sdk/openai': 4.0.57(zod@3.25.76)
 
   wrap-ansi@7.0.0:
     dependencies:

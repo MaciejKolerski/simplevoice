@@ -143,6 +143,7 @@ fn set_selected_device(
 pub struct ActiveConfig {
     pub engine: String,
     pub provider: String,
+    pub provider_configured: bool,
     pub gpu_enabled: bool,
 }
 
@@ -151,10 +152,16 @@ pub struct AppConfig {
 }
 
 #[tauri::command]
-fn update_active_config(engine: String, provider: String, config: tauri::State<'_, AppConfig>) {
+fn update_active_config(
+    engine: String,
+    provider: String,
+    provider_configured: bool,
+    config: tauri::State<'_, AppConfig>,
+) {
     let mut c = config.active.lock().unwrap();
     c.engine = engine;
     c.provider = provider;
+    c.provider_configured = provider_configured;
 }
 
 fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), String> {
@@ -175,6 +182,9 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
             return Err("errors.no_model_loaded".to_string());
         }
     } else if c.engine == "openai-cloud" {
+        if !c.provider_configured {
+            return Err("errors.cloud_not_configured".to_string());
+        }
         let key_name = format!("api_key_{}", c.provider);
         let entry = keyring::Entry::new("simplevoice", &key_name);
         match entry {
@@ -3462,6 +3472,7 @@ pub fn run() {
             active: Mutex::new(ActiveConfig {
                 engine: "local".to_string(),
                 provider: "openai".to_string(),
+                provider_configured: true,
                 gpu_enabled: !cfg!(target_os = "linux"),
             }),
         })
@@ -3705,6 +3716,7 @@ pub fn run() {
             byok::list_cloud_providers,
             byok::list_cloud_models,
             byok::byok_http_request,
+            byok::byok_transcribe,
             byok::prepare_cloud_transcription,
             byok::get_cloud_transcription_chunk,
             byok::complete_cloud_transcription,
@@ -3765,6 +3777,18 @@ mod tests {
             active: std::sync::Mutex::new(ActiveConfig {
                 engine: "local".to_string(),
                 provider: String::new(),
+                provider_configured: true,
+                gpu_enabled: false,
+            }),
+        }
+    }
+
+    fn cloud_config(provider_configured: bool) -> AppConfig {
+        AppConfig {
+            active: std::sync::Mutex::new(ActiveConfig {
+                engine: "openai-cloud".to_string(),
+                provider: "cloudflare".to_string(),
+                provider_configured,
                 gpu_enabled: false,
             }),
         }
@@ -3790,6 +3814,15 @@ mod tests {
         assert_eq!(
             is_recording_allowed(&local_config(), &stt),
             Err("errors.no_model_loaded".to_string())
+        );
+    }
+
+    #[test]
+    fn incomplete_cloud_provider_settings_block_recording() {
+        let stt = SttController::new();
+        assert_eq!(
+            is_recording_allowed(&cloud_config(false), &stt),
+            Err("errors.cloud_not_configured".to_string())
         );
     }
 

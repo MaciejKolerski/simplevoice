@@ -7,6 +7,8 @@ import { listen } from "@tauri-apps/api/event";
 import { localizeError as localizeBackendError } from "@/lib/localizeError";
 import {
   defaultCloudModel,
+  fallbackCloudProviders,
+  hasRequiredCloudProviderSettings,
   isCloudProviderId,
   preloadCloudTranscription,
   transcribeCloudRecording,
@@ -97,7 +99,12 @@ function App() {
           console.warn("Could not preload the cloud transcription adapter:", err);
         });
       }
-      await invoke("update_active_config", { engine, provider });
+      const providerInfo = fallbackCloudProviders().find((item) => item.id === provider)!;
+      await invoke("update_active_config", {
+        engine,
+        provider,
+        providerConfigured: hasRequiredCloudProviderSettings(providerInfo),
+      });
     } catch (err) {
       console.error("Failed to sync active engine configuration:", err);
     }

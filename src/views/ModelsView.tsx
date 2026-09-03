@@ -15,6 +15,7 @@ import {
   Pause,
   Play,
   Trash2,
+  ExternalLink,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -47,10 +48,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   fallbackCloudProviders,
   fetchCloudProviders,
+  getCloudProviderSettings,
   isCloudProviderId,
+  setCloudProviderSetting,
+  type CloudCredentialKind,
   type CloudModelInfo,
   type CloudProviderId,
   type CloudProviderInfo,
+  type CloudProviderSettings,
 } from "@/lib/byok";
 
 interface ModelStatus {
@@ -210,6 +215,35 @@ const FORMAT_LABELS: Record<string, string> = {
   nemo: "NeMo",
 };
 
+const CREDENTIAL_LABEL_KEYS: Record<CloudCredentialKind, string> = {
+  apiKey: "models.apiKeyLabel",
+  apiToken: "models.apiTokenLabel",
+  subscriptionKey: "models.subscriptionKeyLabel",
+  serviceAccountJson: "models.serviceAccountJsonLabel",
+  secretAccessKey: "models.secretAccessKeyLabel",
+};
+
+const PROVIDER_SETTING_KEYS: Record<
+  string,
+  { label: string; description: string; placeholder: string }
+> = {
+  accountId: {
+    label: "models.accountIdLabel",
+    description: "models.accountIdDesc",
+    placeholder: "models.accountIdPlaceholder",
+  },
+  accessKeyId: {
+    label: "models.accessKeyIdLabel",
+    description: "models.accessKeyIdDesc",
+    placeholder: "models.accessKeyIdPlaceholder",
+  },
+  region: {
+    label: "models.regionLabel",
+    description: "models.regionDesc",
+    placeholder: "models.regionPlaceholder",
+  },
+};
+
 // Unique identifier for a recommended model. repo_id alone is NOT unique —
 // every whisper.cpp GGML model shares "ggerganov/whisper.cpp" — so include the
 // file list to distinguish them.
@@ -273,8 +307,19 @@ export function ModelsView() {
   };
 
   const [asrProvider, setAsrProvider] = useState<CloudProviderId>("openai");
+  const [providerSettings, setProviderSettings] = useState<CloudProviderSettings>(() =>
+    getCloudProviderSettings("openai"),
+  );
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [asrModel, setAsrModel] = useState<string>("gpt-4o-mini-transcribe");
+
+  const activeCloudProvider =
+    cloudProviders.find((provider) => provider.id === asrProvider) ??
+    fallbackCloudProviders().find((provider) => provider.id === asrProvider)!;
+  const providerConfigurationReady = activeCloudProvider.requiredSettings.every((name) =>
+    Boolean(providerSettings[name]?.trim()),
+  );
+  const credentialLabel = t(CREDENTIAL_LABEL_KEYS[activeCloudProvider.credentialKind]);
 
   const [cloudModels, setCloudModels] = useState<CloudModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState<boolean>(false);
@@ -324,9 +369,12 @@ export function ModelsView() {
     try {
       await invoke("set_secure_api_key", { provider, key });
       setKeyDraft("");
+      setShowApiKey(false);
       if (localStorage.getItem("asr_provider") === provider) {
         setHasStoredKey(true);
-        if (replacesExistingKey) fetchCloudModels(provider).catch(() => {});
+        if (replacesExistingKey && providerConfigurationReady) {
+          fetchCloudModels(provider).catch(() => {});
+        }
       }
       toast.success(t("models.keySaved"));
       window.dispatchEvent(new Event("api-keys-changed"));
@@ -344,6 +392,7 @@ export function ModelsView() {
       if (localStorage.getItem("asr_provider") === provider) {
         setHasStoredKey(false);
         setKeyDraft("");
+        setShowApiKey(false);
         setCloudModels([]);
         setModelsFetchError(null);
       }
@@ -370,6 +419,7 @@ export function ModelsView() {
         ? storedProvider
         : "openai";
       setAsrProvider(savedProvider);
+      setProviderSettings(getCloudProviderSettings(savedProvider));
       const defaultModel = fallbackCloudProviders().find(
         (provider) => provider.id === savedProvider,
       )!.defaultModel;
@@ -447,7 +497,7 @@ export function ModelsView() {
   // Fetch only after a complete key has been committed to the system keyring.
   useEffect(() => {
     if (asrEngine !== "openai-cloud") return;
-    if (!hasStoredKey) return;
+    if (!hasStoredKey || !providerConfigurationReady) return;
     fetchCloudModels().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asrEngine, asrProvider, hasStoredKey]);
@@ -459,7 +509,9 @@ export function ModelsView() {
     setModelsLoading(false);
     setHasStoredKey(false);
     setKeyDraft("");
+    setShowApiKey(false);
     setAsrProvider(provider);
+    setProviderSettings(getCloudProviderSettings(provider));
     localStorage.setItem("asr_provider", provider);
     const defaultModel =
       cloudProviders.find((item) => item.id === provider)?.defaultModel ||
@@ -476,6 +528,27 @@ export function ModelsView() {
     window.dispatchEvent(new Event("asr-engine-changed"));
   };
 
+  const handleProviderSettingChange = (name: string, value: string) => {
+    setProviderSettings((current) => ({ ...current, [name]: value }));
+  };
+
+  const commitProviderSetting = (name: string) => {
+    const settings = setCloudProviderSetting(
+      asrProvider,
+      name,
+      providerSettings[name] ?? "",
+    );
+    setProviderSettings(settings);
+    modelRequestRef.current += 1;
+    setCloudModels([]);
+    setModelsFetchError(null);
+    const ready = activeCloudProvider.requiredSettings.every((field) =>
+      Boolean(settings[field]?.trim()),
+    );
+    if (hasStoredKey && ready) fetchCloudModels(asrProvider).catch(() => {});
+    window.dispatchEvent(new Event("asr-engine-changed"));
+  };
+
   const handleSelectEngine = (engine: "local" | "openai-cloud") => {
     setAsrEngine(engine);
     localStorage.setItem("asr_engine", engine);
@@ -489,7 +562,10 @@ export function ModelsView() {
     setModelsLoading(true);
     setModelsFetchError(null);
     try {
-      const list = await invoke<CloudModelInfo[]>("list_cloud_models", { provider });
+      const list = await invoke<CloudModelInfo[]>("list_cloud_models", {
+        provider,
+        settings: getCloudProviderSettings(provider),
+      });
       if (
         requestId !== modelRequestRef.current ||
         localStorage.getItem("asr_provider") !== provider
@@ -683,6 +759,14 @@ export function ModelsView() {
       } catch (err) {
         console.error("Failed to open folder:", err);
       }
+    }
+  };
+
+  const handleOpenProviderDashboard = async () => {
+    try {
+      await invoke("open_folder", { path: activeCloudProvider.dashboardUrl });
+    } catch (err) {
+      console.error("Failed to open provider dashboard:", err);
     }
   };
 
@@ -1084,28 +1168,94 @@ export function ModelsView() {
               title={t("models.providerLabel")}
               description={t("models.providerDesc")}
             >
-              <Select
-                value={asrProvider}
-                onValueChange={(value) => handleProviderChange(value as CloudProviderId)}
-                items={providerLabels}
-              >
-                <SelectTrigger className="w-72 max-w-full shrink bg-black">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {cloudProviders.map((provider) => (
-                    <SelectItem key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex w-72 max-w-full shrink gap-2">
+                <Select
+                  value={asrProvider}
+                  onValueChange={(value) => handleProviderChange(value as CloudProviderId)}
+                  items={providerLabels}
+                >
+                  <SelectTrigger className="min-w-0 flex-1 bg-black">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cloudProviders.map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id}>
+                        {provider.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={handleOpenProviderDashboard}
+                        aria-label={t("models.openProviderDashboard", {
+                          provider: activeCloudProvider.name,
+                        })}
+                      >
+                        <ExternalLink size={15} />
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>
+                    {t("models.openProviderDashboard", {
+                      provider: activeCloudProvider.name,
+                    })}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </SettingRow>
+
+            {activeCloudProvider.requiredSettings.map((name) => {
+              const field = PROVIDER_SETTING_KEYS[name];
+              if (!field) return null;
+              const placeholder =
+                name === "region"
+                  ? asrProvider === "aws"
+                    ? "eu-central-1"
+                    : "westeurope"
+                  : t(field.placeholder);
+              return (
+                <SettingRow
+                  key={name}
+                  className="flex-wrap"
+                  title={t(field.label)}
+                  description={t(field.description)}
+                >
+                  <Input
+                    id={`byok-${asrProvider}-${name}`}
+                    value={providerSettings[name] ?? ""}
+                    onChange={(event) =>
+                      handleProviderSettingChange(name, event.target.value)
+                    }
+                    onBlur={() => commitProviderSetting(name)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    placeholder={placeholder}
+                    aria-required="true"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="w-72 max-w-full shrink bg-black font-mono"
+                  />
+                </SettingRow>
+              );
+            })}
 
             <SettingRow
               className="flex-wrap"
-              title={t("models.apiKeyLabel")}
-              description={t("models.apiKeyDesc")}
+              title={credentialLabel}
+              description={
+                activeCloudProvider.credentialKind === "serviceAccountJson"
+                  ? t("models.serviceAccountJsonDesc")
+                  : activeCloudProvider.credentialKind === "secretAccessKey"
+                    ? t("models.secretAccessKeyDesc")
+                    : t("models.credentialDesc")
+              }
             >
               <div className="flex flex-col gap-1.5 w-72 max-w-full shrink">
                 <div className="flex gap-2">
@@ -1122,12 +1272,13 @@ export function ModelsView() {
                     }}
                     placeholder={
                       hasStoredKey
-                        ? t("models.apiKeyReplace")
-                        : t("models.apiKeyPlaceholder", {
+                        ? t("models.credentialReplace")
+                        : t("models.credentialPlaceholder", {
+                            credential: credentialLabel,
                             provider: providerLabels[asrProvider] ?? asrProvider,
                           })
                     }
-                    aria-label={t("models.apiKeyLabel")}
+                    aria-label={credentialLabel}
                     autoComplete="off"
                     spellCheck={false}
                     className="flex-1 bg-black font-mono"
@@ -1189,9 +1340,25 @@ export function ModelsView() {
                   <Select
                     value={selectedCloudModel}
                     onValueChange={(value) => handleModelChange(value as string)}
-                    disabled={!hasStoredKey || modelsLoading || cloudModels.length === 0}
+                    disabled={
+                      !hasStoredKey ||
+                      !providerConfigurationReady ||
+                      modelsLoading ||
+                      cloudModels.length === 0
+                    }
                   >
-                    <SelectTrigger className="flex-1 bg-black">
+                    <SelectTrigger
+                      className="flex-1 bg-black"
+                      aria-busy={modelsLoading}
+                      aria-invalid={Boolean(modelsFetchError)}
+                      aria-describedby={
+                        modelsFetchError
+                          ? "cloud-model-error"
+                          : modelsLoading
+                            ? "cloud-model-loading"
+                            : undefined
+                      }
+                    >
                       <SelectValue>
                         {(value: string | null) =>
                           value
@@ -1225,7 +1392,9 @@ export function ModelsView() {
                           variant="outline"
                           size="icon"
                           onClick={handleRefreshModels}
-                          disabled={modelsLoading || !hasStoredKey}
+                          disabled={
+                            modelsLoading || !hasStoredKey || !providerConfigurationReady
+                          }
                           aria-label={t("models.refreshModels")}
                         >
                           <RefreshCw
@@ -1239,13 +1408,28 @@ export function ModelsView() {
                   </Tooltip>
                 </div>
                 {!modelsLoading && modelsFetchError && (
-                  <span className="text-[11px] leading-snug text-danger" title={modelsFetchError}>
+                  <span
+                    id="cloud-model-error"
+                    role="alert"
+                    className="text-[11px] leading-snug text-danger"
+                    title={modelsFetchError}
+                  >
                     {modelsFetchError}
+                  </span>
+                )}
+                {modelsLoading && (
+                  <span id="cloud-model-loading" role="status" className="text-[11px] text-muted">
+                    {t("models.loadingModels")}
                   </span>
                 )}
                 {!hasStoredKey && (
                   <span className="text-[11px] text-muted">
                     {t("models.modelNeedsKey")}
+                  </span>
+                )}
+                {hasStoredKey && !providerConfigurationReady && (
+                  <span className="text-[11px] text-muted">
+                    {t("models.modelNeedsConfiguration")}
                   </span>
                 )}
                 {!modelsLoading && !modelsFetchError && cloudModels.length > 0 && (
