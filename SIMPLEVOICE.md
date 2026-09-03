@@ -4,7 +4,7 @@ SimpleVoice loads `SIMPLEVOICE.md` from the workspace root as agent memory (simi
 
 ## Project
 
-**SimpleVoice** — privacy-first, fully local/offline Speech-to-Text desktop assistant. Tauri 2 + Rust backend, React 19 + TypeScript + Tailwind frontend. Records system audio (CPAL + VAD), runs multiple local ASR engines, auto-pastes or copies transcription.
+**SimpleVoice** — privacy-first Speech-to-Text desktop assistant, local/offline by default with optional BYOK cloud transcription. Tauri 2 + Rust backend, React 19 + TypeScript + Tailwind frontend. Records system audio (CPAL + VAD), runs multiple local ASR engines, auto-pastes or copies transcription.
 
 - Bundle id: `com.woro.simplevoice`
 - Package manager: **pnpm**
@@ -46,7 +46,8 @@ Key modules:
   - ONNX (Sherpa-onnx / Parakeet)
   - Nemo
 - `stt/factory.rs` — `AsrFactory::load()` and `detect()`. Must call `load_model()` before local transcription. Contains guard against React StrictMode double-mount.
-- `stt/chunker.rs` — silence-aware splitting of long recordings into 45-90 s chunks; `SttController::transcribe_with_progress` transcribes them sequentially (any engine, cloud included) and emits `transcription-progress`; recording auto-stops at the 90-minute safety cap (`audio.rs::RECORDING_MAX_SECS`).
+- `stt/chunker.rs` — silence-aware splitting of long recordings into 45-90 s chunks; local engines process them sequentially, while BYOK reuses the same ranges with bounded concurrency; recording auto-stops at the 90-minute safety cap (`audio.rs::RECORDING_MAX_SECS`).
+- `byok.rs` — secure BYOK boundary. Lists the supported Vercel AI SDK transcription providers, discovers only key-accessible batch STT models through each provider's API, prepares binary WAV chunks, and proxies only allowlisted transcription endpoints while injecting the API key from the OS keyring.
 - Platform specifics: macOS NSPanel + accessibility for recording window and auto-paste; Linux native shortcuts + `wtype`; Windows tray and enigo fallback.
 
 **Critical rules**:
@@ -54,11 +55,13 @@ Key modules:
 - `load_model()` uses `spawn_blocking` + panic catching for GPU fallback.
 - Sounds (`start.wav`, `stop.wav`, `done.wav`) are bundled via `tauri.conf.json` resources and fall back to system sounds (`afplay` / `pw-play` / rodio).
 - Config (`config.json`) and recordings live in `app_local_data_dir()`. API keys exclusively in keyring under `simplevoice`.
+- Never add a frontend command that returns a stored API key. The AI SDK uses a custom binary Tauri fetch bridge; authorization is added only in `byok.rs` after validating the provider and exact HTTPS endpoint.
 
 ### Frontend (`src/`)
 
 - React 19 + Vite + Tailwind v4.
 - Main views: `UsageView`, `ModelsView`, `TranscriptionsView`, `SettingsView`, `RecordingWindowView`.
+- `lib/byok.ts` owns the Vercel AI SDK `transcribe()` route and lazy-loads the OpenAI, Groq, Deepgram, or ElevenLabs adapter selected in `ModelsView`.
 - `ConfigContext` + Tauri commands for settings persistence.
 - Global shortcuts registered from settings.
 - Auto-paste uses platform-specific logic (accessibility on macOS).

@@ -4,6 +4,7 @@ import { BarChart3, Calendar, Clock, FileText, Cpu, TrendingUp } from "lucide-re
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Card } from "@/components/ui/card";
+import { defaultCloudModel, isCloudProviderId } from "@/lib/byok";
 import {
   Select,
   SelectContent,
@@ -54,10 +55,10 @@ export function UsageView() {
     try {
       const engine = localStorage.getItem("asr_engine") || "local";
       if (engine === "openai-cloud") {
-        const model = localStorage.getItem("asr_model") || "whisper-1";
-        const customModel = localStorage.getItem("asr_custom_model") || "";
-        const finalModel = model === "custom" ? customModel : model;
-        setActiveModel(finalModel || "None");
+        const storedProvider = localStorage.getItem("asr_provider");
+        const provider = isCloudProviderId(storedProvider) ? storedProvider : "openai";
+        const model = localStorage.getItem("asr_model") || defaultCloudModel(provider);
+        setActiveModel(`${provider}/${model}`);
         setLoadingModel(null);
         setIsRunningLocally(false);
       } else {

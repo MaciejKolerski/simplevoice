@@ -14,7 +14,6 @@ import {
   Cloud,
   Pause,
   Play,
-  PlugZap,
   Trash2,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -45,6 +44,14 @@ import {
 } from "@/components/ui/select";
 import { SettingRow } from "@/components/ui/setting-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  fallbackCloudProviders,
+  fetchCloudProviders,
+  isCloudProviderId,
+  type CloudModelInfo,
+  type CloudProviderId,
+  type CloudProviderInfo,
+} from "@/lib/byok";
 
 interface ModelStatus {
   active: string | null;
@@ -76,8 +83,6 @@ interface RecommendedModel {
   /** Highlight as a recommended default (best accuracy/speed tradeoff). */
   recommended?: boolean;
 }
-
-type CloudProvider = "openai" | "openrouter" | "gemini" | "custom";
 
 const RECOMMENDED_MODELS: RecommendedModel[] = [
   {
@@ -211,24 +216,14 @@ const FORMAT_LABELS: Record<string, string> = {
 const modelKey = (model: RecommendedModel) =>
   `${model.repo_id}::${model.files.join("|")}`;
 
-// Curated fallback shown when the provider's live model list is unavailable
-// (no key yet, fetch error, or an empty response).
-const FALLBACK_CLOUD_MODELS: Record<string, string[]> = {
-  openai: ["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
-  openrouter: ["openai/whisper-large-v3"],
-  gemini: ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"],
-  custom: [],
-};
-
 export function ModelsView() {
   const { t } = useTranslation();
-
-  const PROVIDER_LABELS: Record<CloudProvider, string> = {
-    openai: "OpenAI",
-    openrouter: "OpenRouter",
-    gemini: "Google Gemini",
-    custom: t("models.custom"),
-  };
+  const [cloudProviders, setCloudProviders] = useState<CloudProviderInfo[]>(
+    fallbackCloudProviders,
+  );
+  const providerLabels = Object.fromEntries(
+    cloudProviders.map((provider) => [provider.id, provider.name]),
+  );
 
   const [models, setModels] = useState<LocalModel[]>([]);
   const [modelsDir, setModelsDir] = useState<string>("");
@@ -277,18 +272,15 @@ export function ModelsView() {
     setDownloadingKey(key);
   };
 
-  const [asrProvider, setAsrProvider] = useState<CloudProvider>("openai");
+  const [asrProvider, setAsrProvider] = useState<CloudProviderId>("openai");
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
-  const [asrModel, setAsrModel] = useState<string>("whisper-1");
-  const [asrCustomModel, setAsrCustomModel] = useState<string>("");
-  const [asrBaseUrl, setAsrBaseUrl] = useState<string>(
-    "https://api.openai.com/v1",
-  );
+  const [asrModel, setAsrModel] = useState<string>("gpt-4o-mini-transcribe");
 
-  const [cloudModels, setCloudModels] = useState<string[]>([]);
+  const [cloudModels, setCloudModels] = useState<CloudModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState<boolean>(false);
   const [modelsFetchError, setModelsFetchError] = useState<string | null>(null);
-  const [testing, setTesting] = useState<boolean>(false);
+  const modelRequestRef = useRef(0);
+  const keyRequestRef = useRef(0);
 
   const loadModelsList = async () => {
     setScanning(true);
@@ -308,12 +300,16 @@ export function ModelsView() {
     }
   };
 
-  const loadSecureKeysForProvider = async (provider: string) => {
+  const loadSecureKeysForProvider = async (provider: CloudProviderId) => {
+    const requestId = ++keyRequestRef.current;
     try {
       const hasKey = await invoke<boolean>("has_secure_api_key", { provider });
+      if (requestId !== keyRequestRef.current) return;
       setHasStoredKey(hasKey);
       setKeyDraft("");
     } catch (err) {
+      if (requestId !== keyRequestRef.current) return;
+      setHasStoredKey(false);
       console.error(`Failed to check secure API key for ${provider}:`, err);
     }
   };
@@ -323,73 +319,76 @@ export function ModelsView() {
   const commitProviderKey = async () => {
     const key = keyDraft.trim();
     if (!key) return;
+    const provider = asrProvider;
+    const replacesExistingKey = hasStoredKey;
     try {
-      await invoke("set_secure_api_key", { provider: asrProvider, key });
+      await invoke("set_secure_api_key", { provider, key });
       setKeyDraft("");
-      setHasStoredKey(true);
+      if (localStorage.getItem("asr_provider") === provider) {
+        setHasStoredKey(true);
+        if (replacesExistingKey) fetchCloudModels(provider).catch(() => {});
+      }
       toast.success(t("models.keySaved"));
       window.dispatchEvent(new Event("api-keys-changed"));
     } catch (err: any) {
-      console.error(`Failed to save secure key for ${asrProvider}:`, err);
+      console.error(`Failed to save secure key for ${provider}:`, err);
       toast.error(t("models.keySaveFailed"), { description: localizeError(err) });
     }
   };
 
   const removeProviderKey = async () => {
     setRemoveKeyOpen(false);
+    const provider = asrProvider;
     try {
-      await invoke("delete_secure_api_key", { provider: asrProvider });
-      setHasStoredKey(false);
-      setKeyDraft("");
-      setCloudModels([]);
-      setModelsFetchError(null);
+      await invoke("delete_secure_api_key", { provider });
+      if (localStorage.getItem("asr_provider") === provider) {
+        setHasStoredKey(false);
+        setKeyDraft("");
+        setCloudModels([]);
+        setModelsFetchError(null);
+      }
       toast.success(t("models.keyRemoved"));
       window.dispatchEvent(new Event("api-keys-changed"));
     } catch (err: any) {
-      console.error(`Failed to remove secure key for ${asrProvider}:`, err);
+      console.error(`Failed to remove secure key for ${provider}:`, err);
       toast.error(t("models.keyRemoveFailed"), { description: localizeError(err) });
     }
   };
 
   useEffect(() => {
     loadModelsList();
+    fetchCloudProviders()
+      .then(setCloudProviders)
+      .catch((err) => console.warn("Could not refresh the AI SDK provider catalog:", err));
 
     const syncEngine = () => {
       const savedEngine =
         (localStorage.getItem("asr_engine") as any) || "local";
       setAsrEngine(savedEngine);
       const storedProvider = localStorage.getItem("asr_provider");
-      const savedProvider: CloudProvider =
-        storedProvider && Object.prototype.hasOwnProperty.call(PROVIDER_LABELS, storedProvider)
-          ? (storedProvider as CloudProvider)
-          : "openai";
+      const savedProvider: CloudProviderId = isCloudProviderId(storedProvider)
+        ? storedProvider
+        : "openai";
       setAsrProvider(savedProvider);
+      const defaultModel = fallbackCloudProviders().find(
+        (provider) => provider.id === savedProvider,
+      )!.defaultModel;
       const savedModel =
-        savedProvider === "openai" && storedProvider !== savedProvider
-          ? "whisper-1"
-          : localStorage.getItem("asr_model") || "whisper-1";
-      const savedBaseUrl =
-        savedProvider === "openai" && storedProvider !== savedProvider
-          ? "https://api.openai.com/v1"
-          : localStorage.getItem("asr_base_url") || "https://api.openai.com/v1";
+        storedProvider === savedProvider
+          ? localStorage.getItem("asr_model") || defaultModel
+          : defaultModel;
       if (storedProvider !== savedProvider) {
         localStorage.setItem("asr_provider", savedProvider);
         localStorage.setItem("asr_model", savedModel);
-        localStorage.setItem("asr_base_url", savedBaseUrl);
       }
       setAsrModel(savedModel);
-      setAsrCustomModel(localStorage.getItem("asr_custom_model") || "");
-      setAsrBaseUrl(savedBaseUrl);
       loadSecureKeysForProvider(savedProvider);
     };
     syncEngine();
 
     const handleKeyChange = () => {
       const storedProvider = localStorage.getItem("asr_provider");
-      const currentProvider =
-        storedProvider && Object.prototype.hasOwnProperty.call(PROVIDER_LABELS, storedProvider)
-          ? storedProvider
-          : "openai";
+      const currentProvider = isCloudProviderId(storedProvider) ? storedProvider : "openai";
       loadSecureKeysForProvider(currentProvider);
     };
 
@@ -445,47 +444,28 @@ export function ModelsView() {
     };
   }, []);
 
-  // Auto-fetch the live model list when on the Cloud tab and a key is present.
-  // Debounced so typing a key doesn't fire a request per keystroke.
+  // Fetch only after a complete key has been committed to the system keyring.
   useEffect(() => {
     if (asrEngine !== "openai-cloud") return;
-    if (!hasStoredKey) return; // no key -> keep the curated fallback
-    const handle = setTimeout(() => {
-      fetchCloudModels().catch(() => {});
-    }, 600);
-    return () => clearTimeout(handle);
+    if (!hasStoredKey) return;
+    fetchCloudModels().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asrEngine, asrProvider, asrBaseUrl, hasStoredKey]);
+  }, [asrEngine, asrProvider, hasStoredKey]);
 
-  const handleProviderChange = (provider: CloudProvider) => {
+  const handleProviderChange = (provider: CloudProviderId) => {
+    modelRequestRef.current += 1;
     setModelsFetchError(null);
     setCloudModels([]);
+    setModelsLoading(false);
+    setHasStoredKey(false);
+    setKeyDraft("");
     setAsrProvider(provider);
     localStorage.setItem("asr_provider", provider);
-
-    if (provider === "openai") {
-      setAsrModel("whisper-1");
-      localStorage.setItem("asr_model", "whisper-1");
-      setAsrBaseUrl("https://api.openai.com/v1");
-      localStorage.setItem("asr_base_url", "https://api.openai.com/v1");
-    } else if (provider === "openrouter") {
-      setAsrModel("openai/whisper-large-v3");
-      localStorage.setItem("asr_model", "openai/whisper-large-v3");
-      setAsrBaseUrl("https://openrouter.ai/api/v1");
-      localStorage.setItem("asr_base_url", "https://openrouter.ai/api/v1");
-    } else if (provider === "gemini") {
-      setAsrModel("gemini-flash-latest");
-      localStorage.setItem("asr_model", "gemini-flash-latest");
-      setAsrBaseUrl("https://generativelanguage.googleapis.com/v1beta");
-      localStorage.setItem(
-        "asr_base_url",
-        "https://generativelanguage.googleapis.com/v1beta",
-      );
-    } else if (provider === "custom") {
-      setAsrModel("custom");
-      localStorage.setItem("asr_model", "custom");
-    }
-
+    const defaultModel =
+      cloudProviders.find((item) => item.id === provider)?.defaultModel ||
+      fallbackCloudProviders().find((item) => item.id === provider)!.defaultModel;
+    setAsrModel(defaultModel);
+    localStorage.setItem("asr_model", defaultModel);
     loadSecureKeysForProvider(provider);
     window.dispatchEvent(new Event("asr-engine-changed"));
   };
@@ -496,52 +476,48 @@ export function ModelsView() {
     window.dispatchEvent(new Event("asr-engine-changed"));
   };
 
-  const handleCustomModelChange = (customModel: string) => {
-    setAsrCustomModel(customModel);
-    localStorage.setItem("asr_custom_model", customModel);
-    window.dispatchEvent(new Event("asr-engine-changed"));
-  };
-
-  const handleBaseUrlChange = (url: string) => {
-    setAsrBaseUrl(url);
-    localStorage.setItem("asr_base_url", url);
-    window.dispatchEvent(new Event("asr-engine-changed"));
-  };
-
   const handleSelectEngine = (engine: "local" | "openai-cloud") => {
     setAsrEngine(engine);
     localStorage.setItem("asr_engine", engine);
     window.dispatchEvent(new Event("asr-engine-changed"));
   };
 
-  const fetchCloudModels = async (): Promise<string[]> => {
+  const fetchCloudModels = async (
+    provider: CloudProviderId = asrProvider,
+  ): Promise<CloudModelInfo[]> => {
+    const requestId = ++modelRequestRef.current;
     setModelsLoading(true);
     setModelsFetchError(null);
     try {
-      const list = await invoke<string[]>("list_cloud_models", {
-        provider: asrProvider,
-        baseUrl: asrBaseUrl,
-      });
+      const list = await invoke<CloudModelInfo[]>("list_cloud_models", { provider });
+      if (
+        requestId !== modelRequestRef.current ||
+        localStorage.getItem("asr_provider") !== provider
+      ) {
+        return list;
+      }
       setCloudModels(list);
+      const selectedModel = localStorage.getItem("asr_model") || asrModel;
+      if (!list.some((model) => model.id === selectedModel)) {
+        const preferredModel =
+          cloudProviders.find((item) => item.id === provider)?.defaultModel;
+        const nextModel =
+          list.find((model) => model.id === preferredModel)?.id || list[0]?.id;
+        if (nextModel) handleModelChange(nextModel);
+      }
       return list;
     } catch (err: any) {
+      if (
+        requestId !== modelRequestRef.current ||
+        localStorage.getItem("asr_provider") !== provider
+      ) {
+        return [];
+      }
       setCloudModels([]);
       setModelsFetchError(localizeError(err) || t("models.modelsFetchFailed"));
       throw err;
     } finally {
-      setModelsLoading(false);
-    }
-  };
-
-  const handleTestConnection = async () => {
-    setTesting(true);
-    try {
-      await fetchCloudModels();
-      toast.success(t("models.testOk"));
-    } catch (err: any) {
-      toast.error(t("models.testFailed"), { description: localizeError(err) });
-    } finally {
-      setTesting(false);
+      if (requestId === modelRequestRef.current) setModelsLoading(false);
     }
   };
 
@@ -710,10 +686,9 @@ export function ModelsView() {
     }
   };
 
-  const modelOptions =
-    cloudModels.length > 0 ? cloudModels : FALLBACK_CLOUD_MODELS[asrProvider] || [];
-  const isCustomModel =
-    asrModel === "custom" || !modelOptions.includes(asrModel);
+  const selectedCloudModel = cloudModels.some((model) => model.id === asrModel)
+    ? asrModel
+    : null;
 
   const renderModelRow = (
     key: string,
@@ -811,7 +786,7 @@ export function ModelsView() {
             <AlertDialogTitle>{t("models.removeKeyConfirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("models.removeKeyConfirmBody", {
-                provider: PROVIDER_LABELS[asrProvider] ?? asrProvider,
+                provider: providerLabels[asrProvider] ?? asrProvider,
               })}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1096,20 +1071,12 @@ export function ModelsView() {
             <h2 className="m-0 text-base text-white font-medium flex items-center gap-2">
               <Cloud size={16} className="text-muted" /> {t("models.cloudProvider")}
             </h2>
-            <Button
-              type="button"
+            <Badge
               variant="outline"
-              size="sm"
-              onClick={handleTestConnection}
-              disabled={testing || !hasStoredKey}
+              className="rounded-md border-primary/30 bg-primary/5 text-primary font-mono text-[10px]"
             >
-              {testing ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <PlugZap size={13} />
-              )}
-              {testing ? t("models.testing") : t("models.test")}
-            </Button>
+              Vercel AI SDK
+            </Badge>
           </div>
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             <SettingRow
@@ -1119,16 +1086,16 @@ export function ModelsView() {
             >
               <Select
                 value={asrProvider}
-                onValueChange={(v) => handleProviderChange(v as typeof asrProvider)}
-                items={PROVIDER_LABELS}
+                onValueChange={(value) => handleProviderChange(value as CloudProviderId)}
+                items={providerLabels}
               >
                 <SelectTrigger className="w-72 max-w-full shrink bg-black">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(PROVIDER_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
+                  {cloudProviders.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {provider.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1157,7 +1124,7 @@ export function ModelsView() {
                       hasStoredKey
                         ? t("models.apiKeyReplace")
                         : t("models.apiKeyPlaceholder", {
-                            provider: asrProvider.toUpperCase(),
+                            provider: providerLabels[asrProvider] ?? asrProvider,
                           })
                     }
                     aria-label={t("models.apiKeyLabel")}
@@ -1220,33 +1187,34 @@ export function ModelsView() {
               <div className="flex flex-col gap-1 w-72 max-w-full shrink">
                 <div className="flex items-center gap-2">
                   <Select
-                    value={asrModel}
-                    onValueChange={(v) => handleModelChange(v as string)}
-                    disabled={modelsLoading}
+                    value={selectedCloudModel}
+                    onValueChange={(value) => handleModelChange(value as string)}
+                    disabled={!hasStoredKey || modelsLoading || cloudModels.length === 0}
                   >
                     <SelectTrigger className="flex-1 bg-black">
                       <SelectValue>
-                        {(v: string) =>
-                          v === "custom" ? t("models.customModel") : v
+                        {(value: string | null) =>
+                          value
+                            ? cloudModels.find((model) => model.id === value)?.name || value
+                            : modelsLoading
+                              ? t("models.loadingModels")
+                              : t("models.modelPlaceholder")
                         }
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      {modelOptions.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {m}
+                      {cloudModels.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          <span className="flex min-w-0 flex-col items-start">
+                            <span className="truncate">{model.name}</span>
+                            {model.name !== model.id && (
+                              <span className="max-w-64 truncate font-mono text-[10px] text-muted">
+                                {model.id}
+                              </span>
+                            )}
+                          </span>
                         </SelectItem>
                       ))}
-                      {asrModel &&
-                        asrModel !== "custom" &&
-                        !modelOptions.includes(asrModel) && (
-                          <SelectItem key={asrModel} value={asrModel}>
-                            {asrModel}
-                          </SelectItem>
-                        )}
-                      <SelectItem value="custom">
-                        {t("models.customTypeBelow")}
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <Tooltip>
@@ -1271,52 +1239,22 @@ export function ModelsView() {
                   </Tooltip>
                 </div>
                 {!modelsLoading && modelsFetchError && (
-                  <span className="text-[11px] text-danger truncate" title={modelsFetchError}>
+                  <span className="text-[11px] leading-snug text-danger" title={modelsFetchError}>
                     {modelsFetchError}
                   </span>
                 )}
-                {!modelsLoading && !modelsFetchError && cloudModels.length === 0 && hasStoredKey && (
+                {!hasStoredKey && (
                   <span className="text-[11px] text-muted">
-                    {t("models.usingFallbackModels")}
+                    {t("models.modelNeedsKey")}
+                  </span>
+                )}
+                {!modelsLoading && !modelsFetchError && cloudModels.length > 0 && (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] text-success">
+                    <Check size={12} className="shrink-0" />
+                    {t("models.modelsAvailable", { count: cloudModels.length })}
                   </span>
                 )}
               </div>
-            </SettingRow>
-
-            {isCustomModel && (
-              <SettingRow
-                className="flex-wrap"
-                title={t("models.customModelIdLabel")}
-                description={t("models.customModelIdDesc")}
-              >
-                <Input
-                  type="text"
-                  value={asrModel === "custom" ? asrCustomModel : asrModel}
-                  onChange={(e) => {
-                    if (asrModel === "custom") {
-                      handleCustomModelChange(e.target.value);
-                    } else {
-                      handleModelChange(e.target.value);
-                    }
-                  }}
-                  placeholder={t("models.customModelIdPlaceholder")}
-                  className="w-72 max-w-full shrink bg-black font-mono"
-                />
-              </SettingRow>
-            )}
-
-            <SettingRow
-              className="flex-wrap"
-              title={t("models.baseUrlLabel")}
-              description={t("models.baseUrlDesc")}
-            >
-              <Input
-                type="text"
-                value={asrBaseUrl}
-                onChange={(e) => handleBaseUrlChange(e.target.value)}
-                placeholder={t("models.baseUrlPlaceholder")}
-                className="w-72 max-w-full shrink bg-black font-mono"
-              />
             </SettingRow>
           </div>
         </TabsContent>

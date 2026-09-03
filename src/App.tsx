@@ -5,6 +5,12 @@ import "./App.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { localizeError as localizeBackendError } from "@/lib/localizeError";
+import {
+  defaultCloudModel,
+  isCloudProviderId,
+  preloadCloudTranscription,
+  transcribeCloudRecording,
+} from "@/lib/byok";
 
 import { AlertTriangle } from "lucide-react";
 
@@ -80,7 +86,17 @@ function App() {
   const syncActiveConfig = async () => {
     try {
       const engine = localStorage.getItem("asr_engine") || "local";
-      const provider = localStorage.getItem("asr_provider") || "openai";
+      const storedProvider = localStorage.getItem("asr_provider");
+      const provider = isCloudProviderId(storedProvider) ? storedProvider : "openai";
+      if (storedProvider !== provider) {
+        localStorage.setItem("asr_provider", provider);
+        localStorage.setItem("asr_model", "gpt-4o-mini-transcribe");
+      }
+      if (engine === "openai-cloud") {
+        preloadCloudTranscription(provider).catch((err) => {
+          console.warn("Could not preload the cloud transcription adapter:", err);
+        });
+      }
       await invoke("update_active_config", { engine, provider });
     } catch (err) {
       console.error("Failed to sync active engine configuration:", err);
@@ -221,9 +237,7 @@ function App() {
           const asrEngine = localStorage.getItem("asr_engine") || "local";
 
           let modelName = "Whisper Local";
-          if (asrEngine === "openai-cloud") {
-            modelName = "OpenAI Cloud";
-          } else {
+          if (asrEngine !== "openai-cloud") {
             const activeModelPath = await invoke<string | null>(
               "get_active_model",
             );
@@ -233,21 +247,28 @@ function App() {
             }
           }
 
-          const asrProvider = localStorage.getItem("asr_provider") || "openai";
-          const asrModel = localStorage.getItem("asr_model") || "whisper-1";
-          const asrCustomModel = localStorage.getItem("asr_custom_model") || "";
-          const asrBaseUrl = localStorage.getItem("asr_base_url") || "";
+          const storedProvider = localStorage.getItem("asr_provider");
+          const asrProvider = isCloudProviderId(storedProvider) ? storedProvider : "openai";
+          const asrModel =
+            localStorage.getItem("asr_model") || defaultCloudModel(asrProvider);
           const asrLanguage = localStorage.getItem("asr_language") || "auto";
-          const modelToUse = asrModel === "custom" ? asrCustomModel : asrModel;
+          const language = asrLanguage === "auto" ? undefined : asrLanguage;
 
-          let text = await invoke<string>("transcribe_audio", {
-            samples: null,
-            engine: asrEngine,
-            provider: asrProvider,
-            model: modelToUse || null,
-            baseUrl: asrBaseUrl || null,
-            language: asrLanguage === "auto" ? null : asrLanguage,
-          });
+          let text: string;
+          if (asrEngine === "openai-cloud") {
+            modelName = `${asrProvider}/${asrModel}`;
+            text = await transcribeCloudRecording({
+              provider: asrProvider,
+              modelId: asrModel,
+              language,
+            });
+          } else {
+            text = await invoke<string>("transcribe_audio", {
+              samples: null,
+              engine: asrEngine,
+              language: language || null,
+            });
+          }
 
           if (text && text.trim().length > 0) {
             console.log(`[FRONTEND] Transcription successful, text length: ${text.length}`);

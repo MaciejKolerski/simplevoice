@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { HistoryAudioPlayer } from "@/components/HistoryAudioPlayer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
@@ -39,30 +40,6 @@ export function TranscriptionsView() {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // Single entry, not a map: only one row is expanded at a time, and a base64
-  // WAV of a long recording is tens to hundreds of megabytes in the webview.
-  const [audio, setAudio] = useState<{ id: string; data: string } | null>(null);
-
-  useEffect(() => {
-    if (!expandedId) {
-      setAudio(null);
-      return;
-    }
-    if (audio?.id === expandedId) return;
-
-    const item = history.find((h) => h.id === expandedId);
-    if (!item?.wav_path) return;
-
-    let cancelled = false;
-    invoke<string>("get_audio_base64", { path: item.wav_path })
-      .then((base64) => {
-        if (!cancelled) setAudio({ id: expandedId, data: base64 });
-      })
-      .catch((err) => console.error("Failed to load audio:", err));
-    return () => {
-      cancelled = true;
-    };
-  }, [expandedId, history, audio?.id]);
 
   const loadHistory = async (reset = false) => {
     const newOffset = reset ? 0 : offset;
@@ -329,21 +306,11 @@ export function TranscriptionsView() {
 
                 {isExpanded && item.wav_path && (
                   <div className="mt-4 pt-4 border-t border-border/50">
-                    {audio?.id === item.id ? (
-                      <div className="bg-surface-active rounded-xl p-4">
-                        <audio
-                          src={`data:audio/wav;base64,${audio.data}`}
-                          controls
-                          className="w-full accent-success"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </div>
-                    ) : (
-                      <div className="text-muted text-sm py-12 text-center border border-dashed border-border rounded-xl flex items-center justify-center gap-2">
-                        <Loader2 size={14} className="animate-spin" />
-                        {t("transcriptions.loadingRecording")}
-                      </div>
-                    )}
+                    <HistoryAudioPlayer
+                      id={item.id}
+                      path={item.wav_path}
+                      durationSec={item.duration_sec}
+                    />
                   </div>
                 )}
               </div>

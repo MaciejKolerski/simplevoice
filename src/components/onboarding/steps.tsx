@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Trans } from "react-i18next";
 import type { TFunction } from "i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { isCloudProviderId } from "@/lib/byok";
 
 type ViewId = "usage" | "models" | "transcriptions" | "settings";
 
@@ -38,7 +39,8 @@ async function recordingReady(): Promise<boolean> {
     const status = await invoke<ModelStatus>("get_model_status");
     return status.active != null;
   }
-  const provider = localStorage.getItem("asr_provider") || "openai";
+  const storedProvider = localStorage.getItem("asr_provider");
+  const provider = isCloudProviderId(storedProvider) ? storedProvider : "openai";
   return invoke<boolean>("has_secure_api_key", { provider });
 }
 

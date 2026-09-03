@@ -6,7 +6,7 @@ import type { TFunction } from "i18next";
  * The backend encodes user-facing errors as i18n keys so the frontend can show
  * them in the currently selected UI language (instead of a fixed language):
  *
- *   "errors.<key>"            — a plain key, e.g. "errors.cloud_extract_text"
+ *   "errors.<key>"            — a plain key, e.g. "errors.invalid_byok_request"
  *   "errors.<key>::<detail>"  — a key plus dynamic text interpolated as
  *                               {{detail}}, e.g. "errors.api_key_missing::OpenAI"
  *                               or "errors.cloud_api_error::404 Not Found — ...".

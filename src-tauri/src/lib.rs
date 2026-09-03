@@ -1,5 +1,7 @@
 mod audio;
+mod byok;
 mod error;
+mod history_audio;
 pub mod eval;
 #[cfg(target_os = "linux")]
 mod linux_shortcuts;
@@ -11,7 +13,6 @@ mod media_control;
 mod logging;
 pub mod stt;
 use audio::AudioController;
-use base64::Engine;
 use serde::Serialize;
 use sqlx::{FromRow, SqlitePool};
 use std::sync::Mutex;
@@ -2151,6 +2152,9 @@ fn get_models_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 fn set_secure_api_key(provider: String, key: String) -> Result<(), String> {
+    if !byok::is_supported_provider(&provider) {
+        return Err(format!("errors.provider_no_transcription::{provider}"));
+    }
     if key.trim().is_empty() {
         return delete_secure_api_key(provider);
     }
@@ -2163,18 +2167,10 @@ fn set_secure_api_key(provider: String, key: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_secure_api_key(provider: String) -> Result<String, String> {
-    let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
-        .map_err(|e| format!("errors.keyring_access::{}", e))?;
-    match entry.get_password() {
-        Ok(pass) => Ok(pass),
-        Err(keyring::Error::NoEntry) => Ok("".to_string()),
-        Err(e) => Err(format!("errors.keyring_access::{}", e)),
-    }
-}
-
-#[tauri::command]
 fn delete_secure_api_key(provider: String) -> Result<(), String> {
+    if !byok::is_supported_provider(&provider) {
+        return Err(format!("errors.provider_no_transcription::{provider}"));
+    }
     let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
         .map_err(|e| format!("errors.keyring_access::{}", e))?;
     match entry.delete_password() {
@@ -2186,6 +2182,9 @@ fn delete_secure_api_key(provider: String) -> Result<(), String> {
 
 #[tauri::command]
 fn has_secure_api_key(provider: String) -> Result<bool, String> {
+    if !byok::is_supported_provider(&provider) {
+        return Err(format!("errors.provider_no_transcription::{provider}"));
+    }
     let entry = keyring::Entry::new("simplevoice", &format!("api_key_{}", provider))
         .map_err(|e| format!("errors.keyring_access::{}", e))?;
     match entry.get_password() {
@@ -2193,21 +2192,6 @@ fn has_secure_api_key(provider: String) -> Result<bool, String> {
         Err(keyring::Error::NoEntry) => Ok(false),
         Err(e) => Err(format!("errors.keyring_access::{}", e)),
     }
-}
-
-#[tauri::command]
-async fn list_cloud_models(
-    provider: String,
-    base_url: Option<String>,
-) -> Result<Vec<String>, String> {
-    let key = get_secure_api_key(provider.clone())?;
-    if key.trim().is_empty() {
-        return Err(format!(
-            "errors.api_key_missing::{}",
-            provider
-        ));
-    }
-    crate::stt::cloud::list_models(&provider, base_url.as_deref(), &key).await
 }
 
 /// macOS App Nap suppression, held for the lifetime of a transcription.
@@ -2277,13 +2261,91 @@ impl Drop for AppNapGuard {
 static TRANSCRIBE_ACTIVITY: std::sync::Mutex<Option<AppNapGuard>> =
     std::sync::Mutex::new(None);
 
+pub(crate) async fn deliver_transcription(
+    text: String,
+    language: Option<&str>,
+    last_transcription: &LastTranscription,
+    audio_controller: &AudioController,
+    app_handle: &tauri::AppHandle,
+) -> String {
+    let text = if is_filler_removal_enabled(app_handle) {
+        crate::stt::text::remove_fillers(&text, language)
+    } else {
+        text
+    };
+    let text = if is_sentence_case_enabled(app_handle) {
+        crate::stt::text::sentence_case(&text)
+    } else {
+        text
+    };
+    let text = if is_trailing_space_enabled(app_handle) && !text.trim().is_empty() {
+        format!("{} ", text.trim_end())
+    } else {
+        text
+    };
+
+    tracing::info!(
+        "[transcription] complete (len {}); delivering from backend",
+        text.trim().len()
+    );
+
+    if !text.trim().is_empty() {
+        let saved_clipboard = if is_restore_clipboard_enabled(app_handle)
+            && !is_clipboard_only(app_handle)
+        {
+            arboard::Clipboard::new()
+                .ok()
+                .and_then(|mut clipboard| clipboard.get_text().ok())
+        } else {
+            None
+        };
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text(text.clone());
+        }
+        *last_transcription
+            .text
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(text.clone());
+        if !is_clipboard_only(app_handle) {
+            let output = text.clone();
+            let output_app = app_handle.clone();
+            let use_typing = is_type_output_enabled(app_handle);
+            let paste_delay = paste_delay_ms(app_handle);
+            PASTE_KEY_HOLD_MS.store(
+                paste_key_hold_ms(app_handle),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                std::thread::sleep(std::time::Duration::from_millis(paste_delay));
+                let result = if use_typing {
+                    type_text_from_backend(&output_app, output)
+                } else {
+                    paste_text_from_backend(&output_app, output)
+                };
+                if let Err(error) = result {
+                    tracing::error!("[transcription] backend auto-output failed: {error}");
+                    let _ = output_app.emit("paste-error", error.to_string());
+                }
+                if let Some(previous) = saved_clipboard {
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                        let _ = clipboard.set_text(previous);
+                    }
+                }
+            })
+            .await;
+        }
+        play_backend_sound(app_handle, "done");
+    }
+
+    finish_transcribing(app_handle, audio_controller);
+    text
+}
+
 #[tauri::command]
 async fn transcribe_audio(
     samples: Option<Vec<f32>>,
     engine: String,
-    provider: Option<String>,
-    model: Option<String>,
-    base_url: Option<String>,
     language: Option<String>,
     stt_controller: tauri::State<'_, SttController>,
     audio_controller: tauri::State<'_, AudioController>,
@@ -2297,10 +2359,11 @@ async fn transcribe_audio(
     #[cfg(target_os = "macos")]
     let _app_nap_guard = AppNapGuard::begin("SimpleVoice is transcribing audio");
 
-    let controller = stt_controller.inner().clone();
+    if engine == "openai-cloud" {
+        return Err("errors.cloud_sdk_route_required".to_string());
+    }
 
-    // Apply the Accuracy-vs-Speed preset (Whisper beam width) from config before
-    // transcribing.
+    let controller = stt_controller.inner().clone();
     apply_decode_preset(&app_handle);
 
     let final_samples: std::sync::Arc<Vec<f32>> = match samples {
@@ -2311,217 +2374,45 @@ async fn transcribe_audio(
         }
     };
 
-    let text = {
-        if engine == "openai-cloud" {
-            let provider_name = provider.unwrap_or_else(|| "openai".to_string());
-            let key = get_secure_api_key(provider_name.clone())?;
-            if key.trim().is_empty() {
-                return Err(format!("errors.api_key_missing::{}", provider_name));
-            }
-            // Same preprocessing + chunking as the local path (per spec): keeps
-            // every upload far below provider size caps (OpenAI: 25 MB), yields
-            // progress events, and puts chunk offsets and the truncation marker
-            // on one timeline with the local engines.
-            let samples_for_prep = std::sync::Arc::clone(&final_samples);
-            let (prepared, chunks) = tauri::async_runtime::spawn_blocking(move || {
-                let prepared = crate::stt::prepare_samples(&samples_for_prep);
-                let chunks = crate::stt::chunker::split_at_silences(&prepared);
-                (prepared, chunks)
-            })
-            .await
-            .map_err(|e| e.to_string())?;
-            let total = chunks.len();
-
-            // Transcribe chunks with bounded concurrency instead of strictly
-            // one-at-a-time, but collect results IN ORDER (buffered) so the joined
-            // transcript stays correct. Error semantics match the sequential path:
-            // keep everything before the first failed chunk and mark a truncation
-            // there; if no kept text precedes the failure, propagate the error.
-            use futures::StreamExt;
-            const CLOUD_CONCURRENCY: usize = 4;
-            let prepared_ref = &prepared;
-            let key_ref = key.as_str();
-            let provider_ref = provider_name.as_str();
-            let model_ref = model.as_deref();
-            let base_url_ref = base_url.as_deref();
-            let language_ref = language.as_deref();
-            let app_ref = &app_handle;
-            let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-            let results: Vec<Result<String, String>> = futures::stream::iter(
-                chunks.iter().cloned().map(|range| {
-                    let done = done.clone();
-                    async move {
-                        let r = crate::stt::cloud::transcribe_cloud(
-                            &prepared_ref[range],
-                            key_ref,
-                            Some(provider_ref),
-                            model_ref,
-                            base_url_ref,
-                            language_ref,
-                        )
-                        .await
-                        .map(|p| p.trim().to_string());
-                        if total > 1 {
-                            let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                            let _ = app_ref.emit(
-                                "transcription-progress",
-                                serde_json::json!({ "done": d, "total": total }),
-                            );
-                        }
-                        r
+    let progress_app = app_handle.clone();
+    let transcription_language = language.clone();
+    let transcription_samples = std::sync::Arc::clone(&final_samples);
+    let result: Result<crate::stt::ChunkedTranscription, String> =
+        tauri::async_runtime::spawn_blocking(move || {
+            controller.transcribe_with_progress(
+                &transcription_samples,
+                transcription_language.as_deref(),
+                &mut |done, total| {
+                    if total > 1 {
+                        let _ = progress_app.emit(
+                            "transcription-progress",
+                            serde_json::json!({ "done": done, "total": total }),
+                        );
                     }
-                }),
+                },
             )
-            .buffered(CLOUD_CONCURRENCY)
-            .collect()
-            .await;
-
-            let (parts, truncated_at) = join_cloud_results(results, &chunks)?;
-            let mut joined =
-                crate::stt::text::collapse_repeats(&crate::stt::sanitize_output(&parts.join(" ")));
-            if let Some(secs) = truncated_at {
-                joined.push_str(&truncation_marker(&app_handle, secs));
-            }
-            joined
-        } else {
-            let app_for_progress = app_handle.clone();
-            let language_for_engine = language.clone();
-            let samples_for_engine = std::sync::Arc::clone(&final_samples);
-            let result: Result<crate::stt::ChunkedTranscription, String> =
-                tauri::async_runtime::spawn_blocking(move || {
-                    controller.transcribe_with_progress(
-                        &samples_for_engine,
-                        language_for_engine.as_deref(),
-                        &mut |done, total| {
-                            if total > 1 {
-                                let _ = app_for_progress.emit(
-                                    "transcription-progress",
-                                    serde_json::json!({ "done": done, "total": total }),
-                                );
-                            }
-                        },
-                    )
-                })
-                .await
-                .map_err(|e| e.to_string())?;
-            let chunked = result?;
-            let mut joined = chunked.text;
-            if let Some((secs, err)) = chunked.truncated {
-                tracing::warn!(
-                    "[transcribe_audio] transcription truncated at {}s: {}",
-                    secs as u32, err
-                );
-                joined.push_str(&truncation_marker(&app_handle, secs));
-            }
-            joined
-        }
-    };
-
-    // Delivery-layer post-processing (config-gated; the eval-harness path through
-    // transcribe_with_progress is not affected).
-    let text = if is_filler_removal_enabled(&app_handle) {
-        crate::stt::text::remove_fillers(&text, language.as_deref())
-    } else {
-        text
-    };
-    let text = if is_sentence_case_enabled(&app_handle) {
-        crate::stt::text::sentence_case(&text)
-    } else {
-        text
-    };
-    // Trailing space (last in the chain) so consecutive dictations don't glue words.
-    let text = if is_trailing_space_enabled(&app_handle) && !text.trim().is_empty() {
-        format!("{} ", text.trim_end())
-    } else {
-        text
-    };
-
-    tracing::info!(
-        "[transcribe_audio] transcription complete (len {}); delivering from backend",
-        text.trim().len()
-    );
-
-    // Deliver the result from the backend. The caller lives in the main window's
-    // WKWebView, which is `visible: false` (menu-bar app); when the app is
-    // backgrounded macOS suspends/throttles that occluded web-content process, so
-    // this command's response can sit undelivered until an unrelated event (the
-    // next recording) wakes it — the "transcription never finishes / nothing
-    // pasted" hang. Anything the user is waiting on therefore happens here, not in
-    // the frontend's post-await code, so it no longer depends on that delivery.
-    if !text.trim().is_empty() {
-        // When enabled, remember the user's current clipboard so we can restore
-        // it after auto-paste consumes our transcription (text clipboards only).
-        // Skipped in clipboard-only mode, where keeping the text on the clipboard
-        // is the whole point.
-        let saved_clipboard = if is_restore_clipboard_enabled(&app_handle)
-            && !is_clipboard_only(&app_handle)
-        {
-            arboard::Clipboard::new()
-                .ok()
-                .and_then(|mut c| c.get_text().ok())
-        } else {
-            None
-        };
-        // System clipboard (arboard; on Wayland its wlr-data-control backend keeps
-        // a background server alive after the handle drops).
-        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-            let _ = clipboard.set_text(text.clone());
-        }
-        // Last transcription, for the copy-last global shortcut.
-        *last_transcription.text.lock().unwrap_or_else(|e| e.into_inner()) = Some(text.clone());
-        // Auto-paste off the async runtime (the pre-paste settle sleep must not
-        // block it); the enigo keystroke itself is routed through
-        // paste_text_from_backend, which on macOS hops to the main thread.
-        // "Clipboard only" keeps the text on the clipboard and
-        // skips auto-paste; otherwise auto-paste as usual.
-        if !is_clipboard_only(&app_handle) {
-            let out_owned = text.clone();
-            let app_for_out = app_handle.clone();
-            // Type the characters directly, or simulate a paste
-            // keystroke (default). Read once here, off the runtime thread below.
-            let use_typing = is_type_output_enabled(&app_handle);
-            // The pre-paste settle delay is configurable; the modifier hold is read
-            // inside paste_text via PASTE_KEY_HOLD_MS, set here from config.
-            let paste_delay = paste_delay_ms(&app_handle);
-            PASTE_KEY_HOLD_MS.store(
-                paste_key_hold_ms(&app_handle),
-                std::sync::atomic::Ordering::Relaxed,
-            );
-            let _ = tauri::async_runtime::spawn_blocking(move || {
-                // Let the just-set clipboard propagate and the previously focused app
-                // settle before delivering.
-                std::thread::sleep(std::time::Duration::from_millis(paste_delay));
-                let res = if use_typing {
-                    type_text_from_backend(&app_for_out, out_owned)
-                } else {
-                    paste_text_from_backend(&app_for_out, out_owned)
-                };
-                if let Err(e) = res {
-                    tracing::error!("[transcribe_audio] backend auto-output failed: {e}");
-                    // Surface the silent failure so the UI can prompt manual paste.
-                    let _ = app_for_out.emit("paste-error", format!("{e}"));
-                }
-                // Restore the user's previous clipboard once the paste has
-                // consumed our text. The short delay lets the target app read the
-                // clipboard before we overwrite it.
-                if let Some(prev) = saved_clipboard {
-                    std::thread::sleep(std::time::Duration::from_millis(150));
-                    if let Ok(mut c) = arboard::Clipboard::new() {
-                        let _ = c.set_text(prev);
-                    }
-                }
-            })
-            .await;
-        }
-        play_backend_sound(&app_handle, "done");
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    let chunked = result?;
+    let mut text = chunked.text;
+    if let Some((seconds, error)) = chunked.truncated {
+        tracing::warn!(
+            "[transcribe_audio] transcription truncated at {}s: {}",
+            seconds as u32,
+            error
+        );
+        text.push_str(&truncation_marker(&app_handle, seconds));
     }
 
-    // Clear the transcribing indicators from the backend too, so they never stay
-    // stuck waiting on the frontend's finally block (which only runs once the
-    // deferred response finally reaches the webview).
-    finish_transcribing(&app_handle, audio_controller.inner());
-
-    Ok(text)
+    Ok(deliver_transcription(
+        text,
+        language.as_deref(),
+        last_transcription.inner(),
+        audio_controller.inner(),
+        &app_handle,
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -2924,7 +2815,9 @@ async fn save_transcription_data(
 async fn clear_history_cmd(
     app_handle: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
+    history_audio: State<'_, history_audio::HistoryAudioController>,
 ) -> Result<(), String> {
+    history_audio.stop(None)?;
     let app_local_data = app_handle
         .path()
         .app_local_data_dir()
@@ -2953,7 +2846,9 @@ async fn delete_transcription_cmd(
     path: Option<String>,
     _app_handle: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
+    history_audio: State<'_, history_audio::HistoryAudioController>,
 ) -> Result<(), String> {
+    history_audio.stop(Some(id.clone()))?;
     if let Some(wav_path) = path {
         let p = std::path::Path::new(&wav_path);
         if p.exists() && p.is_file() {
@@ -3028,13 +2923,6 @@ async fn get_transcriptions(
         e.to_string()
     })?;
     Ok(transcriptions)
-}
-
-#[tauri::command]
-fn get_audio_base64(path: String) -> Result<String, String> {
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(base64)
 }
 
 #[tauri::command]
@@ -3584,8 +3472,10 @@ pub fn run() {
             entries: Mutex::new(Vec::new()),
         })
         .manage(TrayLabelsState(std::sync::Mutex::new(TrayLabels::default())))
+        .manage(history_audio::HistoryAudioController::new())
         .manage(stt::downloader::DownloadRegistry::default())
         .manage(crate::stt::streaming::StreamingController::new())
+        .manage(byok::CloudTranscriptionState::default())
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -3810,10 +3700,15 @@ pub fn run() {
             transcribe_audio,
             has_last_recording_samples,
             set_secure_api_key,
-            get_secure_api_key,
             delete_secure_api_key,
             has_secure_api_key,
-            list_cloud_models,
+            byok::list_cloud_providers,
+            byok::list_cloud_models,
+            byok::byok_http_request,
+            byok::prepare_cloud_transcription,
+            byok::get_cloud_transcription_chunk,
+            byok::complete_cloud_transcription,
+            byok::cancel_cloud_transcription,
             minimize_window,
             maximize_window,
             close_window,
@@ -3825,8 +3720,12 @@ pub fn run() {
             delete_transcription_cmd,
             save_transcription_data,
             get_transcriptions,
-            get_audio_base64,
             play_wav,
+            history_audio::play_history_audio,
+            history_audio::pause_history_audio,
+            history_audio::seek_history_audio,
+            history_audio::stop_history_audio,
+            history_audio::get_history_audio_status,
             get_usage_stats,
             set_transcribing,
             get_model_status,

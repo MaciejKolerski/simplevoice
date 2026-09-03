@@ -284,7 +284,14 @@
   padding: 1.5rem;
   height: 100%;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding-bottom: 3rem;
+}
+
+@supports not (scrollbar-gutter: stable) {
+  .view {
+    overflow-y: scroll;
+  }
 }
 
 @media (min-width: 1024px) {
@@ -360,19 +367,4 @@
   html {
     scroll-behavior: auto;
   }
-}
-
-audio {
-  width: 100%;
-  height: 52px;
-}
-
-audio::-webkit-media-controls-panel {
-  background-color: var(--surface-active);
-  border-radius: var(--radius);
-}
-
-audio::-webkit-media-controls-play-button,
-audio::-webkit-media-controls-mute-button {
-  color: var(--success);
 }

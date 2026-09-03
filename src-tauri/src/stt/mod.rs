@@ -1,6 +1,5 @@
 use std::sync::Mutex;
 
-pub mod cloud;
 pub mod traits;
 pub mod factory;
 pub mod ggml_whisper;
