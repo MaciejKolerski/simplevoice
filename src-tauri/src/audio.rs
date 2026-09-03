@@ -263,7 +263,6 @@ impl AudioController {
                 .ok_or_else(|| "No default input device found".to_string())?,
         };
 
-        // Cross-platform media pause (macOS / Windows / Linux)
         if pause_audio {
             s.paused_media_apps = crate::media_control::pause_system_media();
         } else {
@@ -286,7 +285,6 @@ impl AudioController {
         s.is_recording = true;
         s.recording_start = Some(chrono::Local::now());
 
-        // Spawn consumer thread to move data from ring buffer to AudioState buffer
         let state_clone = Arc::clone(&self.state);
         let app_handle_clone = app_handle.clone();
         std::thread::spawn(move || {
@@ -297,7 +295,6 @@ impl AudioController {
             let mut last_audio = std::time::Instant::now();
 
             loop {
-                // Check state at start of loop iteration
                 let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms) = {
                     let s = state_clone.lock().unwrap();
                     (
@@ -309,7 +306,6 @@ impl AudioController {
                 };
 
                 if !is_recording {
-                    // Drain any remaining samples directly into buffer
                     let mut s = state_clone.lock().unwrap();
                     while !consumer.is_empty() {
                         let read = consumer.pop_slice(&mut local_buf);
@@ -318,11 +314,9 @@ impl AudioController {
                     break;
                 }
 
-                // Read from consumer
                 let read = consumer.pop_slice(&mut local_buf);
                 if read > 0 {
                     last_audio = std::time::Instant::now();
-                    // Compute RMS of the newly read samples for visualizer
                     let mut sum_sq = 0.0;
                     for &sample in &local_buf[..read] {
                         sum_sq += sample * sample;
@@ -397,7 +391,6 @@ impl AudioController {
             }
         });
 
-        // Create the resampler and downmixer
         let mut resampler = Resampler::new(src_rate, dst_rate);
         let mut dc_blocker = DcBlocker::new();
 
@@ -465,7 +458,6 @@ impl AudioController {
             s.is_recording = false;
             s.is_saving = true;
 
-            // Cross-platform media resume
             let paused_apps_stop: Vec<String> = s.paused_media_apps.drain(..).collect();
             if !paused_apps_stop.is_empty() {
                 crate::media_control::resume_system_media(&paused_apps_stop);
@@ -501,7 +493,6 @@ impl AudioController {
         };
 
 
-        // WAV saved - switch to transcribing state (blue dot stays on)
         {
             let mut s = self.state.lock().unwrap();
             s.is_saving = false;
@@ -557,7 +548,7 @@ static RING_WARNED: AtomicBool = AtomicBool::new(false);
 
 /// Records samples dropped because the consumer fell behind and the ring filled
 /// (previously a silent `let _ = push_slice`). Warns once per process so a
-/// persistent fault is visible without log spam (B5).
+/// persistent fault is visible without log spam.
 fn note_ring_overflow(dropped: usize) {
     RING_DROPPED.fetch_add(dropped, Ordering::Relaxed);
     if !RING_WARNED.swap(true, Ordering::Relaxed) {
@@ -570,7 +561,7 @@ static LIVE_WARNED: AtomicBool = AtomicBool::new(false);
 
 /// Records a live-fan-out chunk dropped because the streaming worker fell behind
 /// (the bounded channel returned Full). Warns once per process. With G3 coalescing
-/// this should be rare; surfacing it makes a real overload visible (G3).
+/// this should be rare; surfacing it makes a real overload visible.
 fn note_live_drop() {
     LIVE_DROPPED.fetch_add(1, Ordering::Relaxed);
     if !LIVE_WARNED.swap(true, Ordering::Relaxed) {
@@ -624,7 +615,7 @@ mod downmix_tests {
 /// One-pole DC-blocking high-pass filter (`y[n] = x[n] - x[n-1] + R*y[n-1]`).
 /// Removes a constant/near-DC offset that would otherwise inflate RMS and bias the
 /// VAD/chunker silence thresholds, while preserving speech. State carries across
-/// callbacks (B8).
+/// callbacks.
 struct DcBlocker {
     prev_x: f32,
     prev_y: f32,

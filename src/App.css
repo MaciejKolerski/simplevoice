@@ -14,7 +14,6 @@
    set on <html> so Base UI / shadcn `dark:` variants engage as designed.
    ========================================================================= */
 :root {
-  /* Raw brand scale */
   --bg: #000000;
   --surface: #0a0a0a;
   --surface-hover: #141414;
@@ -34,13 +33,11 @@
   --accent-primary: #ffffff;
   --accent-primary-fg: #000000;
 
-  /* Functional status — interface only */
   --success: #34d399;
   --warning: #fbbf24;
   --danger: #f87171;
   --info: #60a5fa;
 
-  /* Live recording waveform */
   --wave-from: #6366f1;
   --wave-to: #a855f7;
 
@@ -65,7 +62,6 @@
 
   --radius: 0.75rem;
 
-  /* Layout */
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 64px;
   --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -92,13 +88,11 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Named brand surfaces (enables bg-surface / bg-surface-hover / bg-surface-active) */
   --color-surface: var(--surface);
   --color-surface-hover: var(--surface-hover);
   --color-surface-active: var(--surface-active);
   --color-border-hover: var(--border-hover);
 
-  /* Brand status utilities (text-success, bg-warning/10, border-danger, ...) */
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
@@ -183,7 +177,6 @@
     display: none;
   }
 
-  /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -209,7 +202,6 @@
   app-region: no-drag;
 }
 
-/* Custom CSS for TitleBar and Sidebar (avoiding unknown utility errors in Tailwind v4) */
 .title-bar {
   position: relative;
   height: 2.5rem;
@@ -331,7 +323,6 @@
   }
 }
 
-/* Brand WaveBar equalizer (per brand book) */
 .wavebar-eq rect {
   transform-box: fill-box;
   transform-origin: center;
@@ -371,7 +362,6 @@
   }
 }
 
-/* Media Player Styling */
 audio {
   width: 100%;
   height: 52px;

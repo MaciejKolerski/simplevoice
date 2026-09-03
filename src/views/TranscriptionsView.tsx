@@ -368,7 +368,6 @@ export function TranscriptionsView() {
         </div>
       )}
 
-      {/* Confirm: delete a single item */}
       <AlertDialog
         open={!!showDeleteModal}
         onOpenChange={(open) => {
@@ -396,7 +395,6 @@ export function TranscriptionsView() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirm: clear all history */}
       <AlertDialog
         open={showConfirmModal}
         onOpenChange={setShowConfirmModal}

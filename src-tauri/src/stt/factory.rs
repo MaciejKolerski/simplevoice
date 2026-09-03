@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::stt::traits::{AsrEngine, ModelFormat, ModelInfo};
 use crate::stt::ggml_whisper::GgmlWhisperEngine;
 
-/// If `dir` holds a download completion manifest (F2), return the comma-joined
+/// If `dir` holds a download completion manifest, return the comma-joined
 /// list of required files that are missing — or `None` when there is no manifest
 /// (legacy install) or every listed file is present.
 fn manifest_missing_files(dir: &Path) -> Option<String> {
@@ -107,7 +107,7 @@ impl AsrFactory {
                     path.display()
                 )));
             }
-            // F2: a completion manifest lists the files a multi-file install
+            // A completion manifest lists the files a multi-file install
             // needs. If present and any are missing, the download was interrupted
             // between files (no `.part` left). Legacy installs have no manifest
             // and fall through to format sniffing.
@@ -126,7 +126,6 @@ impl AsrFactory {
             if path.join("pytorch_model.bin").exists() {
                 return Ok(ModelFormat::HfPytorch);
             }
-            // Check for ONNX directories (Moonshine, etc.)
             let has_onnx = if let Ok(sub_entries) = std::fs::read_dir(path) {
                 sub_entries
                     .filter_map(|e| e.ok())
@@ -155,7 +154,6 @@ impl AsrFactory {
         let size_bytes = if path.is_file() {
             path.metadata()?.len()
         } else {
-            // Directory: sum the size of all files
             let mut sum = 0;
             if let Ok(entries) = std::fs::read_dir(path) {
                 for entry in entries.flatten() {

@@ -70,7 +70,7 @@ fn is_retryable_status(status: reqwest::StatusCode) -> bool {
 }
 
 /// Filename of the per-model completion manifest written once every file of a
-/// multi-file download finishes (F2). `AsrFactory::detect_format` uses it to
+/// multi-file download finishes. `AsrFactory::detect_format` uses it to
 /// reject an install interrupted between files (which leaves no `.part`).
 pub(crate) const COMPLETION_MANIFEST: &str = ".sv-manifest.json";
 
@@ -103,7 +103,7 @@ fn sha256_of_file(path: &Path) -> Option<String> {
 }
 
 /// Fetch HuggingFace's published SHA-256 per file (the LFS `sha256`) for
-/// `repo_id`, keyed by repo-relative filename (F1). Only LFS-tracked files (the
+/// `repo_id`, keyed by repo-relative filename. Only LFS-tracked files (the
 /// large model weights) carry a content SHA-256; small git-blob files are absent.
 /// Best-effort: any API/parse error yields an empty map, so verification is
 /// simply skipped.
@@ -233,14 +233,14 @@ async fn run_download(
 
     // Bound connection establishment so a half-open socket cannot hang a download
     // forever. No total request timeout: model files are large and a slow-but-
-    // progressing transfer must not be cut off (F4).
+    // progressing transfer must not be cut off.
     let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(15))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
     let total_files = files.len();
 
-    // F1: HuggingFace's published SHA-256 (LFS oid) per file, for post-download
+    // Hugging Face's published SHA-256 (LFS oid) per file, for post-download
     // integrity verification. Best-effort: empty when the API is unreachable.
     let expected = fetch_expected_sha256(&client, repo_id).await;
 
@@ -284,7 +284,7 @@ async fn run_download(
         } else {
             // Retry transient failures with capped exponential backoff. The `.part`
             // file plus HTTP Range resume mean each retry continues where it left
-            // off rather than restarting the transfer (F4).
+            // off rather than restarting the transfer.
             let mut attempt = 0u32;
             loop {
                 match download_one_file_attempt(
@@ -318,7 +318,7 @@ async fn run_download(
             }
         }
 
-        // F1: verify the finished file against HF's published SHA-256 when known.
+        // Verify the finished file against Hugging Face's published SHA-256 when known.
         // A mismatch means a corrupt or tampered download — delete it and fail so
         // the user re-downloads rather than loading bad weights. Non-LFS files
         // have no hash and are skipped.
@@ -337,7 +337,7 @@ async fn run_download(
         }
     }
 
-    // F2: record a completion manifest for multi-file installs so a download
+    // Record a completion manifest for multi-file installs so a download
     // interrupted between files (no `.part` left behind) is detected as
     // incomplete rather than half-installed.
     if !is_single_file {

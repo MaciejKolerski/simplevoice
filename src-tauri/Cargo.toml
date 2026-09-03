@@ -23,7 +23,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [ "tray-icon", "image-png"] }
-tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
@@ -38,7 +37,6 @@ tracing-subscriber = "0.3"
 tracing-appender = "0.2"
 futures = "0.3"
 sha2 = "0.10"
-ferrous-opencc = "0.4"
 num_cpus = "1.16"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
@@ -56,7 +54,6 @@ crossbeam-channel = "0.5"
 thiserror = "2.0"
 anyhow = "1.0"
 rodio = { version = "0.20", features = ["symphonia-all"] }
-# --- Candle ASR ---
 candle-core = { version = "0.8", optional = true }
 candle-nn = { version = "0.8", optional = true }
 candle-transformers = { version = "0.8", optional = true }
@@ -90,9 +87,8 @@ arboard = { version = "3", features = ["wayland-data-control"] }
 # Native global hotkeys on Wayland by reading /dev/input directly (no compositor
 # config edits, no external tools); works on niri and any compositor.
 evdev = "0.13"
-# Session-bus client for the MPRIS2 "pause system audio" feature. Already in the
-# tree via tauri-plugin-opener, so this adds no build cost — declaring it makes
-# the dependency explicit and drops the need for external dbus-send/playerctl.
+# Session-bus client for the MPRIS2 "pause system audio" feature. Declaring it
+# explicitly drops the need for external dbus-send/playerctl.
 zbus = "5.15.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]

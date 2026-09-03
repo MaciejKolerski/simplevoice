@@ -77,6 +77,8 @@ interface RecommendedModel {
   recommended?: boolean;
 }
 
+type CloudProvider = "openai" | "openrouter" | "gemini" | "custom";
+
 const RECOMMENDED_MODELS: RecommendedModel[] = [
   {
     name: "Whisper Tiny (GGML)",
@@ -146,7 +148,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     recommended: true
   },
   {
-    name: "Zipformer GigaSpeech (EN · hotwords)",
+    name: "Zipformer GigaSpeech (EN)",
     repo_id: "csukuangfj/sherpa-onnx-zipformer-gigaspeech-2023-12-12",
     files: [
       "encoder-epoch-30-avg-1.int8.onnx",
@@ -221,7 +223,7 @@ const FALLBACK_CLOUD_MODELS: Record<string, string[]> = {
 export function ModelsView() {
   const { t } = useTranslation();
 
-  const PROVIDER_LABELS: Record<string, string> = {
+  const PROVIDER_LABELS: Record<CloudProvider, string> = {
     openai: "OpenAI",
     openrouter: "OpenRouter",
     gemini: "Google Gemini",
@@ -245,12 +247,11 @@ export function ModelsView() {
   const [deleteTarget, setDeleteTarget] = useState<{ path: string; name: string } | null>(null);
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
-  // Conversion states
   const [convertingPath, setConvertingPath] = useState<string | null>(null);
   const [conversionStatus, setConversionStatus] = useState<string>("");
   const [conversionError, setConversionError] = useState<{ path: string; message: string } | null>(null);
 
-  // Downloader states. Keyed by a unique per-model key (modelKey) because
+  // Key download state by a unique per-model key because
   // several recommended models share the same repo_id (all whisper.cpp GGML).
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
@@ -276,10 +277,7 @@ export function ModelsView() {
     setDownloadingKey(key);
   };
 
-  // BYOK states
-  const [asrProvider, setAsrProvider] = useState<
-    "openai" | "openrouter" | "anthropic" | "gemini" | "custom"
-  >("openai");
+  const [asrProvider, setAsrProvider] = useState<CloudProvider>("openai");
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [asrModel, setAsrModel] = useState<string>("whisper-1");
   const [asrCustomModel, setAsrCustomModel] = useState<string>("");
@@ -287,7 +285,6 @@ export function ModelsView() {
     "https://api.openai.com/v1",
   );
 
-  // Cloud model-list + connection-test state
   const [cloudModels, setCloudModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState<boolean>(false);
   const [modelsFetchError, setModelsFetchError] = useState<string | null>(null);
@@ -361,20 +358,38 @@ export function ModelsView() {
       const savedEngine =
         (localStorage.getItem("asr_engine") as any) || "local";
       setAsrEngine(savedEngine);
-      const savedProvider =
-        (localStorage.getItem("asr_provider") as any) || "openai";
+      const storedProvider = localStorage.getItem("asr_provider");
+      const savedProvider: CloudProvider =
+        storedProvider && Object.prototype.hasOwnProperty.call(PROVIDER_LABELS, storedProvider)
+          ? (storedProvider as CloudProvider)
+          : "openai";
       setAsrProvider(savedProvider);
-      setAsrModel(localStorage.getItem("asr_model") || "whisper-1");
+      const savedModel =
+        savedProvider === "openai" && storedProvider !== savedProvider
+          ? "whisper-1"
+          : localStorage.getItem("asr_model") || "whisper-1";
+      const savedBaseUrl =
+        savedProvider === "openai" && storedProvider !== savedProvider
+          ? "https://api.openai.com/v1"
+          : localStorage.getItem("asr_base_url") || "https://api.openai.com/v1";
+      if (storedProvider !== savedProvider) {
+        localStorage.setItem("asr_provider", savedProvider);
+        localStorage.setItem("asr_model", savedModel);
+        localStorage.setItem("asr_base_url", savedBaseUrl);
+      }
+      setAsrModel(savedModel);
       setAsrCustomModel(localStorage.getItem("asr_custom_model") || "");
-      setAsrBaseUrl(
-        localStorage.getItem("asr_base_url") || "https://api.openai.com/v1",
-      );
+      setAsrBaseUrl(savedBaseUrl);
       loadSecureKeysForProvider(savedProvider);
     };
     syncEngine();
 
     const handleKeyChange = () => {
-      const currentProvider = localStorage.getItem("asr_provider") || "openai";
+      const storedProvider = localStorage.getItem("asr_provider");
+      const currentProvider =
+        storedProvider && Object.prototype.hasOwnProperty.call(PROVIDER_LABELS, storedProvider)
+          ? storedProvider
+          : "openai";
       loadSecureKeysForProvider(currentProvider);
     };
 
@@ -435,7 +450,6 @@ export function ModelsView() {
   useEffect(() => {
     if (asrEngine !== "openai-cloud") return;
     if (!hasStoredKey) return; // no key -> keep the curated fallback
-    if (asrProvider === "anthropic") return; // can't list/transcribe; keep fallback
     const handle = setTimeout(() => {
       fetchCloudModels().catch(() => {});
     }, 600);
@@ -443,9 +457,7 @@ export function ModelsView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asrEngine, asrProvider, asrBaseUrl, hasStoredKey]);
 
-  const handleProviderChange = (
-    provider: "openai" | "openrouter" | "anthropic" | "gemini" | "custom",
-  ) => {
+  const handleProviderChange = (provider: CloudProvider) => {
     setModelsFetchError(null);
     setCloudModels([]);
     setAsrProvider(provider);
@@ -461,11 +473,6 @@ export function ModelsView() {
       localStorage.setItem("asr_model", "openai/whisper-large-v3");
       setAsrBaseUrl("https://openrouter.ai/api/v1");
       localStorage.setItem("asr_base_url", "https://openrouter.ai/api/v1");
-    } else if (provider === "anthropic") {
-      setAsrModel("claude-3-5-haiku-20241022");
-      localStorage.setItem("asr_model", "claude-3-5-haiku-20241022");
-      setAsrBaseUrl("https://api.anthropic.com/v1");
-      localStorage.setItem("asr_base_url", "https://api.anthropic.com/v1");
     } else if (provider === "gemini") {
       setAsrModel("gemini-flash-latest");
       localStorage.setItem("asr_model", "gemini-flash-latest");
@@ -703,20 +710,11 @@ export function ModelsView() {
     }
   };
 
-  const KNOWN_MODELS = new Set([
-    "whisper-1", "gpt-4o-mini", "gpt-4o",
-    "openai/whisper-large-v3", "meta-llama/llama-3.2-11b-vision-instruct:free",
-    "deepseek/deepseek-chat", "google/gemini-2.0-flash-exp:free",
-    "claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229",
-    "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash",
-  ]);
   const modelOptions =
     cloudModels.length > 0 ? cloudModels : FALLBACK_CLOUD_MODELS[asrProvider] || [];
   const isCustomModel =
-    asrModel === "custom" ||
-    (!modelOptions.includes(asrModel) && !KNOWN_MODELS.has(asrModel));
+    asrModel === "custom" || !modelOptions.includes(asrModel);
 
-  // Render a single model row (shared between local and recommended)
   const renderModelRow = (
     key: string,
     name: string,
@@ -828,7 +826,6 @@ export function ModelsView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="m-0 text-2xl font-medium text-white tracking-tight">
           {t("nav.models")}
@@ -884,7 +881,6 @@ export function ModelsView() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Global error alerts */}
         {conversionError && (
           <Alert variant="destructive" className="mb-4 border-danger/20 bg-danger/5">
             <AlertTriangle />
@@ -915,7 +911,6 @@ export function ModelsView() {
         )}
 
         <TabsContent value="local" className="flex flex-col gap-6">
-          {/* Installed models */}
           <div className="border border-border rounded-xl overflow-hidden bg-secondary">
             {models.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
@@ -993,7 +988,6 @@ export function ModelsView() {
               })
             )}
 
-            {/* Recommended models — integrated as continuation */}
             {RECOMMENDED_MODELS.some(r => !isModelDownloaded(r)) && (
               <>
                 {models.length > 0 && (
@@ -1090,7 +1084,6 @@ export function ModelsView() {
             )}
           </div>
 
-          {/* Download status bar */}
           {downloadingKey && downloadStatus && (
             <div className="px-4 py-2 rounded-lg border border-info/15 bg-info/5 text-info text-[11px] font-mono">
               {downloadStatus}
@@ -1098,7 +1091,6 @@ export function ModelsView() {
           )}
         </TabsContent>
 
-        {/* BYOK Cloud Configuration */}
         <TabsContent value="openai-cloud" className="flex flex-col">
           <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="m-0 text-base text-white font-medium flex items-center gap-2">

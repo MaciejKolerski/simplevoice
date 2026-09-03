@@ -1,4 +1,4 @@
-//! Offline evaluation metrics for the transcription harness (Etap 0 / H1).
+//! Offline evaluation metrics for the transcription harness.
 //! Pure and dependency-free: no audio, no model loading. Unit-tested directly.
 
 use serde::{Deserialize, Serialize};

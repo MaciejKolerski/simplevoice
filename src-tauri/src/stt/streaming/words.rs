@@ -17,7 +17,7 @@ fn is_cjk(c: char) -> bool {
 /// Split a transcript into agreement units. Whitespace-separated runs of
 /// non-CJK text are words (as before); each CJK character is its own unit, so
 /// LocalAgreement can commit space-less scripts character-by-character instead of
-/// degrading to one giant token (G7).
+/// degrading to one giant token.
 pub fn split_words(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -78,7 +78,7 @@ pub fn join_words(words: &[String]) -> String {
 /// Append `words` onto an already-joined `prefix`, applying the exact same
 /// boundary rule as [`join_words`] between the last char of `prefix` and the
 /// first unit. Lets a caller keep a running joined string in O(appended) work
-/// instead of re-cloning and re-joining the whole history on every update (G1):
+/// instead of re-cloning and re-joining the whole history on every update:
 /// `join_onto(&join_words(a), b) == join_words(&[a, b].concat())`.
 pub fn join_onto(prefix: &str, words: &[String]) -> String {
     let tail = join_words(words);

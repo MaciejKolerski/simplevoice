@@ -11,7 +11,6 @@ const env = { ...process.env };
 if (process.platform === 'win32') {
   const shortTargetDir = 'C:\\t\\sv';
 
-  // Ensure the directory exists
   if (!fs.existsSync(shortTargetDir)) {
     try {
       fs.mkdirSync(shortTargetDir, { recursive: true });

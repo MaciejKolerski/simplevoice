@@ -1,4 +1,4 @@
-//! Structured logging (H5): a rolling daily file under `<app_data>/logs/` plus
+//! Structured logging: a rolling daily file under `<app_data>/logs/` plus
 //! stderr, via `tracing`. Initialised once at startup.
 //!
 //! Fault-tolerant by design: any failure to set up file logging falls back to

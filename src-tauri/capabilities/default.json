@@ -5,7 +5,6 @@
   "windows": ["main", "recording_window"],
   "permissions": [
     "core:default",
-    "opener:default",
     "sql:default",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",

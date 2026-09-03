@@ -113,7 +113,6 @@ async function captureView(browser, { name, navLabel }) {
     await ctx.close();
   }
 
-  // Clean up intermediate
   try { unlinkSync(rawPath); } catch {}
 }
 
@@ -222,7 +221,6 @@ try {
       break;
     }
 
-    // Clean up intermediate
     try { unlinkSync(overlayRawPath); } catch {}
   }
 } finally {

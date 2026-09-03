@@ -24,7 +24,7 @@ pub struct LocalAgreementStrategy {
     stab: Stabilizer,
     /// Joined text of all finalized utterances this session, kept incrementally
     /// so `full_text` is O(current utterance) rather than re-cloning and
-    /// re-joining the whole history on every decode (G1).
+    /// re-joining the whole history on every decode.
     session_text: String,
     /// Last emitted committed text, for computing the append-only delta.
     last_full: String,

@@ -134,7 +134,7 @@ impl CandleWhisperEngine {
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| AppError::Model(format!("Failed to load tokenizer: {}", e)))?;
 
-        // We support both model.safetensors and model.safetensors.index.json (multi-file weights)
+        // Indexed models can store weights across multiple safetensors files.
         let weights_path = model_dir.join("model.safetensors");
         let vb = if weights_path.exists() {
             unsafe {
@@ -142,8 +142,7 @@ impl CandleWhisperEngine {
                     .map_err(|e| AppError::Model(format!("Failed to load weights: {}", e)))?
             }
         } else {
-            // If model.safetensors doesn't exist, we might have multiple safetensors files.
-            // Let's find all *.safetensors files in the directory.
+            // Fall back to every safetensors file when no single-file model exists.
             let mut safetensors_files = Vec::new();
             if let Ok(entries) = std::fs::read_dir(model_dir) {
                 for entry in entries.flatten() {
@@ -330,7 +329,7 @@ impl AsrEngine for CandleWhisperEngine {
 
         let mut model = self.model.lock().unwrap();
 
-        // Check if model is multilingual and handle language token selection
+        // Multilingual Whisper vocabularies include language tokens above this size.
         let language_token = if self.config.vocab_size >= 51865 {
             match language {
                 Some(lang) if lang != "auto" && !lang.trim().is_empty() => {

@@ -54,7 +54,6 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
         </Tooltip>
       </div>
 
-      {/* Center Title section */}
       <div
         data-tauri-drag-region
         className="absolute left-1/2 -translate-x-1/2 h-full flex items-center gap-2 text-[12px] font-medium text-muted"
@@ -68,7 +67,6 @@ export function TitleBar({ activeViewName, toggleSidebar }: TitleBarProps) {
         </span>
       </div>
 
-      {/* Right section: Window controls (Windows) */}
       {isWindows && (
         <div className="flex items-center h-full ml-auto title-bar-no-drag">
           <button

@@ -63,7 +63,6 @@ export function RecordingWindowView() {
       root.style.backgroundColor = "transparent";
     }
 
-    // Query initial lock state
     invoke<boolean>("is_recording_window_locked_cmd")
       .then(setLocked)
       .catch(() => {});
@@ -271,7 +270,6 @@ export function RecordingWindowView() {
           fill = g;
           alpha = 0.5 + pulse * 0.5;
         } else {
-          // idle: tiny dots
           h = 3;
           fill = idleFill;
           alpha = 0.6;

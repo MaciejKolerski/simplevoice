@@ -9,7 +9,6 @@ mod wayland_type;
 mod evdev_shortcuts;
 mod media_control;
 mod logging;
-mod search;
 pub mod stt;
 use audio::AudioController;
 use base64::Engine;
@@ -161,7 +160,7 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
     let c = config.active.lock().unwrap();
     if c.engine == "local" {
         let stt_state = stt.state.lock().unwrap();
-        // An idle-unloaded model (C6) keeps `active_model_path` and is reloaded
+        // An idle-unloaded model keeps `active_model_path` and is reloaded
         // transparently, so only block when no model is selected at all — not
         // merely when the engine is currently unloaded. A load that is still in
         // flight (the seconds after launch, while the frontend restores the last
@@ -258,7 +257,7 @@ fn live_min_chunk_ms(app_handle: &tauri::AppHandle) -> u32 {
 }
 
 /// Reads `live_buffer_cap_s` (max seconds the live utterance buffer grows before a
-/// forced final, bounding the O(n) re-decode) from config.json. Default 20 (G7).
+/// forced final, bounding the O(n) re-decode) from config.json. Default 20.
 fn live_buffer_cap_s(app_handle: &tauri::AppHandle) -> u32 {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return 20;
@@ -318,92 +317,8 @@ fn is_trailing_space_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Reads `llm_cleanup_enabled` from config.json (default false): after
-/// transcription, send the text to the configured BYOK cloud model for
-/// punctuation/casing/typo cleanup (D3).
-fn is_llm_cleanup_enabled(app_handle: &tauri::AppHandle) -> bool {
-    let Ok(dir) = app_handle.path().app_local_data_dir() else {
-        return false;
-    };
-    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
-        return false;
-    };
-    serde_json::from_str::<serde_json::Value>(&content)
-        .ok()
-        .and_then(|v| v.get("llm_cleanup_enabled").and_then(|b| b.as_bool()))
-        .unwrap_or(false)
-}
-
-/// Reads the BYOK cloud model config the Settings page mirrors into config.json
-/// (`cloud_provider` / `cloud_model` / `cloud_base_url`). Returns `None` when no
-/// provider is configured.
-fn cloud_cleanup_config(app_handle: &tauri::AppHandle) -> Option<(String, String, String)> {
-    let dir = app_handle.path().app_local_data_dir().ok()?;
-    let content = std::fs::read_to_string(dir.join("config.json")).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let provider = v
-        .get("cloud_provider")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if provider.is_empty() {
-        return None;
-    }
-    let model = v
-        .get("cloud_model")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let base_url = v
-        .get("cloud_base_url")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    Some((provider, model, base_url))
-}
-
-/// D3: optionally run LLM cleanup on a finished transcription. Opt-in; returns
-/// the input unchanged when disabled, when no cloud model/key is configured, or
-/// when the LLM call fails — so it can never lose or mangle the local result.
-async fn maybe_llm_cleanup(app_handle: &tauri::AppHandle, text: String) -> String {
-    if text.trim().is_empty() || !is_llm_cleanup_enabled(app_handle) {
-        return text;
-    }
-    let Some((provider, model, base_url)) = cloud_cleanup_config(app_handle) else {
-        tracing::warn!("[transcribe_audio] llm_cleanup enabled but no cloud model configured");
-        return text;
-    };
-    let key = match get_secure_api_key(provider.clone()) {
-        Ok(k) if !k.trim().is_empty() => k,
-        _ => {
-            tracing::warn!("[transcribe_audio] llm_cleanup: no API key for provider '{provider}'");
-            return text;
-        }
-    };
-    match crate::stt::cloud::cleanup_text(&text, &key, Some(&provider), Some(&model), Some(&base_url))
-        .await
-    {
-        Ok(cleaned) if !cleaned.trim().is_empty() => {
-            tracing::info!(
-                "[transcribe_audio] llm_cleanup applied ({} -> {} chars)",
-                text.len(),
-                cleaned.len()
-            );
-            cleaned
-        }
-        Ok(_) => text,
-        Err(e) => {
-            tracing::warn!("[transcribe_audio] llm_cleanup failed, keeping local text: {e}");
-            text
-        }
-    }
-}
-
 /// Reads `clipboard_only` from config.json (default false): keep the transcription
-/// on the clipboard but skip auto-paste (E2).
+/// on the clipboard but skip auto-paste.
 fn is_clipboard_only(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return false;
@@ -419,7 +334,7 @@ fn is_clipboard_only(app_handle: &tauri::AppHandle) -> bool {
 
 /// Reads `type_output` from config.json (default false): deliver the result by
 /// typing the characters directly at the cursor instead of simulating a paste
-/// keystroke (E2). Useful for apps that ignore Cmd/Ctrl+V or clobber the
+/// keystroke. Useful for apps that ignore Cmd/Ctrl+V or clobber the
 /// clipboard. Ignored when `clipboard_only` is on (that suppresses all output).
 fn is_type_output_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
@@ -436,7 +351,7 @@ fn is_type_output_enabled(app_handle: &tauri::AppHandle) -> bool {
 
 /// Reads `restore_clipboard` from config.json (default false): after auto-paste,
 /// put the user's previous clipboard contents back instead of leaving the
-/// transcription on the clipboard (E1). Text clipboards only.
+/// transcription on the clipboard. Text clipboards only.
 fn is_restore_clipboard_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return false;
@@ -451,13 +366,13 @@ fn is_restore_clipboard_enabled(app_handle: &tauri::AppHandle) -> bool {
 }
 
 /// Modifier-key hold delay (ms) inserted into the simulated paste keystroke for
-/// apps that drop a too-fast Cmd/Ctrl+V (E6). Set from `paste_key_hold_ms` config
+/// apps that drop a too-fast Cmd/Ctrl+V. Set from `paste_key_hold_ms` config
 /// before each backend paste and read in `paste_text`; 0 = no hold (default).
 static PASTE_KEY_HOLD_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Pre-paste settle delay in ms (default 100, clamped 0..=2000): how long to wait
 /// after copying the transcription before simulating the paste keystroke, so the
-/// previously-focused app and the clipboard have time to settle (E6).
+/// previously-focused app and the clipboard have time to settle.
 fn paste_delay_ms(app_handle: &tauri::AppHandle) -> u64 {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return 100;
@@ -474,7 +389,7 @@ fn paste_delay_ms(app_handle: &tauri::AppHandle) -> u64 {
 
 /// Modifier-hold delay in ms (default 0, clamped 0..=500) inserted between the
 /// modifier press, the V click, and the release in `paste_text`, for apps that
-/// drop a too-fast paste keystroke (E6).
+/// drop a too-fast paste keystroke.
 fn paste_key_hold_ms(app_handle: &tauri::AppHandle) -> u64 {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return 0;
@@ -505,7 +420,7 @@ fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
 
 /// Background watcher: when "unload when idle" is enabled, drops the loaded model
 /// after 5 min of no transcription — never while recording or transcribing. The next
-/// transcription reloads it transparently (C6).
+/// transcription reloads it transparently.
 fn spawn_idle_unload_watcher(app_handle: tauri::AppHandle) {
     std::thread::spawn(move || {
         const IDLE_SECS: u64 = 300;
@@ -527,111 +442,6 @@ fn spawn_idle_unload_watcher(app_handle: tauri::AppHandle) {
             }
         }
     });
-}
-
-/// Reads `formatting_commands_enabled` from config.json (default false).
-fn is_formatting_commands_enabled(app_handle: &tauri::AppHandle) -> bool {
-    let Ok(dir) = app_handle.path().app_local_data_dir() else {
-        return false;
-    };
-    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
-        return false;
-    };
-    serde_json::from_str::<serde_json::Value>(&content)
-        .ok()
-        .and_then(|v| v.get("formatting_commands_enabled").and_then(|b| b.as_bool()))
-        .unwrap_or(false)
-}
-
-/// Reads `dictionary_rules` from config.json. Falls back to migrating the legacy
-/// `custom_words` array (each word -> a `text` rule) when `dictionary_rules` is
-/// absent, so existing installs keep their dictionary behavior without a rewrite.
-fn dictionary_rules(app_handle: &tauri::AppHandle) -> Vec<crate::stt::text::DictionaryRule> {
-    use crate::stt::text::{DictionaryRule, RuleAction};
-    let Ok(dir) = app_handle.path().app_local_data_dir() else {
-        return Vec::new();
-    };
-    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
-        return Vec::new();
-    };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return Vec::new();
-    };
-    if let Some(arr) = v.get("dictionary_rules").and_then(|a| a.as_array()) {
-        return arr
-            .iter()
-            .filter_map(|item| serde_json::from_value::<DictionaryRule>(item.clone()).ok())
-            .collect();
-    }
-    if let Some(arr) = v.get("custom_words").and_then(|a| a.as_array()) {
-        return arr
-            .iter()
-            .filter_map(|x| x.as_str())
-            .map(|s| DictionaryRule {
-                trigger: s.to_string(),
-                action: RuleAction::Text,
-                value: Some(s.to_string()),
-            })
-            .collect();
-    }
-    Vec::new()
-}
-
-/// Reads the enabled voice-search commands from config.json. The master
-/// `search_commands_enabled` flag (default on) gates the whole feature; when the
-/// `search_commands` array is absent (fresh install, Dictionary tab never opened)
-/// the built-in defaults are used so "hej google …" works out of the box. Returns
-/// only enabled commands, so the matcher never has to know about the flags.
-fn search_commands(app_handle: &tauri::AppHandle) -> Vec<crate::search::SearchCommand> {
-    let Ok(dir) = app_handle.path().app_local_data_dir() else {
-        return Vec::new();
-    };
-    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
-        // No config yet: defaults are enabled.
-        return crate::search::default_search_commands();
-    };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return Vec::new();
-    };
-    // Master toggle: only an explicit `false` disables the feature.
-    if v.get("search_commands_enabled").and_then(|b| b.as_bool()) == Some(false) {
-        return Vec::new();
-    }
-    let all = match v.get("search_commands").and_then(|a| a.as_array()) {
-        Some(arr) => arr
-            .iter()
-            .filter_map(|item| {
-                serde_json::from_value::<crate::search::SearchCommand>(item.clone()).ok()
-            })
-            .collect(),
-        None => crate::search::default_search_commands(),
-    };
-    all.into_iter().filter(|c| c.enabled).collect()
-}
-
-/// Reads the voice-search wake-word prefix from config.json (default "hey"). An
-/// empty stored value means no wake word is required (keyword-only matching).
-fn search_command_prefix(app_handle: &tauri::AppHandle) -> String {
-    app_handle
-        .path()
-        .app_local_data_dir()
-        .ok()
-        .and_then(|dir| std::fs::read_to_string(dir.join("config.json")).ok())
-        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
-        .and_then(|v| {
-            v.get("search_command_prefix")
-                .and_then(|s| s.as_str())
-                .map(|s| s.trim().to_string())
-        })
-        .unwrap_or_else(|| "hey".to_string())
-}
-
-/// Returns the built-in voice-search commands so the frontend can seed the config
-/// on first run and offer a "restore defaults" action. Backend is the single
-/// source of truth for the default list.
-#[tauri::command]
-fn get_default_search_commands() -> Vec<crate::search::SearchCommand> {
-    crate::search::default_search_commands()
 }
 
 /// Whether the in-app updater can download and install an update itself. False for
@@ -656,9 +466,8 @@ fn can_self_update() -> bool {
 
 /// Clears the "transcribing" indicators (backend flag, macOS App Nap activity,
 /// frontend status event, tray menu, recording overlay) at the end of a
-/// transcription — whether it produced text, fired a voice-search command, or was
-/// empty. Centralized so every exit path from `transcribe_audio` leaves the UI in
-/// the same idle state.
+/// transcription, including an empty result. Centralized so every exit path from
+/// `transcribe_audio` leaves the UI in the same idle state.
 fn finish_transcribing(app_handle: &tauri::AppHandle, audio_controller: &AudioController) {
     audio_controller.set_transcribing(false);
     #[cfg(target_os = "macos")]
@@ -671,7 +480,7 @@ fn finish_transcribing(app_handle: &tauri::AppHandle, audio_controller: &AudioCo
 }
 
 /// Reads `decode_accurate` from config.json and sets the Whisper beam width (beam
-/// search when accurate, greedy otherwise) before a transcription (A2/A8).
+/// search when accurate, greedy otherwise) before a transcription.
 fn apply_decode_preset(app_handle: &tauri::AppHandle) {
     let accurate = app_handle
         .path()
@@ -685,7 +494,7 @@ fn apply_decode_preset(app_handle: &tauri::AppHandle) {
         .store(if accurate { 5 } else { 0 }, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Reads `asr_language` from config.json for the live session (G5). Returns None for
+/// Reads `asr_language` from config.json for the live session. Returns None for
 /// "auto"/empty/missing so Whisper auto-detects; otherwise the language code.
 fn asr_language(app_handle: &tauri::AppHandle) -> Option<String> {
     let dir = app_handle.path().app_local_data_dir().ok()?;
@@ -709,7 +518,7 @@ fn begin_live_session(app: &tauri::AppHandle) {
         return;
     }
     let stt = app.state::<SttController>();
-    // The engine may be idle-unloaded (C6) right now. Handing the session a lazy
+    // The engine may be idle-unloaded right now. Handing the session a lazy
     // handle installs the audio tap immediately — losing no speech — and the
     // first re-decode reloads the model. Bailing out here instead (as this used
     // to) left live mode with no session at all: the recording produced no text
@@ -736,7 +545,7 @@ fn begin_live_session(app: &tauri::AppHandle) {
     // commit only stabilized words live (no mid-word splits). Works with any
     // local batch engine via transcribe() + whitespace split.
     let min_chunk_ms = live_min_chunk_ms(app);
-    // G5: use the user's configured ASR language (None = auto-detect) so live
+    // Use the user's configured ASR language (None = auto-detect) so live
     // re-decodes don't drift across languages on short buffers.
     let strategy = Box::new(crate::stt::streaming::local_agreement::LocalAgreementStrategy::new(
         engine, threshold, silence_ms, min_chunk_ms, asr_language(app), live_buffer_cap_s(app),
@@ -837,7 +646,7 @@ fn marker_for(lang: &str, secs: f32) -> String {
 }
 
 /// Fold cloud chunk results (already in chunk order) into the kept transcript
-/// parts plus an optional truncation point (C5). Mirrors the sequential rule:
+/// parts plus an optional truncation point. Mirrors the sequential rule:
 /// keep every part before the first failed chunk; if the failure precedes any
 /// kept text, propagate the error; an empty `Ok` part is dropped.
 fn join_cloud_results(
@@ -866,46 +675,6 @@ fn join_cloud_results(
         }
     }
     Ok((parts, truncated_at))
-}
-
-/// Reads `opencc_config` from config.json (default "off"): which OpenCC
-/// Simplified/Traditional Chinese conversion to apply to the transcription (D4).
-fn opencc_config(app_handle: &tauri::AppHandle) -> String {
-    let Ok(dir) = app_handle.path().app_local_data_dir() else {
-        return "off".to_string();
-    };
-    let Ok(content) = std::fs::read_to_string(dir.join("config.json")) else {
-        return "off".to_string();
-    };
-    serde_json::from_str::<serde_json::Value>(&content)
-        .ok()
-        .and_then(|v| {
-            v.get("opencc_config")
-                .and_then(|s| s.as_str())
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| "off".to_string())
-}
-
-/// D4: convert Chinese between Simplified/Traditional via OpenCC per `config`
-/// (`off` | `s2t` | `t2s` | `s2tw` | `tw2s` | `s2hk` | `hk2s`). Returns the text
-/// unchanged when off/unknown or on any error, so it never loses or corrupts a
-/// transcription. The OpenCC dictionaries are embedded in the binary (no assets).
-fn apply_opencc(config: &str, text: &str) -> String {
-    use ferrous_opencc::config::BuiltinConfig;
-    let builtin = match config {
-        "s2t" => BuiltinConfig::S2t,
-        "t2s" => BuiltinConfig::T2s,
-        "s2tw" => BuiltinConfig::S2tw,
-        "tw2s" => BuiltinConfig::Tw2s,
-        "s2hk" => BuiltinConfig::S2hk,
-        "hk2s" => BuiltinConfig::Hk2s,
-        _ => return text.to_string(),
-    };
-    match ferrous_opencc::OpenCC::from_config(builtin) {
-        Ok(cc) => cc.convert(text),
-        Err(_) => text.to_string(),
-    }
 }
 
 pub(crate) fn is_recording_window_locked(app_handle: &tauri::AppHandle) -> bool {
@@ -1254,7 +1023,6 @@ fn resolve_sound_file(
         _ => return None,
     };
 
-    // Check bundled resources (works in both dev and release builds)
     if let Ok(res_dir) = app_handle.path().resource_dir() {
         let bundled = res_dir.join("sounds").join(fname);
         if bundled.exists() {
@@ -1262,7 +1030,6 @@ fn resolve_sound_file(
         }
     }
 
-    // Fallback: built-in macOS system sounds
     #[cfg(target_os = "macos")]
     {
         let fallback = match sound_type {
@@ -1323,7 +1090,7 @@ fn warm_up_engine(app: &tauri::AppHandle) {
     }
 }
 
-/// Brings an idle-unloaded model (C6) back while the user is still speaking.
+/// Brings an idle-unloaded model back while the user is still speaking.
 ///
 /// The reload used to happen inside the transcription, i.e. *after* the recording
 /// stopped, so every dictation that followed an idle period stalled for the whole
@@ -1355,7 +1122,7 @@ fn preload_engine_for_recording(app: &tauri::AppHandle) {
 }
 
 /// Applies the configurable VAD threshold / silence duration from config.json to the
-/// audio state at recording start (B4). Missing keys keep the current defaults; values
+/// audio state at recording start. Missing keys keep the current defaults; values
 /// are clamped to sane ranges.
 fn apply_vad_config(app_handle: &tauri::AppHandle) {
     let parsed = app_handle
@@ -1486,7 +1253,6 @@ struct TrayLabels {
     usage: String,
     models: String,
     history: String,
-    dictionary: String,
     settings: String,
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     lock_window: String,
@@ -1505,7 +1271,6 @@ impl Default for TrayLabels {
             usage: "Usage".into(),
             models: "Models".into(),
             history: "History".into(),
-            dictionary: "Dictionary".into(),
             settings: "Settings".into(),
             lock_window: "Lock Recording Window Position".into(),
             unlock_window: "Unlock Recording Window Position".into(),
@@ -1578,9 +1343,9 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     #[cfg(not(target_os = "macos"))]
     let tray_icon_img = if let Some(ref img) = base_icon {
         if is_recording {
-            Some(draw_status_dot(img, [255, 59, 48, 255])) // Use iOS system red for recording state
+            Some(draw_status_dot(img, [255, 59, 48, 255]))
         } else if is_saving || is_transcribing {
-            Some(draw_status_dot(img, [0, 122, 255, 255])) // Use iOS system blue for processing state
+            Some(draw_status_dot(img, [0, 122, 255, 255]))
         } else {
             Some(img.clone())
         }
@@ -1625,11 +1390,6 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
 
     let nav_history_item = MenuItemBuilder::new(labels.history.as_str())
         .id("nav_transcriptions")
-        .build(app_handle)
-        .map_err(|e| e.to_string())?;
-
-    let nav_dictionary_item = MenuItemBuilder::new(labels.dictionary.as_str())
-        .id("nav_dictionary")
         .build(app_handle)
         .map_err(|e| e.to_string())?;
 
@@ -1700,7 +1460,6 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .item(&nav_usage_item)
         .item(&nav_models_item)
         .item(&nav_history_item)
-        .item(&nav_dictionary_item)
         .item(&nav_settings_item)
         .item(&separator2)
         .item(&mic_menu)
@@ -1717,7 +1476,6 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
         .item(&nav_usage_item)
         .item(&nav_models_item)
         .item(&nav_history_item)
-        .item(&nav_dictionary_item)
         .item(&nav_settings_item)
         .item(&separator2)
         .item(&mic_menu)
@@ -1759,7 +1517,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
 /// If active, stops the recording and emits the transcribed payload.
 /// If inactive, starts recording if allowed by configuration.
 /// Reads `push_to_talk_enabled` from config.json (default false): hold the record
-/// shortcut to record and release it to stop, instead of press-to-toggle (C2).
+/// shortcut to record and release it to stop, instead of press-to-toggle.
 fn is_push_to_talk_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return false;
@@ -2542,21 +2300,8 @@ async fn transcribe_audio(
     let controller = stt_controller.inner().clone();
 
     // Apply the Accuracy-vs-Speed preset (Whisper beam width) from config before
-    // transcribing (A2/A8).
+    // transcribing.
     apply_decode_preset(&app_handle);
-
-    // Bias decoding toward the custom dictionary (A3/A7). After migration this
-    // equals the former custom_words set, so recognition is unchanged. Only
-    // `text`-rule values bias; time/date are dynamic and contribute nothing.
-    let dict_rules = dictionary_rules(&app_handle);
-    let bias: Vec<String> = dict_rules
-        .iter()
-        .filter(|r| r.action == crate::stt::text::RuleAction::Text)
-        .filter_map(|r| r.value.clone())
-        .filter(|v| !v.is_empty())
-        .collect();
-    *crate::stt::ggml_whisper::WHISPER_INITIAL_PROMPT.lock().unwrap() = bias.join(", ");
-    *crate::stt::onnx_engine::ONNX_HOTWORDS.lock().unwrap() = bias.join("\n");
 
     let final_samples: std::sync::Arc<Vec<f32>> = match samples {
         Some(v) => std::sync::Arc::new(v),
@@ -2587,7 +2332,7 @@ async fn transcribe_audio(
             .map_err(|e| e.to_string())?;
             let total = chunks.len();
 
-            // C5: transcribe chunks with bounded concurrency instead of strictly
+            // Transcribe chunks with bounded concurrency instead of strictly
             // one-at-a-time, but collect results IN ORDER (buffered) so the joined
             // transcript stays correct. Error semantics match the sequential path:
             // keep everything before the first failed chunk and mark a truncation
@@ -2672,66 +2417,10 @@ async fn transcribe_audio(
         }
     };
 
-    // Voice search commands (Dictionary → Voice search): if the utterance opens
-    // with the wake-word prefix and a site keyword ("hej google …"), open the site with
-    // the rest of the utterance as the query and skip the type/paste delivery below.
-    // Detected on the raw transcription so the query is exactly what was spoken,
-    // before any formatting/casing/LLM steps run. Batch path only — live-typing mode
-    // streams text as you speak and never routes through this command.
-    if let Some(url) = crate::search::match_search_command(
-        &text,
-        &search_command_prefix(&app_handle),
-        &search_commands(&app_handle),
-    ) {
-        tracing::info!("[transcribe_audio] voice search command matched; opening browser");
-        if let Err(e) = tauri_plugin_opener::open_url(&url, None::<&str>) {
-            tracing::error!("[transcribe_audio] failed to open search URL: {e}");
-        }
-        play_backend_sound(&app_handle, "done");
-        finish_transcribing(&app_handle, audio_controller.inner());
-        return Ok(String::new());
-    }
-
     // Delivery-layer post-processing (config-gated; the eval-harness path through
     // transcribe_with_progress is not affected).
-    // D4: OpenCC Simplified/Traditional Chinese conversion first, so later steps
-    // operate on the converted script. Opt-in; no-op (returns input) when "off".
-    let text = apply_opencc(&opencc_config(&app_handle), &text);
-    // Filler removal is the next step; custom-words / formatting commands follow.
     let text = if is_filler_removal_enabled(&app_handle) {
         crate::stt::text::remove_fillers(&text, language.as_deref())
-    } else {
-        text
-    };
-    // Dictionary rules: substitute spoken trigger phrases with text / current
-    // time / current date / clipboard contents. Reuses the rules read for biasing.
-    let text = if dict_rules.is_empty() {
-        text
-    } else {
-        // Read the clipboard only when a Clipboard rule exists, so ordinary
-        // dictations never touch it (arboard spins up a background server on
-        // Wayland). This runs before our own text is placed on the clipboard, so
-        // it captures whatever the user had copied.
-        let clipboard = if dict_rules
-            .iter()
-            .any(|r| r.action == crate::stt::text::RuleAction::Clipboard)
-        {
-            arboard::Clipboard::new()
-                .ok()
-                .and_then(|mut c| c.get_text().ok())
-                .unwrap_or_default()
-        } else {
-            String::new()
-        };
-        crate::stt::text::apply_dictionary_rules(
-            &text,
-            &dict_rules,
-            chrono::Local::now().naive_local(),
-            &clipboard,
-        )
-    };
-    let text = if is_formatting_commands_enabled(&app_handle) {
-        crate::stt::text::apply_formatting_commands(&text, language.as_deref())
     } else {
         text
     };
@@ -2740,9 +2429,6 @@ async fn transcribe_audio(
     } else {
         text
     };
-    // D3: optional LLM cleanup (punctuation/casing/typos) via the configured BYOK
-    // cloud model. Opt-in; falls back to the local text on any failure.
-    let text = maybe_llm_cleanup(&app_handle, text).await;
     // Trailing space (last in the chain) so consecutive dictations don't glue words.
     let text = if is_trailing_space_enabled(&app_handle) && !text.trim().is_empty() {
         format!("{} ", text.trim_end())
@@ -2763,7 +2449,7 @@ async fn transcribe_audio(
     // pasted" hang. Anything the user is waiting on therefore happens here, not in
     // the frontend's post-await code, so it no longer depends on that delivery.
     if !text.trim().is_empty() {
-        // E1: when enabled, remember the user's current clipboard so we can restore
+        // When enabled, remember the user's current clipboard so we can restore
         // it after auto-paste consumes our transcription (text clipboards only).
         // Skipped in clipboard-only mode, where keeping the text on the clipboard
         // is the whole point.
@@ -2786,15 +2472,15 @@ async fn transcribe_audio(
         // Auto-paste off the async runtime (the pre-paste settle sleep must not
         // block it); the enigo keystroke itself is routed through
         // paste_text_from_backend, which on macOS hops to the main thread.
-        // Output mode (E2): "clipboard only" keeps the text on the clipboard and
+        // "Clipboard only" keeps the text on the clipboard and
         // skips auto-paste; otherwise auto-paste as usual.
         if !is_clipboard_only(&app_handle) {
             let out_owned = text.clone();
             let app_for_out = app_handle.clone();
-            // Output mode (E2): type the characters directly, or simulate a paste
+            // Type the characters directly, or simulate a paste
             // keystroke (default). Read once here, off the runtime thread below.
             let use_typing = is_type_output_enabled(&app_handle);
-            // E6: configurable pre-paste settle delay; the modifier-hold is read
+            // The pre-paste settle delay is configurable; the modifier hold is read
             // inside paste_text via PASTE_KEY_HOLD_MS, set here from config.
             let paste_delay = paste_delay_ms(&app_handle);
             PASTE_KEY_HOLD_MS.store(
@@ -2812,10 +2498,10 @@ async fn transcribe_audio(
                 };
                 if let Err(e) = res {
                     tracing::error!("[transcribe_audio] backend auto-output failed: {e}");
-                    // Surface the silent failure so the UI can prompt manual paste (E7).
+                    // Surface the silent failure so the UI can prompt manual paste.
                     let _ = app_for_out.emit("paste-error", format!("{e}"));
                 }
-                // E1: restore the user's previous clipboard once the paste has
+                // Restore the user's previous clipboard once the paste has
                 // consumed our text. The short delay lets the target app read the
                 // clipboard before we overwrite it.
                 if let Some(prev) = saved_clipboard {
@@ -3203,7 +2889,6 @@ async fn save_transcription_data(
     let dur_val = duration_sec.unwrap_or(0.0);
     let word_count = text.split_whitespace().count() as i32;
 
-    // 1. Insert Transcription
     sqlx::query(
         "INSERT OR IGNORE INTO transcriptions (id, timestamp, date, text, model, wav_path, duration_sec) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
@@ -3218,7 +2903,6 @@ async fn save_transcription_data(
     .await
     .map_err(|e| e.to_string())?;
 
-    // 2. Update Daily Usage
     sqlx::query(
         "INSERT INTO daily_usage (date, words_generated, time_transcribed_sec)
          VALUES (?, ?, ?)
@@ -3241,7 +2925,6 @@ async fn clear_history_cmd(
     app_handle: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
-    // 1. Delete recordings from disk
     let app_local_data = app_handle
         .path()
         .app_local_data_dir()
@@ -3251,7 +2934,6 @@ async fn clear_history_cmd(
         std::fs::remove_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
     }
 
-    // 2. Clear SQL database using shared pool
     sqlx::query("DELETE FROM transcriptions")
         .execute(&*pool)
         .await
@@ -3272,19 +2954,17 @@ async fn delete_transcription_cmd(
     _app_handle: tauri::AppHandle,
     pool: State<'_, SqlitePool>,
 ) -> Result<(), String> {
-    // 1. Delete physical file if path is provided
     if let Some(wav_path) = path {
         let p = std::path::Path::new(&wav_path);
         if p.exists() && p.is_file() {
             let _ = std::fs::remove_file(p);
-            // Try to remove parent dir if empty
             if let Some(parent) = p.parent() {
                 let _ = std::fs::remove_dir(parent);
             }
         }
     }
 
-    // 2. Fetch transcription info to update daily_usage before deleting
+    // Read usage inputs before deleting the transcription row.
     let trans_opt: Option<(String, Option<f64>, String)> =
         sqlx::query_as("SELECT date, duration_sec, text FROM transcriptions WHERE id = ?")
             .bind(&id)
@@ -3311,7 +2991,6 @@ async fn delete_transcription_cmd(
         .await
         .map_err(|e| e.to_string())?;
 
-        // Clean up empty usage rows
         sqlx::query(
             "DELETE FROM daily_usage WHERE date = ? AND words_generated = 0 AND time_transcribed_sec <= 0.0"
         )
@@ -3321,7 +3000,6 @@ async fn delete_transcription_cmd(
         .map_err(|e| e.to_string())?;
     }
 
-    // 3. Delete from database using shared pool
     sqlx::query("DELETE FROM transcriptions WHERE id = ?")
         .bind(id)
         .execute(&*pool)
@@ -3602,7 +3280,7 @@ fn paste_text_from_backend(app_handle: &tauri::AppHandle, text: String) -> Resul
 
 /// Backend-side wrapper for [`type_text`], mirroring [`paste_text_from_backend`]:
 /// `type_text` also drives enigo, so on macOS it must run on the main thread to
-/// avoid the HIToolbox `dispatch_assert_queue` SIGTRAP. Used by the E2 "type
+/// avoid the HIToolbox `dispatch_assert_queue` SIGTRAP. Used by the "type
 /// instead of paste" output mode from the runtime/blocking delivery thread.
 fn type_text_from_backend(app_handle: &tauri::AppHandle, text: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -3674,7 +3352,7 @@ fn paste_text(text: String) -> Result<(), String> {
         }
     })?;
 
-    // E6: optional hold around the paste keystroke for apps that drop a too-fast
+    // Optional hold around the paste keystroke for apps that drop a too-fast
     // Cmd/Ctrl+V. 0 (default) keeps the original instant paste.
     let hold_ms = PASTE_KEY_HOLD_MS.load(std::sync::atomic::Ordering::Relaxed);
     let hold = || {
@@ -3805,7 +3483,6 @@ pub fn run() {
         .with_handler(|app, shortcut, event| {
             use tauri_plugin_global_shortcut::ShortcutState;
             let state = event.state();
-            // Determine action by looking up the shortcut in the registry
             let action = {
                 let registry = app.state::<ShortcutRegistry>();
                 let entries = registry.entries.lock().unwrap();
@@ -3838,7 +3515,7 @@ pub fn run() {
                     }
                 }
                 Some(ShortcutAction::Record) | None => {
-                    // Push-to-talk (C2): hold to record, release to stop. When off,
+                    // Push-to-talk holds to record and releases to stop. When off,
                     // the record shortcut press-toggles recording as before.
                     if is_push_to_talk_enabled(app) {
                         match state {
@@ -3862,7 +3539,6 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // Check if the application was invoked with the toggle argument
             if argv.iter().any(|arg| arg == "--toggle" || arg == "toggle") {
                 toggle_recording(app);
             } else if argv.iter().any(|arg| {
@@ -3879,7 +3555,6 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -3935,7 +3610,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            // H5: structured logging to a rolling file under <app_data>/logs/ +
+            // Structured logging goes to a rolling file under <app_data>/logs/ and
             // stderr. Fault-tolerant — never blocks startup.
             if let Ok(dir) = app.path().app_local_data_dir() {
                 crate::logging::init(&dir);
@@ -4062,7 +3737,6 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
 
-            // Load persisted gpu_enabled from config.json
             if let Ok(app_local_data) = app_handle.path().app_local_data_dir() {
                 let config_path = app_local_data.join("config.json");
                 if let Ok(content) = std::fs::read_to_string(&config_path) {
@@ -4176,7 +3850,6 @@ pub fn run() {
             stt::downloader::pause_download,
             stt::downloader::cancel_download,
             stt::downloader::discard_download,
-            get_default_search_commands,
             can_self_update
         ])
         .run(tauri::generate_context!())
@@ -4200,7 +3873,7 @@ mod tests {
 
     #[test]
     fn idle_unloaded_local_model_still_allows_recording() {
-        // After an idle-unload (C6) the engine is dropped but `active_model_path`
+        // After an idle unload the engine is dropped but `active_model_path`
         // is kept; recording must still be allowed since transcription reloads it.
         let stt = SttController::new();
         {
@@ -4291,14 +3964,5 @@ mod tests {
             super::join_cloud_results(r, &chunks),
             Err("boom".to_string())
         );
-    }
-
-    #[test]
-    fn opencc_converts_and_passes_through() {
-        // 汉 (simplified) <-> 漢 (traditional); 字 is identical in both scripts.
-        assert_eq!(super::apply_opencc("s2t", "汉字"), "漢字");
-        assert_eq!(super::apply_opencc("t2s", "漢字"), "汉字");
-        assert_eq!(super::apply_opencc("off", "汉字"), "汉字");
-        assert_eq!(super::apply_opencc("nonsense", "abc"), "abc");
     }
 }

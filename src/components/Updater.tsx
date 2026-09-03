@@ -102,7 +102,6 @@ export function Updater() {
     }
   }, []);
 
-  // Check for updates on startup (with a slight delay to let the app load smoothly)
   useEffect(() => {
     const timer = setTimeout(() => {
       runCheck(false);

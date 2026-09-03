@@ -16,7 +16,6 @@ import { UsageView } from "./views/UsageView";
 import { ModelsView } from "./views/ModelsView";
 import { TranscriptionsView } from "./views/TranscriptionsView";
 import { SettingsView } from "./views/SettingsView";
-import { DictionaryView } from "./views/DictionaryView";
 import { WaveBar } from "@/components/brand/WaveBar";
 import {
   AlertDialog,
@@ -30,7 +29,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type ViewId = "usage" | "models" | "transcriptions" | "settings" | "dictionary";
+type ViewId = "usage" | "models" | "transcriptions" | "settings";
 
 function App() {
   const { t } = useTranslation();
@@ -143,7 +142,6 @@ function App() {
       });
     }
 
-    // Register the copy-last shortcut if one was saved
     const savedCopyShortcut =
       localStorage.getItem("global_copy_shortcut") ||
       "CommandOrControl+Shift+C";
@@ -220,7 +218,6 @@ function App() {
       try {
         const hasSamples = await invoke<boolean>("has_last_recording_samples");
         if (hasSamples) {
-          // Read settings from localStorage
           const asrEngine = localStorage.getItem("asr_engine") || "local";
 
           let modelName = "Whisper Local";
@@ -243,7 +240,6 @@ function App() {
           const asrLanguage = localStorage.getItem("asr_language") || "auto";
           const modelToUse = asrModel === "custom" ? asrCustomModel : asrModel;
 
-          // Step 1: Transcribe Audio
           let text = await invoke<string>("transcribe_audio", {
             samples: null,
             engine: asrEngine,
@@ -479,13 +475,9 @@ function App() {
                 <SettingsView active={activeView === "settings"} />
               )}
             </div>
-            <div className={`view ${activeView === "dictionary" ? "active" : ""}`}>
-              {mountedViews.has("dictionary") && <DictionaryView />}
-            </div>
           </main>
         </div>
 
-        {/* Global Recording / Transcribing HUD Overlay */}
         {(isRecording || isTranscribing) && (
           <div
             role="status"
@@ -496,10 +488,8 @@ function App() {
               {isRecording ? (
                 <>
                   <div className="relative mb-6" aria-hidden="true">
-                    {/* Pulsing outer ring */}
                     <div className="absolute inset-[-12px] rounded-full bg-danger/10 animate-ping"></div>
                     <div className="absolute inset-[-6px] rounded-full bg-danger/20 animate-pulse"></div>
-                    {/* Recording circle */}
                     <div className="w-16 h-16 rounded-full bg-danger flex items-center justify-center shadow-lg shadow-danger/30">
                       <div className="w-6 h-6 bg-black rounded-[5px] animate-pulse"></div>
                     </div>

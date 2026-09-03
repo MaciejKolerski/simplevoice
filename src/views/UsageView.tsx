@@ -213,7 +213,6 @@ export function UsageView() {
     durationTrend = calculateTrend(totalDuration, prevDuration);
     wordsTrend = calculateTrend(totalWords, prevWords);
 
-    // Generate 7 daily bars
     const rawVals: number[] = [];
     const dayLabelsAndVals: {
       dateStr: string;
@@ -295,7 +294,6 @@ export function UsageView() {
     durationTrend = calculateTrend(totalDuration, prevDuration);
     wordsTrend = calculateTrend(totalWords, prevWords);
 
-    // Generate 30 daily bars
     const rawVals: number[] = [];
     const dayLabelsAndVals: {
       dateStr: string;
@@ -309,7 +307,7 @@ export function UsageView() {
       d.setDate(startOfToday.getDate() - i);
       const dateStr = formatDateString(d);
 
-      // Sparse labels to prevent overlap
+      // Limit labels to four positions so they do not overlap.
       let label = "";
       if (i === 29 || i === 20 || i === 10 || i === 0) {
         label = d.toLocaleDateString(i18n.language, {
@@ -347,11 +345,9 @@ export function UsageView() {
       });
     }
   } else {
-    // All time
     totalDuration = totalDurationAllTime;
     totalWords = totalWordsAllTime;
 
-    // Generate last 6 monthly bars
     const rawVals: number[] = [];
     const monthLabelsAndVals: {
       year: number;
@@ -379,7 +375,6 @@ export function UsageView() {
         today: i === 0,
       });
 
-      // Sum daily stats for this year & month
       const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
       const mItems = dailyStats.filter((item) => item.date.startsWith(prefix));
       const mDur = mItems.reduce(
@@ -408,7 +403,6 @@ export function UsageView() {
     }
   }
 
-  // Dynamic Y-axis calculation
   const chartMaxDur = Math.max(...bars.map((b) => b.rawVal), 0);
   const displayMaxDur = chartMaxDur > 0 ? chartMaxDur : 3600;
   const yLabels = [
@@ -486,7 +480,6 @@ export function UsageView() {
         </Select>
       </div>
 
-      {/* Stat Cards - Responsive Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <Card className="p-6 gap-0 min-w-0">
           <div className="label-text flex justify-between items-center mb-3">
@@ -566,7 +559,6 @@ export function UsageView() {
           </div>
         </div>
 
-        {/* covers entire card when there is no data in the selected range */}
         {totalDuration === 0 && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center rounded-xl bg-secondary/60 backdrop-blur-[2px]">
             <BarChart3 size={24} aria-hidden="true" className="text-muted mb-3" />

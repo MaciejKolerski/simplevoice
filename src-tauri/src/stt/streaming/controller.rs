@@ -71,7 +71,7 @@ impl StreamingController {
                         // Coalesce backlog: if decode fell behind, drain all
                         // immediately-available chunks into one push so a single
                         // re-decode absorbs the accumulated audio instead of
-                        // queueing N decodes (G3).
+                        // queueing multiple decodes.
                         while let Ok(more) = audio_rx.try_recv() {
                             chunk.extend_from_slice(&more);
                         }

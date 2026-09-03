@@ -231,7 +231,6 @@ function CollapsibleCard({
   );
 }
 
-/** A titled group: a small label above a bordered card. Keeps each tab scannable. */
 function SettingsCard({
   title,
   children,
@@ -270,19 +269,15 @@ export function SettingsView({ active = true }: { active?: boolean }) {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [fillerRemovalEnabled, setFillerRemovalEnabled] = useState(false);
   const [sentenceCaseEnabled, setSentenceCaseEnabled] = useState(false);
-  const [formattingCommandsEnabled, setFormattingCommandsEnabled] = useState(false);
-  const [searchPrefix, setSearchPrefix] = useState("hey");
   const [decodeAccurate, setDecodeAccurate] = useState(false);
   const [trailingSpace, setTrailingSpace] = useState(false);
   const [modelUnload, setModelUnload] = useState(false);
   const [clipboardOnly, setClipboardOnly] = useState(false);
   const [typeOutput, setTypeOutput] = useState(false);
-  const [llmCleanup, setLlmCleanup] = useState(false);
   const [pushToTalk, setPushToTalk] = useState(false);
   const [restoreClipboard, setRestoreClipboard] = useState(false);
   const [pasteDelay, setPasteDelay] = useState("100");
   const [pasteKeyHold, setPasteKeyHold] = useState("0");
-  const [opencc, setOpencc] = useState("off");
   const [pauseAudioEnabled, setPauseAudioEnabled] = useState(false);
   const [gpuEnabled, setGpuEnabled] = useState(true);
   const [asrLanguage, setAsrLanguage] = useState("auto");
@@ -322,7 +317,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
     shortcutTargetRef.current = target;
   };
 
-  // Permission and environment states
   const [accessibilityGranted, setAccessibilityGranted] = useState(true);
   const [microphoneGranted, setMicrophoneGranted] = useState(true);
   const [platform, setPlatform] = useState("unknown");
@@ -405,7 +399,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
       updateConfig("live_transcription_enabled", storedLive === "true");
     }
 
-    // Frontend-only flag (App.tsx reads it); default on.
     setLiveAutopaste(localStorage.getItem("live_autopaste") !== "false");
 
     const savedOverlayTextMode =
@@ -414,7 +407,7 @@ export function SettingsView({ active = true }: { active?: boolean }) {
 
     const savedLang = localStorage.getItem("asr_language") || "auto";
     setAsrLanguage(savedLang);
-    // Migrate the localStorage value into config.json for the backend live session (G5).
+    // Migrate the localStorage value into config.json for the backend live session.
     updateConfig("asr_language", savedLang);
 
     isEnabled().then(setAutostartEnabled);
@@ -434,19 +427,15 @@ export function SettingsView({ active = true }: { active?: boolean }) {
     setSoundEnabled(getConfig("sound_feedback_enabled", true) !== false);
     setFillerRemovalEnabled(getConfig("filler_removal_enabled", false) === true);
     setSentenceCaseEnabled(getConfig("sentence_case_enabled", false) === true);
-    setFormattingCommandsEnabled(getConfig("formatting_commands_enabled", false) === true);
-    setSearchPrefix(String(getConfig("search_command_prefix", "hey")));
     setDecodeAccurate(getConfig("decode_accurate", false) === true);
     setTrailingSpace(getConfig("append_trailing_space", false) === true);
     setModelUnload(getConfig("model_unload_enabled", false) === true);
     setClipboardOnly(getConfig("clipboard_only", false) === true);
     setTypeOutput(getConfig("type_output", false) === true);
-    setLlmCleanup(getConfig("llm_cleanup_enabled", false) === true);
     setPushToTalk(getConfig("push_to_talk_enabled", false) === true);
     setRestoreClipboard(getConfig("restore_clipboard", false) === true);
     setPasteDelay(String(getConfig("paste_delay_ms", 100)));
     setPasteKeyHold(String(getConfig("paste_key_hold_ms", 0)));
-    setOpencc(String(getConfig("opencc_config", "off")));
     setVadThreshold(String(getConfig("vad_threshold", 0.008)));
     setVadSilenceMs(String(getConfig("vad_silence_ms", 1500)));
     setPauseAudioEnabled(getConfig("pause_audio_on_record", false) === true);
@@ -468,7 +457,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
       window.removeEventListener("update-check-complete", handleCheckComplete);
   }, []);
 
-  // Check system permissions and Wayland status on mount and periodically
   useEffect(() => {
     const checkPermissions = async () => {
       try {
@@ -508,7 +496,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
 
     const currentTarget = shortcutTargetRef.current;
 
-    // Helper to determine active modifier keys based on target platform
     const getModifiers = (event: KeyboardEvent) => {
       const mods: string[] = [];
       const isMac = platform === "macos";
@@ -665,7 +652,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
     loadDevices();
   }, []);
 
-  // Load GPU setting
   useEffect(() => {
     const loadGpuSetting = async () => {
       try {
@@ -774,16 +760,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
     updateConfig("sentence_case_enabled", checked);
   };
 
-  const handleFormattingCommandsToggle = (checked: boolean) => {
-    setFormattingCommandsEnabled(checked);
-    updateConfig("formatting_commands_enabled", checked);
-  };
-
-  const handleSearchPrefixChange = (value: string) => {
-    setSearchPrefix(value);
-    updateConfigDebounced("search_command_prefix", value);
-  };
-
   const handleDecodeAccurateToggle = (checked: boolean) => {
     setDecodeAccurate(checked);
     updateConfig("decode_accurate", checked);
@@ -831,22 +807,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
     if (!isNaN(n)) updateConfigDebounced("paste_key_hold_ms", clamp(n, 0, 1000));
   };
 
-  const handleOpenccChange = (value: string) => {
-    setOpencc(value);
-    updateConfig("opencc_config", value);
-  };
-
-  const handleLlmCleanupToggle = (checked: boolean) => {
-    setLlmCleanup(checked);
-    updateConfig("llm_cleanup_enabled", checked);
-    if (checked) {
-      // Snapshot the configured BYOK cloud provider + base URL so the backend can
-      // reach it. The model defaults to a current flash model server-side.
-      updateConfig("cloud_provider", localStorage.getItem("asr_provider") || "");
-      updateConfig("cloud_base_url", localStorage.getItem("asr_base_url") || "");
-    }
-  };
-
   const handlePauseAudioToggle = (checked: boolean) => {
     setPauseAudioEnabled(checked);
     updateConfig("pause_audio_on_record", checked);
@@ -855,7 +815,7 @@ export function SettingsView({ active = true }: { active?: boolean }) {
   const handleAsrLanguageChange = (val: string) => {
     setAsrLanguage(val);
     localStorage.setItem("asr_language", val);
-    // Mirror into config.json so the backend live session can read it (G5).
+    // Mirror into config.json so the backend live session can read it.
     updateConfig("asr_language", val);
   };
 
@@ -950,7 +910,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
           ))}
         </TabsList>
 
-        {/* ── General ─────────────────────────────────────────────────────── */}
         <TabsContent value="general" className="flex flex-col gap-6">
           <SettingsCard>
             <SettingRow layout="column" title={t("settings.interfaceLanguage")}>
@@ -1118,7 +1077,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
                           path: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
                         });
                       } catch {
-                        // Fallback: open System Settings directly
                         await invoke("open_folder", {
                           path: "/System/Library/PreferencePanes/Security.prefPane",
                         });
@@ -1155,7 +1113,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
           </SettingsCard>
         </TabsContent>
 
-        {/* ── Shortcuts ───────────────────────────────────────────────────── */}
         <TabsContent value="shortcuts" className="flex flex-col gap-6" data-tour="shortcuts-section">
           <SettingsCard>
             <SettingRow
@@ -1279,7 +1236,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
           )}
         </TabsContent>
 
-        {/* ── Recording ───────────────────────────────────────────────────── */}
         <TabsContent value="recording" className="flex flex-col gap-6">
           <SettingsCard data-tour="recording-section">
             <SettingRow title={t("settings.vad")} description={t("settings.vadDesc")}>
@@ -1335,7 +1291,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
           </SettingsCard>
         </TabsContent>
 
-        {/* ── Recording window (wavebar) ──────────────────────────────────── */}
         <TabsContent value="wavebar" className="flex flex-col gap-6">
           <SettingsCard>
             {(isMac || platform === "linux" || platform === "windows") && (
@@ -1396,7 +1351,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
           </SettingsCard>
         </TabsContent>
 
-        {/* ── Text ────────────────────────────────────────────────────────── */}
         <TabsContent value="text" className="flex flex-col gap-6">
           <SettingsCard>
             <SettingRow title={t("settings.accurateMode")} description={t("settings.accurateModeDesc")}>
@@ -1408,56 +1362,13 @@ export function SettingsView({ active = true }: { active?: boolean }) {
             <SettingRow title={t("settings.sentenceCase")} description={t("settings.sentenceCaseDesc")}>
               <Switch checked={sentenceCaseEnabled} onCheckedChange={handleSentenceCaseToggle} />
             </SettingRow>
-            <SettingRow title={t("settings.formattingCommands")} description={t("settings.formattingCommandsDesc")}>
-              <Switch checked={formattingCommandsEnabled} onCheckedChange={handleFormattingCommandsToggle} />
-            </SettingRow>
             <SettingRow title={t("settings.trailingSpace")} description={t("settings.trailingSpaceDesc")}>
               <Switch checked={trailingSpace} onCheckedChange={handleTrailingSpaceToggle} />
             </SettingRow>
-            <SettingRow title={t("settings.llmCleanup")} description={t("settings.llmCleanupDesc")}>
-              <Switch checked={llmCleanup} onCheckedChange={handleLlmCleanupToggle} />
-            </SettingRow>
-            <SettingRow title={t("settings.searchPrefix")} description={t("settings.searchPrefixDesc")}>
-              <Input
-                value={searchPrefix}
-                onChange={(e) => handleSearchPrefixChange(e.target.value)}
-                placeholder={t("settings.searchPrefixPlaceholder")}
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-                className="w-40 bg-black"
-              />
-            </SettingRow>
           </SettingsCard>
 
-          <CollapsibleCard title={t("settings.advanced")}>
-            <SettingRow layout="column" title={t("settings.opencc")} description={t("settings.openccDesc")}>
-              <Select
-                value={opencc}
-                onValueChange={(v) => handleOpenccChange(v ?? "off")}
-                items={Object.fromEntries(
-                  ["off", "s2t", "t2s", "s2tw", "tw2s", "s2hk", "hk2s"].map((o) => [
-                    o,
-                    t(`settings.openccOptions.${o}`),
-                  ]),
-                )}
-              >
-                <SelectTrigger className="w-full bg-black">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["off", "s2t", "t2s", "s2tw", "tw2s", "s2hk", "hk2s"].map((o) => (
-                    <SelectItem key={o} value={o}>
-                      {t(`settings.openccOptions.${o}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </SettingRow>
-          </CollapsibleCard>
         </TabsContent>
 
-        {/* ── Output ──────────────────────────────────────────────────────── */}
         <TabsContent value="output" className="flex flex-col gap-6">
           <SettingsCard>
             <SettingRow title={t("settings.clipboardOnly")} description={t("settings.clipboardOnlyDesc")}>

@@ -94,7 +94,7 @@ pub struct SttState {
     /// False after a model load; set true once the engine has been warmed (first
     /// real or dummy decode), so warm-up runs at most once per loaded model.
     pub warmed: bool,
-    /// When the engine was last used, for idle-unload (C6). None until first load.
+    /// When the engine was last used for idle unloading. None until first load.
     pub last_used: Option<std::time::Instant>,
     /// `use_gpu` of the last load, so an idle-unloaded model reloads identically.
     pub loaded_gpu: bool,
@@ -104,7 +104,7 @@ pub struct SttState {
 }
 
 /// Keeps the engine alive for one operation: while a lease exists the idle-unload
-/// watcher (C6) leaves the engine alone, and dropping the lease restarts the idle
+/// watcher leaves the engine alone, and dropping the lease restarts the idle
 /// clock — so "idle" means "5 minutes since the last use ended", not "since it
 /// started" (a long transcription could otherwise be unloaded mid-run).
 pub struct EngineLease {
@@ -203,7 +203,7 @@ impl SttController {
     }
 
     /// Returns the engine, reloading the selected model first when an idle-unload
-    /// (C6) dropped it. `Ok(None)` means no local model is selected at all (cloud
+    /// dropped it. `Ok(None)` means no local model is selected at all (cloud
     /// engine, or a fresh install) — not an error at this level.
     pub fn ensure_loaded(&self) -> Result<Option<std::sync::Arc<dyn traits::AsrEngine>>, String> {
         if let Some(engine) = self.engine_now() {
@@ -253,7 +253,7 @@ impl SttController {
     }
 
     /// Drops the loaded engine to free RAM/VRAM. `active_model_path`/`loaded_gpu`
-    /// are kept so the next transcription reloads it transparently (C6).
+    /// are kept so the next transcription reloads it transparently.
     pub fn unload(&self) {
         let mut s = self.state.lock().unwrap();
         s.engine = None;
@@ -293,7 +293,7 @@ impl SttController {
         let prepared = prepare_samples(samples);
 
         // Hold the engine for the whole run: the lease keeps the idle-unload
-        // watcher (C6) from dropping it mid-transcription, and `ensure_loaded`
+        // watcher from dropping it mid-transcription, and `ensure_loaded`
         // reloads it transparently if an earlier unload already did.
         let _lease = self.lease();
         let engine = self
@@ -337,7 +337,7 @@ impl SttController {
 
 /// An engine handle that resolves the controller's engine on every call instead of
 /// capturing it once. Handed to the live (streaming) session so a recording started
-/// while the model is idle-unloaded (C6) still transcribes: the audio tap is
+/// while the model is idle-unloaded still transcribes: the audio tap is
 /// installed immediately — no speech is lost — and the first re-decode reloads the
 /// model. It holds a lease for the session's lifetime, so the watcher cannot unload
 /// the engine underneath a live recording.

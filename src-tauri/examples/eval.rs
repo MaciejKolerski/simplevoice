@@ -1,4 +1,4 @@
-//! Offline transcription evaluation harness (Etap 0 / H1).
+//! Offline transcription evaluation harness.
 //!
 //! SV_EVAL_MANIFEST=/path/to/manifest.json \
 //! SIMPLEVOICE_MODEL=/path/to/model \
@@ -41,15 +41,6 @@ fn run() -> Result<(), String> {
 
     let controller = SttController::new();
     controller.load_model(&model, use_gpu)?;
-
-    // Optional ONNX transducer hotwords (A7/A3), gated by SV_ONNX_HOTWORDS
-    // (comma- or newline-separated), so the harness can exercise contextual
-    // biasing on a transducer model.
-    if let Ok(hw) = std::env::var("SV_ONNX_HOTWORDS") {
-        if !hw.trim().is_empty() {
-            simplevoice_app_lib::stt::onnx_engine::set_onnx_hotwords(hw.replace(',', "\n"));
-        }
-    }
 
     println!("{:<28} {:>6} {:>6} {:>8} {:>9} {:>6}  {}", "clip", "WER", "CER", "audio", "elapsed", "RTF", "match");
     let mut results = Vec::new();
