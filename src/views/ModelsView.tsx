@@ -204,7 +204,7 @@ const RECOMMENDED_MODELS: RecommendedModel[] = [
     format: "ggml_bin",
     size_formatted: "2.9 GB"
   }
-];
+].filter((model) => import.meta.env.VITE_FLATPAK !== "1" || model.format !== "onnx");
 
 const FORMAT_LABELS: Record<string, string> = {
   ggml_bin: "GGML",

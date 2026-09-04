@@ -41,7 +41,8 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 The Flatpak build intentionally uses the local Candle/Whisper CPU engine. The
 current `sherpa-onnx-sys` build script downloads precompiled native libraries,
 which Flathub does not permit, and the Vulkan shader compiler is not included in
-the runtime SDK. ONNX and Vulkan remain available in the native packages.
+the runtime SDK. ONNX download suggestions and the GPU setting are hidden in
+the Flatpak interface. ONNX and Vulkan remain available in the native packages.
 
 Autostart is hidden in the Flatpak build because the native Tauri autostart
 plugin cannot manage a sandboxed application. Updates are handled by Flatpak,

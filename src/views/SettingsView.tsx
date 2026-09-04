@@ -1257,7 +1257,7 @@ export function SettingsView({ active = true }: { active?: boolean }) {
               <Switch checked={pauseAudioEnabled} onCheckedChange={handlePauseAudioToggle} />
             </SettingRow>
 
-            {!isMac && (
+            {!isMac && !IS_FLATPAK && (
               <SettingRow title={t("settings.gpuAcceleration")} description={t("settings.gpuAccelerationDesc")}>
                 <Switch checked={gpuEnabled} onCheckedChange={handleGpuToggle} />
               </SettingRow>

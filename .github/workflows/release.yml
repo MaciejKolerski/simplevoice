@@ -74,7 +74,7 @@ jobs:
         run: echo 'CARGO_TARGET_DIR=C:\t\sv' >> "$GITHUB_ENV"
 
       - name: install frontend dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - uses: tauri-apps/tauri-action@v0
         env:
