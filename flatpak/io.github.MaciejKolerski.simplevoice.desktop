@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Simplevoice
+Comment=Turn speech into text privately
+Exec=simplevoice
+Icon=io.github.MaciejKolerski.simplevoice
+Terminal=false
+Categories=Utility;
+Keywords=speech;voice;transcription;dictation;whisper;
+StartupNotify=true
+StartupWMClass=io.github.MaciejKolerski.simplevoice

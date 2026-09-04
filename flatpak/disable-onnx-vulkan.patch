@@ -1,0 +1,23 @@
+From: Simplevoice maintainers
+Subject: Build the Flatpak with source-only CPU dependencies
+
+The sherpa-onnx Rust binding downloads a precompiled native library from its
+build script, which is incompatible with Flathub's offline, source-only build
+policy. The Vulkan backend also requires a shader compiler that is not part of
+the runtime SDK. Keep the fully local Candle/Whisper CPU backend enabled.
+
+--- a/src-tauri/Cargo.toml
++++ b/src-tauri/Cargo.toml
+@@ -81,5 +81,5 @@
+ [target.'cfg(target_os = "linux")'.dependencies]
+-whisper-rs = { version = "0.16.0", default-features = false, features = ["vulkan"] }
++whisper-rs = { version = "0.16.0", default-features = false }
+ # Native Wayland text injection (replaces the external `wtype` binary).
+ wayland-client = "0.31"
+ wayland-protocols-misc = { version = "0.3", features = ["client"] }
+@@ -97,4 +97,4 @@
+ [features]
+-default = ["candle", "onnx"]
++default = ["candle"]
+ candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers"]
+ onnx = ["dep:sherpa-onnx"]

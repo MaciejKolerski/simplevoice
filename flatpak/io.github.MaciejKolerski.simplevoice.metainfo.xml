@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Woro -->
+<component type="desktop-application">
+  <id>io.github.MaciejKolerski.simplevoice</id>
+  <name>Simplevoice</name>
+  <summary>Turn speech into text privately</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+
+  <developer id="io.github.maciejkolerski">
+    <name>Woro</name>
+  </developer>
+
+  <description>
+    <p>
+      Simplevoice records your microphone and turns speech into text on your
+      desktop. Local Whisper models can transcribe entirely on your device, so
+      recordings do not need to leave your computer.
+    </p>
+    <p>
+      Start recording with a shortcut or the tray menu, then copy or type the
+      result into another application. Simplevoice also keeps a searchable local
+      transcription history and shows usage statistics.
+    </p>
+    <p>
+      Optional cloud providers are available when you configure your own API
+      key. Simplevoice has no telemetry, and local transcription remains
+      available without an account.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.MaciejKolerski.simplevoice.desktop</launchable>
+  <provides>
+    <binary>simplevoice</binary>
+  </provides>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#55555c</color>
+    <color type="primary" scheme_preference="dark">#18181b</color>
+  </branding>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+
+  <content_rating type="oars-1.1" />
+
+  <url type="homepage">https://github.com/MaciejKolerski/simplevoice</url>
+  <url type="bugtracker">https://github.com/MaciejKolerski/simplevoice/issues</url>
+  <url type="vcs-browser">https://github.com/MaciejKolerski/simplevoice</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/MaciejKolerski/simplevoice/861e7005ea2be9f4e1a0f1111ebd5bb72afdd1e7/assets/readme/usage.png</image>
+      <caption>Review transcription time, word counts, and recent activity</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/MaciejKolerski/simplevoice/861e7005ea2be9f4e1a0f1111ebd5bb72afdd1e7/assets/readme/models.png</image>
+      <caption>Choose and download a local speech recognition model</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/MaciejKolerski/simplevoice/861e7005ea2be9f4e1a0f1111ebd5bb72afdd1e7/assets/readme/transcriptions.png</image>
+      <caption>Find and reuse earlier transcriptions</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/MaciejKolerski/simplevoice/861e7005ea2be9f4e1a0f1111ebd5bb72afdd1e7/assets/readme/settings.png</image>
+      <caption>Configure recording, transcription, and privacy preferences</caption>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.1.9" date="2026-08-01">
+      <description>
+        <p>Added signed and notarized macOS release builds and refreshed project documentation.</p>
+      </description>
+    </release>
+  </releases>
+</component>

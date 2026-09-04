@@ -40,6 +40,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const IS_FLATPAK = import.meta.env.VITE_FLATPAK === "1";
+
 /** Keeps a hand-typed number inside the range the backend accepts. */
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -379,7 +381,9 @@ export function SettingsView({ active = true }: { active?: boolean }) {
     // Migrate the localStorage value into config.json for the backend live session.
     updateConfig("asr_language", savedLang);
 
-    isEnabled().then(setAutostartEnabled);
+    if (!IS_FLATPAK) {
+      isEnabled().then(setAutostartEnabled);
+    }
 
     const savedOverlayMode = localStorage.getItem("recording_window_mode") || "always";
     setRecordingWindowMode(savedOverlayMode);
@@ -956,12 +960,14 @@ export function SettingsView({ active = true }: { active?: boolean }) {
               </p>
             </SettingRow>
 
-            <SettingRow
-              title={t("settings.autoStart")}
-              description={t("settings.autoStartDesc")}
-            >
-              <Switch checked={autostartEnabled} onCheckedChange={handleAutostartToggle} />
-            </SettingRow>
+            {!IS_FLATPAK && (
+              <SettingRow
+                title={t("settings.autoStart")}
+                description={t("settings.autoStartDesc")}
+              >
+                <Switch checked={autostartEnabled} onCheckedChange={handleAutostartToggle} />
+              </SettingRow>
+            )}
           </SettingsCard>
 
           {platform === "macos" && (

@@ -19,7 +19,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Shown to Linux users whose copy is managed by their package manager (the in-app
 // updater can't self-install there). Matches the AUR package this app publishes.
-const PACKAGE_MANAGER_UPDATE_CMD = "yay -S simplevoice-bin";
+const PACKAGE_MANAGER_UPDATE_CMD =
+  import.meta.env.VITE_FLATPAK === "1"
+    ? "flatpak update io.github.MaciejKolerski.simplevoice"
+    : "yay -S simplevoice-bin";
 
 export function Updater() {
   const { t } = useTranslation();

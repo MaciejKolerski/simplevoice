@@ -1,0 +1,162 @@
+name: Update Simplevoice
+
+on:
+  repository_dispatch:
+    types: [simplevoice-release]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing upstream tag, for example v0.1.10"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-simplevoice-${{ github.event.client_payload.tag || inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.repository == 'flathub/io.github.MaciejKolerski.simplevoice'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      APP_ID: io.github.MaciejKolerski.simplevoice
+      UPSTREAM_URL: https://github.com/MaciejKolerski/simplevoice.git
+      TOOLS_COMMIT: 1fc32195e3e60fe5c97f0af646dec7a99df5962b
+
+    steps:
+      - name: Check out the Flathub packaging repository
+        # actions/checkout v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Resolve the upstream release
+        id: release
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ github.event.client_payload.tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Expected a version tag such as v0.1.10; got: $REQUESTED_TAG" >&2
+            exit 1
+          fi
+          commit=$(git ls-remote "$UPSTREAM_URL" "refs/tags/${REQUESTED_TAG}^{}" | cut -f1)
+          if [[ -z "$commit" ]]; then
+            commit=$(git ls-remote "$UPSTREAM_URL" "refs/tags/${REQUESTED_TAG}" | cut -f1)
+          fi
+          if [[ -z "$commit" ]]; then
+            echo "The upstream tag does not exist: $REQUESTED_TAG" >&2
+            exit 1
+          fi
+          echo "tag=$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${REQUESTED_TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the released source
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch "$RELEASE_TAG" "$UPSTREAM_URL" _upstream
+          test "$(git -C _upstream rev-parse HEAD)" = "$RELEASE_COMMIT"
+          test -f _upstream/flatpak/io.github.MaciejKolerski.simplevoice.metainfo.xml
+          test -f _upstream/flatpak/io.github.MaciejKolerski.simplevoice.desktop
+          grep -Fq "<release version=\"${RELEASE_TAG#v}\"" \
+            _upstream/flatpak/io.github.MaciejKolerski.simplevoice.metainfo.xml
+
+      - name: Set up Python
+        # actions/setup-python v6.3.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+
+      - name: Install the pinned source generators
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/flatpak/flatpak-builder-tools.git _tools
+          git -C _tools checkout --quiet "$TOOLS_COMMIT"
+          python -m pip install --disable-pip-version-check ./_tools/node aiohttp tomlkit
+
+      - name: Regenerate the offline dependency sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          flatpak-node-generator \
+            --no-requests-cache \
+            --retries 3 \
+            --output node-sources.unfiltered.json \
+            pnpm _upstream/pnpm-lock.yaml
+          python _tools/cargo/flatpak-cargo-generator.py \
+            --output cargo-sources.json \
+            _upstream/src-tauri/Cargo.lock
+          jq 'map(select((((.dest // "") | startswith("flatpak-node/cache/ms-playwright"))) | not))' \
+            node-sources.unfiltered.json > node-sources.json
+
+      - name: Refresh the manifest and downstream patch
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -euo pipefail
+          cp "_upstream/flatpak/${APP_ID}.yml" "${APP_ID}.yml"
+          cp _upstream/flatpak/disable-onnx-vulkan.patch .
+          python - "$APP_ID.yml" "$RELEASE_TAG" "$RELEASE_COMMIT" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          manifest = Path(sys.argv[1])
+          tag = sys.argv[2]
+          commit = sys.argv[3]
+          text = manifest.read_text()
+          pattern = re.compile(
+              r"(?P<prefix>\n\s+- type: git\n"
+              r"\s+url: https://github\.com/MaciejKolerski/simplevoice\.git\n"
+              r"\s+tag: )\S+"
+              r"(?P<middle>\n\s+commit: )[0-9a-f]+"
+          )
+          updated, count = pattern.subn(
+              lambda match: f"{match.group('prefix')}{tag}{match.group('middle')}{commit}",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not locate the upstream source block")
+          manifest.write_text(updated)
+          PY
+
+      - name: Create the update pull request
+        id: create_pr
+        # peter-evans/create-pull-request v8.1.1
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+        with:
+          branch: update/${{ steps.release.outputs.tag }}
+          delete-branch: true
+          sign-commits: true
+          commit-message: Update Simplevoice to ${{ steps.release.outputs.tag }}
+          title: Update Simplevoice to ${{ steps.release.outputs.tag }}
+          body: |
+            Updates Simplevoice to [${{ steps.release.outputs.tag }}](https://github.com/MaciejKolerski/simplevoice/releases/tag/${{ steps.release.outputs.tag }}).
+
+            Offline Cargo and pnpm sources were regenerated from the tagged lockfiles.
+          add-paths: |
+            ${{ env.APP_ID }}.yml
+            disable-onnx-vulkan.patch
+            cargo-sources.json
+            node-sources.json
+
+      # Flathub restricts unattended merging. Leave this repository variable
+      # unset unless Flathub has explicitly granted the automerge exception.
+      - name: Enable merge after the Flathub build succeeds
+        if: steps.create_pr.outputs.pull-request-number != '' && vars.FLATHUB_AUTO_MERGE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge --merge --auto "${{ steps.create_pr.outputs.pull-request-url }}"

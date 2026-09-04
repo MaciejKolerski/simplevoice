@@ -104,64 +104,37 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-  # Update both AUR packages after the release is published. The first import of
-  # each package is manual (see aur/README.md); this job handles later versions.
+  # Keep AUR publishing separately runnable, so a temporary AUR outage can be
+  # retried without rebuilding every Tauri bundle.
   publish-aur:
     needs: publish-tauri
-    runs-on: ubuntu-22.04
+    uses: ./.github/workflows/publish-aur.yml
+    with:
+      release_tag: ${{ github.ref_name }}
+    secrets:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+
+  # The first Flathub submission is reviewed manually. Once its dedicated
+  # repository exists and FLATHUB_TOKEN is configured, every successful release
+  # asks that repository's maintenance workflow to prepare an update PR.
+  notify-flathub:
+    needs: publish-tauri
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     env:
-      AUR_MAINTAINER_NAME: "Woro"
-      AUR_MAINTAINER_EMAIL: "woro@tanieddosy.pl"
+      FLATHUB_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Flathub is not connected yet
+        if: env.FLATHUB_TOKEN == ''
+        run: echo "Skipping Flathub notification until FLATHUB_TOKEN is configured."
 
-      - name: derive version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-
-      # simplevoice-bin: prebuilt .deb from the published release
-      - name: prepare simplevoice-bin PKGBUILD
-        run: |
-          cd aur/simplevoice-bin
-          DEB_URL="https://github.com/MaciejKolerski/simplevoice/releases/download/v${VERSION}/Simplevoice_${VERSION}_amd64.deb"
-          curl -fL -o pkg.deb "$DEB_URL"
-          SHA=$(sha256sum pkg.deb | cut -d' ' -f1)
-          rm pkg.deb
-          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${SHA}')/" PKGBUILD
-
-      - name: publish simplevoice-bin to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
+      - name: Trigger the Flathub update workflow
+        if: env.FLATHUB_TOKEN != ''
+        # peter-evans/repository-dispatch v4.0.1
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697
         with:
-          pkgname: simplevoice-bin
-          pkgbuild: ./aur/simplevoice-bin/PKGBUILD
-          assets: ./aur/simplevoice-bin/simplevoice-bin.install
-          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
-          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "Update to ${{ env.VERSION }}"
-          ssh_keyscan_types: rsa,ecdsa,ed25519
-
-      # simplevoice: built from source from the tag
-      - name: prepare simplevoice PKGBUILD
-        run: |
-          cd aur/simplevoice
-          TAR_URL="https://github.com/MaciejKolerski/simplevoice/archive/refs/tags/v${VERSION}.tar.gz"
-          curl -fL -o src.tar.gz "$TAR_URL"
-          SHA=$(sha256sum src.tar.gz | cut -d' ' -f1)
-          rm src.tar.gz
-          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          sed -i "s/^sha256sums=.*/sha256sums=('${SHA}')/" PKGBUILD
-
-      - name: publish simplevoice to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
-        with:
-          pkgname: simplevoice
-          pkgbuild: ./aur/simplevoice/PKGBUILD
-          assets: ./aur/simplevoice/simplevoice.install
-          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
-          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "Update to ${{ env.VERSION }}"
-          ssh_keyscan_types: rsa,ecdsa,ed25519
+          token: ${{ env.FLATHUB_TOKEN }}
+          repository: flathub/io.github.MaciejKolerski.simplevoice
+          event-type: simplevoice-release
+          client-payload: '{"tag":"${{ github.ref_name }}","commit":"${{ github.sha }}"}'

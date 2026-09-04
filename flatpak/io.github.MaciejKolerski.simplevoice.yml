@@ -1,0 +1,76 @@
+# Bootstrap source reference. Before the initial Flathub submission, run the
+# preparation step documented in README.md with the first tag that contains
+# this flatpak/ directory. v0.1.9 predates the upstream metadata files.
+id: io.github.MaciejKolerski.simplevoice
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm21
+command: simplevoice
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.mpris.MediaPlayer2.*
+  - --filesystem=xdg-run/tray-icon:create
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: simplevoice
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm21/bin:/run/build/simplevoice/pnpm/bin
+      env:
+        CARGO_HOME: /run/build/simplevoice/cargo
+        HOME: /run/build/simplevoice
+        LIBCLANG_PATH: /usr/lib/sdk/llvm21/lib
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        VITE_FLATPAK: '1'
+        XDG_CACHE_HOME: /run/build/simplevoice/flatpak-node/cache
+    build-commands:
+      - ln -s pnpm.cjs pnpm/bin/pnpm
+      - pnpm install --offline --frozen-lockfile
+      - >-
+        pnpm tauri build --no-bundle
+        --config "$(jq -c '.identifier = "io.github.MaciejKolerski.simplevoice" |
+        .app.windows[0].visible = true |
+        .bundle.createUpdaterArtifacts = false' src-tauri/tauri.conf.json)"
+      - install -Dm755 src-tauri/target/release/simplevoice /app/bin/simplevoice
+      - install -Dm644 flatpak/io.github.MaciejKolerski.simplevoice.desktop /app/share/applications/io.github.MaciejKolerski.simplevoice.desktop
+      - install -Dm644 flatpak/io.github.MaciejKolerski.simplevoice.metainfo.xml /app/share/metainfo/io.github.MaciejKolerski.simplevoice.metainfo.xml
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.MaciejKolerski.simplevoice.png
+      - install -Dm644 src-tauri/icons/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.MaciejKolerski.simplevoice.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.MaciejKolerski.simplevoice.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.MaciejKolerski.simplevoice.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.MaciejKolerski.simplevoice.png
+      - install -Dm644 assets/logo.svg /app/share/icons/hicolor/scalable/apps/io.github.MaciejKolerski.simplevoice.svg
+      - install -Dm644 src-tauri/sounds/start.wav /app/lib/Simplevoice/sounds/start.wav
+      - install -Dm644 src-tauri/sounds/stop.wav /app/lib/Simplevoice/sounds/stop.wav
+      - install -Dm644 src-tauri/sounds/done.wav /app/lib/Simplevoice/sounds/done.wav
+      - install -Dm644 LICENSE /app/share/licenses/io.github.MaciejKolerski.simplevoice/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/MaciejKolerski/simplevoice.git
+        tag: v0.1.9
+        commit: 861e7005ea2be9f4e1a0f1111ebd5bb72afdd1e7
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: patch
+        path: disable-onnx-vulkan.patch
+      - type: archive
+        url: https://registry.npmjs.org/pnpm/-/pnpm-10.34.5.tgz
+        sha256: ccb5c479cab1b00621325bfe7d4c9a8a8031e7a525d7249e275ecbec81b08db2
+        dest: pnpm
+      - cargo-sources.json
+      - node-sources.json
