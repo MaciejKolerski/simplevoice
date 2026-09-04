@@ -14,21 +14,25 @@
 
 Simplevoice records microphone input, transcribes speech, and sends the result to the active application. You can use a local model without an account or connect your own cloud provider.
 
-<p align="center">
-  <img src="assets/readme/recording.png" alt="Simplevoice recording overlay above a text editor" />
-</p>
+---
 
-<details>
-<summary>More screenshots</summary>
+## Screenshots
 
 <table>
   <tr>
-    <td><img src="assets/readme/usage.png" alt="Usage dashboard" /></td>
-    <td><img src="assets/readme/models.png" alt="Local model manager" /></td>
+    <td align="center"><img src="assets/readme/usage.png" alt="Usage dashboard" /><br/><sub>Usage dashboard - time transcribed, words generated, active model and 7-day activity</sub></td>
+    <td align="center"><img src="assets/readme/models.png" alt="Model manager" /><br/><sub>Built-in model manager - download, import and switch local models</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/readme/transcriptions.png" alt="Transcription history" /><br/><sub>Full local history - every transcription stored on-device in SQLite</sub></td>
+    <td align="center"><img src="assets/readme/settings.png" alt="Settings" /><br/><sub>Preferences - interface, audio input, live transcription and recording feedback</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/readme/recording.png" alt="Floating recording overlay" /><br/><sub>The floating recording overlay with a live waveform - speak anywhere, text lands in the active app</sub></td>
   </tr>
 </table>
 
-</details>
+---
 
 ## Features
 
