@@ -20,7 +20,6 @@ type SettingRowProps = {
   layout?: "row" | "column";
   children?: ReactNode;
   className?: string;
-  "data-tour"?: string;
 };
 
 /**

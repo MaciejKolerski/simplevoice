@@ -18,7 +18,6 @@ import { AlertTriangle } from "lucide-react";
 
 import { TitleBar } from "./components/layout/TitleBar";
 import { Updater } from "./components/Updater";
-import { OnboardingOverlay } from "./components/onboarding/OnboardingOverlay";
 import { Sidebar } from "./components/layout/Sidebar";
 import { UsageView } from "./views/UsageView";
 import { ModelsView } from "./views/ModelsView";
@@ -194,18 +193,11 @@ function App() {
       setActiveView(event.payload as ViewId);
     });
 
-    const handleCustomNav = (e: Event) => {
-      const view = (e as CustomEvent).detail as ViewId;
-      setActiveView(view);
-    };
-    window.addEventListener("navigate-to-view", handleCustomNav);
-
     window.addEventListener("asr-engine-changed", syncActiveConfig);
     window.addEventListener("api-keys-changed", syncActiveConfig);
 
     return () => {
       unlisten.then((f) => f());
-      window.removeEventListener("navigate-to-view", handleCustomNav);
       window.removeEventListener("asr-engine-changed", syncActiveConfig);
       window.removeEventListener("api-keys-changed", syncActiveConfig);
     };
@@ -559,7 +551,6 @@ function App() {
           </div>
         )}
         <Updater />
-        <OnboardingOverlay />
       </div>
   );
 }

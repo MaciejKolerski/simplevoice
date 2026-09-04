@@ -78,7 +78,11 @@ Bar position: `data-tauri-drag-region` on the pill; macOS Cmd-hold toggles click
 ### Linux-specific
 
 - Global shortcuts pick a mechanism once per run (`lib.rs::linux_shortcut_mechanism()`): full DEs (GNOME/KDE/XFCE/Cinnamon/MATE) register in the desktop's own keybinding store; Wayland WMs (niri/hyprland/sway/i3) capture via evdev when `/dev/input` is readable (user in the `input` group), otherwise fall back to marker-delimited binds in the compositor config that spawn the binary with `--toggle` / `--copy-last` / `--toggle-bar` (forwarded by the single-instance plugin). The active mechanism is exposed to the UI via `check_permissions_status.shortcut_mechanism` and shown in Settings.
-- Auto-paste strongly prefers `wtype` on Wayland.
+- Wayland auto-paste puts the full Unicode text on the clipboard and sends a
+  fixed-keymap Ctrl+V through `zwp_virtual_keyboard_v1`. Direct typing uses only
+  printable raw keycodes and splits unusually diverse text across keymaps; never
+  assign generated symbols to raw Enter, Tab, Backspace, modifier, or navigation
+  codes because Chromium/Electron may act on the raw code instead of the XKB symbol.
 
 ## Key Gotchas
 

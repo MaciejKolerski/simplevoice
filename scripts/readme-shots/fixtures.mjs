@@ -48,12 +48,11 @@ export function transcriptions() {
     mk(1, "14:05", "Draft the changelog before standup and flag anything risky for the desktop build.", 8),
     mk(2, "16:48", "Remember to test the new recording overlay position controls on the external display.", 9),
     mk(3, "10:21", "Shipping the fix in ten minutes.", 4),
-    mk(5, "13:57", "Walk through the onboarding flow once more and tighten the copy on the final step.", 8),
+    mk(5, "13:57", "Review the release checklist once more and tighten the copy in the settings screen.", 8),
   ];
 }
 
 export const CONFIG = {
-  onboarding_completed: true,
   ui_language: "en",
   sound_feedback_enabled: true,
   pause_audio_on_record: false,

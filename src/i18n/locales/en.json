@@ -3,9 +3,6 @@
     "pasteFailed": "Couldn't paste automatically — the text is on the clipboard, paste it manually.",
     "saveFailed": "Couldn't save the recording file (the transcription still ran).",
     "deviceLost": "Recording device disconnected — recording stopped.",
-    "next": "Next",
-    "back": "Back",
-    "finish": "Finish",
     "skip": "Skip",
     "dismiss": "Dismiss",
     "cancel": "Cancel",
@@ -367,47 +364,5 @@
     "pauseRecording": "Pause recording",
     "seekRecording": "Seek recording",
     "audioPlaybackFailed": "Couldn't play this recording: {{detail}}"
-  },
-  "onboarding": {
-    "stepCounter": "Step {{current}} / {{total}}",
-    "skipTour": "Skip tour",
-    "waiting": "Waiting…",
-    "welcome": {
-      "title": "Welcome to Simplevoice",
-      "body": "Simplevoice turns your voice into text, fully local and private. The flow is simple: press your shortcut, speak, and the transcription is pasted straight into whatever app you are using. This quick tour gets you set up in a minute."
-    },
-    "permissions": {
-      "title": "Grant system permissions",
-      "body": "Simplevoice needs the <s>Microphone</s> to record and <s>Accessibility</s> to paste text for you. Use the Grant buttons here. The tour continues once both are granted."
-    },
-    "permissionsLinux": {
-      "title": "Global hotkeys on Linux",
-      "body": "On Linux the global shortcut is captured directly from your keyboard. If it ever does nothing, add your user to the <s>input</s> group and log back in. The status box here tells you whether it is active."
-    },
-    "model": {
-      "title": "Pick how you transcribe",
-      "body": "Choose <s>Local</s> to run a model on your machine: click <s>Get</s> to download one, then <s>Load</s> it. Or choose <s>Cloud (BYOK)</s> and paste your own API key. The tour continues once a model is ready."
-    },
-    "shortcut": {
-      "title": "Your recording shortcut",
-      "body": "This global hotkey starts and stops recording from anywhere. A default is already set, so you can click it any time to record a new combination."
-    },
-    "language": {
-      "title": "Transcription language",
-      "body": "Leave this on <s>Auto-detect</s> for multilingual use, or pick a specific language to force the output and improve accuracy."
-    },
-    "recordingOptions": {
-      "title": "Recording options",
-      "body": "<s>Voice Activity Detection</s> stops recording automatically when you go quiet. You can also toggle sound cues and pause system audio while recording. Turn on whatever fits your workflow."
-    },
-    "test": {
-      "title": "Try it now",
-      "body": "Press your recording shortcut and say a sentence. Watch it get transcribed and pasted. This step completes itself once you do.",
-      "nextLabel": "I'll do this later"
-    },
-    "done": {
-      "title": "You're all set",
-      "body": "That's it. Use the sidebar to see your <s>Usage</s>, manage <s>Models</s>, browse past <s>Transcriptions</s>, and fine-tune everything under <s>Settings</s>. Enjoy Simplevoice."
-    }
   }
 }

@@ -2300,8 +2300,9 @@ pub(crate) async fn deliver_transcription(
     );
 
     if !text.trim().is_empty() {
+        let clipboard_only = is_clipboard_only(app_handle);
         let saved_clipboard = if is_restore_clipboard_enabled(app_handle)
-            && !is_clipboard_only(app_handle)
+            && !clipboard_only
         {
             arboard::Clipboard::new()
                 .ok()
@@ -2309,14 +2310,15 @@ pub(crate) async fn deliver_transcription(
         } else {
             None
         };
-        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-            let _ = clipboard.set_text(text.clone());
-        }
+        let clipboard_error = arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_text(text.clone()))
+            .err()
+            .map(|error| format!("Failed to copy transcription to clipboard: {error}"));
         *last_transcription
             .text
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = Some(text.clone());
-        if !is_clipboard_only(app_handle) {
+        if !clipboard_only {
             let output = text.clone();
             let output_app = app_handle.clone();
             let use_typing = is_type_output_enabled(app_handle);
@@ -2329,8 +2331,10 @@ pub(crate) async fn deliver_transcription(
                 std::thread::sleep(std::time::Duration::from_millis(paste_delay));
                 let result = if use_typing {
                     type_text_from_backend(&output_app, output)
+                } else if let Some(error) = clipboard_error {
+                    Err(error)
                 } else {
-                    paste_text_from_backend(&output_app, output)
+                    paste_text_from_backend(&output_app)
                 };
                 if let Err(error) = result {
                     tracing::error!("[transcription] backend auto-output failed: {error}");
@@ -2516,10 +2520,8 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
     let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // The frontend caches the whole config at mount and writes the entire blob
-    // back, so a plain overwrite silently drops keys it never loaded. Most
-    // importantly `onboarding_completed` is written out-of-band: a stale settings
-    // write would erase it and replay the tour on every launch. Merge the incoming
-    // config over what is already on disk so unknown keys survive. `gpu_enabled`
+    // back, so a plain overwrite silently drops keys it never loaded. Merge the
+    // incoming config over what is already on disk so unknown keys survive. `gpu_enabled`
     // (set_gpu_enabled) and `active_model_path` (load_model) are owned by the
     // backend, so for those the on-disk value still wins — a settings write from a
     // snapshot taken before the user switched models must not resurrect the old one.
@@ -3157,13 +3159,13 @@ fn check_permissions_status() -> PermissionsStatus {
 /// process dies with SIGTRAP in `dispatch_assert_queue`. Frontend invocations
 /// of the `paste_text` command are safe (sync commands already run on the main
 /// thread); this wrapper is for backend callers on runtime/blocking threads.
-fn paste_text_from_backend(app_handle: &tauri::AppHandle, text: String) -> Result<(), String> {
+fn paste_text_from_backend(app_handle: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let (tx, rx) = std::sync::mpsc::channel();
         app_handle
             .run_on_main_thread(move || {
-                let _ = tx.send(paste_text(text));
+                let _ = tx.send(paste_text());
             })
             .map_err(|e| format!("main-thread dispatch failed: {e}"))?;
         rx.recv_timeout(std::time::Duration::from_secs(5))
@@ -3172,7 +3174,7 @@ fn paste_text_from_backend(app_handle: &tauri::AppHandle, text: String) -> Resul
     #[cfg(not(target_os = "macos"))]
     {
         let _ = app_handle;
-        paste_text(text)
+        paste_text()
     }
 }
 
@@ -3200,7 +3202,7 @@ fn type_text_from_backend(app_handle: &tauri::AppHandle, text: String) -> Result
 }
 
 #[tauri::command]
-fn paste_text(text: String) -> Result<(), String> {
+fn paste_text() -> Result<(), String> {
     let is_wayland = if cfg!(target_os = "linux") {
         std::env::var("WAYLAND_DISPLAY").is_ok()
             || std::env::var("XDG_SESSION_TYPE")
@@ -3211,21 +3213,18 @@ fn paste_text(text: String) -> Result<(), String> {
     };
 
     if is_wayland {
-        // On Wayland we type the text directly via the virtual-keyboard protocol
-        // (more reliable than Ctrl+V simulation, and works even if our window is
-        // hidden). Give the previously focused app a moment to settle first.
+        // The clipboard already contains the complete transcription. Send a
+        // physical Ctrl+V instead of remapping every Unicode character: Chromium
+        // may interpret raw generated keycodes as Enter/Tab/Backspace even when
+        // the accompanying XKB keymap assigns them printable symbols.
         std::thread::sleep(std::time::Duration::from_millis(200));
         #[cfg(target_os = "linux")]
         {
-            // Native injection only fails on compositors that lack the
-            // virtual-keyboard protocol (e.g. GNOME). The text is already on the
-            // clipboard, so the user can paste manually; surface the reason.
-            return wayland_type::type_text(&text)
-                .map_err(|e| format!("Native Wayland typing failed: {e}"));
+            return wayland_type::paste()
+                .map_err(|e| format!("Native Wayland paste failed: {e}"));
         }
         #[cfg(not(target_os = "linux"))]
         {
-            let _ = &text;
             return Ok(());
         }
     }

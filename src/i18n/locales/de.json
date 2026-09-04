@@ -3,9 +3,6 @@
     "pasteFailed": "Automatisches Einfügen fehlgeschlagen — der Text ist in der Zwischenablage, bitte manuell einfügen.",
     "saveFailed": "Aufnahmedatei konnte nicht gespeichert werden (die Transkription lief trotzdem).",
     "deviceLost": "Aufnahmegerät getrennt — Aufnahme gestoppt.",
-    "next": "Weiter",
-    "back": "Zurück",
-    "finish": "Fertig",
     "skip": "Überspringen",
     "dismiss": "Schließen",
     "cancel": "Abbrechen",
@@ -367,47 +364,5 @@
     "pauseRecording": "Aufnahme pausieren",
     "seekRecording": "Aufnahme durchsuchen",
     "audioPlaybackFailed": "Die Aufnahme konnte nicht abgespielt werden: {{detail}}"
-  },
-  "onboarding": {
-    "stepCounter": "Schritt {{current}} / {{total}}",
-    "skipTour": "Tour überspringen",
-    "waiting": "Warten…",
-    "welcome": {
-      "title": "Willkommen bei Simplevoice",
-      "body": "Simplevoice wandelt deine Stimme in Text um, vollständig lokal und privat. Der Ablauf ist einfach: Drücke deinen Shortcut, sprich, und die Transkription wird direkt in die App eingefügt, die du gerade nutzt. Diese kurze Tour richtet dich in einer Minute ein."
-    },
-    "permissions": {
-      "title": "Systemberechtigungen erteilen",
-      "body": "Simplevoice benötigt das <s>Mikrofon</s> zum Aufnehmen und die <s>Bedienungshilfen</s>, um Text für dich einzufügen. Nutze hier die Erteilen-Schaltflächen. Die Tour wird fortgesetzt, sobald beide erteilt sind."
-    },
-    "permissionsLinux": {
-      "title": "Globale Tastenkürzel unter Linux",
-      "body": "Unter Linux wird das globale Tastenkürzel direkt von deiner Tastatur erfasst. Sollte es einmal nichts bewirken, füge deinen Benutzer zur Gruppe <s>input</s> hinzu und melde dich erneut an. Das Statusfeld hier zeigt dir, ob es aktiv ist."
-    },
-    "model": {
-      "title": "Wähle, wie du transkribierst",
-      "body": "Wähle <s>Lokal</s>, um ein Modell auf deinem Rechner auszuführen: Klicke auf <s>Holen</s>, um eines herunterzuladen, und dann auf <s>Laden</s>. Oder wähle <s>Cloud (BYOK)</s> und füge deinen eigenen API-Schlüssel ein. Die Tour wird fortgesetzt, sobald ein Modell bereit ist."
-    },
-    "shortcut": {
-      "title": "Dein Aufnahme-Shortcut",
-      "body": "Dieses globale Tastenkürzel startet und stoppt die Aufnahme von überall aus. Eine Standardbelegung ist bereits gesetzt, du kannst sie also jederzeit anklicken, um eine neue Kombination aufzunehmen."
-    },
-    "language": {
-      "title": "Transkriptionssprache",
-      "body": "Belasse dies auf <s>Automatisch erkennen</s> für mehrsprachige Nutzung, oder wähle eine bestimmte Sprache, um die Ausgabe zu erzwingen und die Genauigkeit zu verbessern."
-    },
-    "recordingOptions": {
-      "title": "Aufnahmeoptionen",
-      "body": "Die <s>Sprachaktivitätserkennung</s> stoppt die Aufnahme automatisch, sobald du verstummst. Du kannst außerdem Tonsignale aktivieren und den Systemton während der Aufnahme pausieren. Aktiviere, was zu deinem Arbeitsablauf passt."
-    },
-    "test": {
-      "title": "Probiere es jetzt aus",
-      "body": "Drücke deinen Aufnahme-Shortcut und sprich einen Satz. Sieh zu, wie er transkribiert und eingefügt wird. Dieser Schritt schließt sich von selbst ab, sobald du das tust.",
-      "nextLabel": "Ich mache das später"
-    },
-    "done": {
-      "title": "Alles eingerichtet",
-      "body": "Das war's. Nutze die Seitenleiste, um deine <s>Nutzung</s> zu sehen, <s>Modelle</s> zu verwalten, vergangene <s>Transkriptionen</s> zu durchsuchen und alles unter <s>Einstellungen</s> feinabzustimmen. Viel Freude mit Simplevoice."
-    }
   }
 }

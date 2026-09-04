@@ -922,7 +922,6 @@ export function ModelsView() {
         )}
       </div>
 
-      <div data-tour="engine-tabs" className="w-full">
       <Tabs
         value={asrEngine}
         onValueChange={(v) => handleSelectEngine(v as "local" | "openai-cloud")}
@@ -1443,7 +1442,6 @@ export function ModelsView() {
           </div>
         </TabsContent>
       </Tabs>
-      </div>
     </div>
   );
 }

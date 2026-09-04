@@ -3,9 +3,6 @@
     "pasteFailed": "Nie udało się wkleić automatycznie — tekst jest w schowku, wklej go ręcznie.",
     "saveFailed": "Nie udało się zapisać pliku nagrania (transkrypcja i tak zadziałała).",
     "deviceLost": "Urządzenie nagrywające odłączone — nagrywanie zatrzymane.",
-    "next": "Dalej",
-    "back": "Wstecz",
-    "finish": "Zakończ",
     "skip": "Pomiń",
     "dismiss": "Zamknij",
     "cancel": "Anuluj",
@@ -367,47 +364,5 @@
     "pauseRecording": "Wstrzymaj nagranie",
     "seekRecording": "Przewiń nagranie",
     "audioPlaybackFailed": "Nie udało się odtworzyć nagrania: {{detail}}"
-  },
-  "onboarding": {
-    "stepCounter": "Krok {{current}} / {{total}}",
-    "skipTour": "Pomiń przewodnik",
-    "waiting": "Czekanie…",
-    "welcome": {
-      "title": "Witaj w Simplevoice",
-      "body": "Simplevoice zamienia Twój głos w tekst, w pełni lokalnie i prywatnie. Działanie jest proste: naciśnij skrót, mów, a transkrypcja zostanie wklejona prosto do aplikacji, której używasz. Ten krótki przewodnik skonfiguruje Cię w minutę."
-    },
-    "permissions": {
-      "title": "Przyznaj uprawnienia systemowe",
-      "body": "Simplevoice potrzebuje dostępu do <s>mikrofonu</s>, aby nagrywać, oraz do <s>dostępności</s>, aby wklejać tekst za Ciebie. Użyj tutaj przycisków Przyznaj. Przewodnik będzie kontynuowany, gdy oba uprawnienia zostaną przyznane."
-    },
-    "permissionsLinux": {
-      "title": "Globalne skróty klawiszowe w systemie Linux",
-      "body": "W systemie Linux globalny skrót jest przechwytywany bezpośrednio z klawiatury. Jeśli kiedykolwiek nie zadziała, dodaj swojego użytkownika do grupy <s>input</s> i zaloguj się ponownie. Pole stanu tutaj informuje, czy jest aktywny."
-    },
-    "model": {
-      "title": "Wybierz sposób transkrypcji",
-      "body": "Wybierz <s>Lokalnie</s>, aby uruchomić model na swoim komputerze: kliknij <s>Pobierz</s>, aby go pobrać, a następnie <s>Wczytaj</s>. Albo wybierz <s>Chmura (BYOK)</s> i wklej własny klucz API. Przewodnik będzie kontynuowany, gdy model będzie gotowy."
-    },
-    "shortcut": {
-      "title": "Twój skrót do nagrywania",
-      "body": "Ten globalny skrót klawiszowy rozpoczyna i zatrzymuje nagrywanie z dowolnego miejsca. Domyślny skrót jest już ustawiony, więc możesz go w każdej chwili kliknąć, aby nagrać nową kombinację."
-    },
-    "language": {
-      "title": "Język transkrypcji",
-      "body": "Pozostaw <s>Wykryj automatycznie</s> do użytku wielojęzycznego lub wybierz konkretny język, aby wymusić wynik i poprawić dokładność."
-    },
-    "recordingOptions": {
-      "title": "Opcje nagrywania",
-      "body": "<s>Wykrywanie aktywności głosowej</s> automatycznie zatrzymuje nagrywanie, gdy zamilkniesz. Możesz też włączyć sygnały dźwiękowe i wstrzymać dźwięk systemowy podczas nagrywania. Włącz to, co pasuje do Twojego sposobu pracy."
-    },
-    "test": {
-      "title": "Wypróbuj teraz",
-      "body": "Naciśnij skrót do nagrywania i powiedz zdanie. Zobacz, jak zostaje przetranskrybowane i wklejone. Ten krok zakończy się sam, gdy to zrobisz.",
-      "nextLabel": "Zrobię to później"
-    },
-    "done": {
-      "title": "Wszystko gotowe",
-      "body": "To wszystko. Korzystaj z paska bocznego, aby zobaczyć <s>Wykorzystanie</s>, zarządzać <s>Modelami</s>, przeglądać dotychczasowe <s>Transkrypcje</s> i dostroić wszystko w <s>Ustawieniach</s>. Miłego korzystania z Simplevoice."
-    }
   }
 }

@@ -1,11 +1,10 @@
 //! Native Wayland text injection via the `zwp_virtual_keyboard_v1` protocol.
 //!
-//! This replaces shelling out to the external `wtype` binary. It performs the
-//! exact same trick `wtype` does: build an XKB keymap on the fly that maps each
-//! unique character in the text to its own keycode (so the literal Unicode
-//! keysym is produced regardless of the user's real keyboard layout), upload it
-//! to the compositor through an in-memory file, then emit press/release events
-//! per character.
+//! Direct typing uses a generated XKB keymap, while clipboard delivery sends a
+//! layout-independent Ctrl+V through a fixed map. Text characters are assigned
+//! only to physical keycodes that Chromium treats as printable; Chromium-based
+//! apps may otherwise reinterpret a generated character on the raw Backspace,
+//! Tab, or Enter keycode and delete it, drop it, or insert a newline.
 //!
 //! Compositor support is identical to `wtype`: it works on wlroots-based
 //! compositors (Sway/Hyprland/niri, etc.) and KWin, but NOT on GNOME/Mutter,
@@ -13,7 +12,7 @@
 //! `wtype`). On an unsupported compositor this returns `Err`; the caller relies
 //! on the transcription already being on the clipboard for a manual paste.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 use std::os::fd::{AsFd, FromRawFd, IntoRawFd, OwnedFd};
 
@@ -32,14 +31,24 @@ const KEY_PRESSED: u32 = 1;
 // wl_keyboard keymap_format: XKB v1 text format.
 const KEYMAP_FORMAT_XKB_V1: u32 = 1;
 
-// XKB keycodes are offset from the wire (evdev) keycodes by 8. We assign wire
-// keycode `index + 1` to each unique character, i.e. XKB keycode `index + 9`.
+// XKB keycodes are offset from the wire (evdev) keycodes by 8.
 const XKB_KEYCODE_OFFSET: usize = 8;
 
-// Upper bound on distinct characters we can inject in a single keymap. XKB/evdev
-// keycodes top out around 255; staying well under that keeps us safe and lets the
-// caller fall back (e.g. to clipboard paste) for pathological inputs.
-const MAX_UNIQUE_CHARS: usize = 240;
+// Printable positions from the standard evdev keyboard map. Generated Unicode
+// symbols must never occupy raw Backspace (14), Tab (15), Enter (28), modifiers,
+// navigation keys, or function keys: Chromium/Electron may act on that raw code
+// instead of the symbol from our custom keymap. Long, diverse text is split into
+// multiple keymaps when these positions are exhausted.
+const SAFE_TEXT_WIRE_KEYCODES: [u32; 48] = [
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, // A row
+    16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, // Q row
+    44, 45, 46, 47, 48, 49, 50, 51, 52, 53, // Z row
+    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, // number row
+    43, 86, // backslash positions
+];
+
+const PASTE_WIRE_KEYCODE: u32 = 47;
+const CONTROL_MODIFIER_MASK: u32 = 1 << 2;
 
 // After uploading a fresh keymap there is no protocol acknowledgement that the
 // compositor has compiled it AND that the focused client has recompiled its own
@@ -60,9 +69,8 @@ const KEY_BATCH_PAUSE_MS: u64 = 2;
 
 /// Type `text` into the focused Wayland surface using a virtual keyboard.
 ///
-/// Returns `Err` if no Wayland connection is available, the compositor lacks the
-/// virtual-keyboard protocol, or the text has too many distinct characters to
-/// map into a single keymap.
+/// Returns `Err` if no Wayland connection is available or the compositor lacks
+/// the virtual-keyboard protocol.
 pub fn type_text(text: &str) -> Result<(), String> {
     if text.is_empty() {
         return Ok(());
@@ -91,48 +99,73 @@ pub fn type_text(text: &str) -> Result<(), String> {
     })?;
 
     let keyboard = manager.create_virtual_keyboard(&seat, &qh, ());
-
-    // Build and upload the per-character keymap.
-    let (keymap, index_of) = build_keymap(text)?;
-    let fd = keymap_memfd(&keymap)?;
-    keyboard.keymap(KEYMAP_FORMAT_XKB_V1, fd.as_fd(), keymap.len() as u32);
-    // Start from a clean modifier state (no stuck Shift/Ctrl/etc.).
-    keyboard.modifiers(0, 0, 0, 0);
-    queue
-        .roundtrip(&mut state)
-        .map_err(|e| format!("Wayland roundtrip (keymap) failed: {e}"))?;
-
-    // The roundtrip above only proves the *compositor* received and parsed the
-    // keymap fd — not that the focused client has recompiled and applied it. That
-    // propagation is asynchronous and unacked, so wait it out before typing;
-    // otherwise the leading characters land under the old keymap and disappear.
-    std::thread::sleep(std::time::Duration::from_millis(KEYMAP_SETTLE_MS));
-
-    // Emit a press/release pair per character. `time` is just a monotonic stamp.
     let mut time: u32 = 0;
-    for (i, ch) in text.chars().enumerate() {
-        let wire_keycode = (index_of[&ch] + 1) as u32;
-        keyboard.key(time, wire_keycode, KEY_PRESSED);
-        time = time.wrapping_add(1);
-        keyboard.key(time, wire_keycode, KEY_RELEASED);
-        time = time.wrapping_add(1);
+    for chunk in split_text_for_keymaps(text) {
+        let (keymap, keycode_of) = build_keymap(&chunk)?;
+        upload_keymap(&keyboard, &mut queue, &mut state, &keymap)?;
 
-        // Flush in small batches rather than letting every request pile up until
-        // the final roundtrip, so the compositor processes the stream steadily and
-        // none of the keys are coalesced away on a busy/slow compositor.
-        if (i + 1) % FLUSH_EVERY_N_KEYS == 0 {
-            conn.flush()
-                .map_err(|e| format!("Wayland flush (keys) failed: {e}"))?;
-            std::thread::sleep(std::time::Duration::from_millis(KEY_BATCH_PAUSE_MS));
+        for (i, ch) in chunk.chars().enumerate() {
+            let wire_keycode = keycode_of[&ch];
+            keyboard.key(time, wire_keycode, KEY_PRESSED);
+            time = time.wrapping_add(1);
+            keyboard.key(time, wire_keycode, KEY_RELEASED);
+            time = time.wrapping_add(1);
+
+            if (i + 1) % FLUSH_EVERY_N_KEYS == 0 {
+                conn.flush()
+                    .map_err(|e| format!("Wayland flush (keys) failed: {e}"))?;
+                std::thread::sleep(std::time::Duration::from_millis(KEY_BATCH_PAUSE_MS));
+            }
         }
+
+        queue
+            .roundtrip(&mut state)
+            .map_err(|e| format!("Wayland roundtrip (keys) failed: {e}"))?;
     }
 
     keyboard.destroy();
-    // Final roundtrip flushes any remaining requests and lets the compositor
-    // process them before `fd`/`conn` are dropped.
     queue
         .roundtrip(&mut state)
-        .map_err(|e| format!("Wayland roundtrip (flush) failed: {e}"))?;
+        .map_err(|e| format!("Wayland roundtrip (destroy) failed: {e}"))?;
+
+    Ok(())
+}
+
+/// Paste the current clipboard contents into the focused Wayland surface.
+/// The V key uses its standard physical code, so both the generated keymap and
+/// any raw-code handling in the target application agree on Ctrl+V.
+pub fn paste() -> Result<(), String> {
+    let conn = Connection::connect_to_env()
+        .map_err(|e| format!("failed to connect to Wayland display: {e}"))?;
+    let mut queue = conn.new_event_queue();
+    let qh = queue.handle();
+
+    let _registry = conn.display().get_registry(&qh, ());
+    let mut state = State::default();
+    queue
+        .roundtrip(&mut state)
+        .map_err(|e| format!("Wayland roundtrip failed: {e}"))?;
+
+    let seat = state
+        .seat
+        .clone()
+        .ok_or_else(|| "no wl_seat advertised by the compositor".to_string())?;
+    let manager = state.manager.clone().ok_or_else(|| {
+        "compositor does not support zwp_virtual_keyboard_manager_v1 \
+         (unsupported on GNOME/Mutter)"
+            .to_string()
+    })?;
+    let keyboard = manager.create_virtual_keyboard(&seat, &qh, ());
+
+    upload_keymap(&keyboard, &mut queue, &mut state, &build_paste_keymap())?;
+    keyboard.modifiers(CONTROL_MODIFIER_MASK, 0, 0, 0);
+    keyboard.key(0, PASTE_WIRE_KEYCODE, KEY_PRESSED);
+    keyboard.key(1, PASTE_WIRE_KEYCODE, KEY_RELEASED);
+    keyboard.modifiers(0, 0, 0, 0);
+    keyboard.destroy();
+    queue
+        .roundtrip(&mut state)
+        .map_err(|e| format!("Wayland roundtrip (paste) failed: {e}"))?;
 
     Ok(())
 }
@@ -149,39 +182,84 @@ fn keysym_token(ch: char) -> String {
     }
 }
 
-/// Build the XKB keymap text plus a char→index lookup. Characters are de-duped
-/// in first-seen order; each gets a dedicated keycode whose only symbol is that
-/// character, so pressing it always yields the intended glyph.
-fn build_keymap(text: &str) -> Result<(String, HashMap<char, usize>), String> {
-    let mut order: Vec<char> = Vec::new();
-    let mut index_of: HashMap<char, usize> = HashMap::new();
+fn fixed_wire_keycode(ch: char) -> Option<u32> {
+    match ch {
+        '\t' => Some(15),
+        '\n' | '\r' => Some(28),
+        ' ' => Some(57),
+        _ => None,
+    }
+}
+
+fn split_text_for_keymaps(text: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut chunk = String::new();
+    let mut unique = HashSet::new();
+
     for ch in text.chars() {
-        if !index_of.contains_key(&ch) {
-            index_of.insert(ch, order.len());
-            order.push(ch);
+        let needs_slot = fixed_wire_keycode(ch).is_none() && !unique.contains(&ch);
+        if needs_slot && unique.len() == SAFE_TEXT_WIRE_KEYCODES.len() {
+            chunks.push(std::mem::take(&mut chunk));
+            unique.clear();
+        }
+        chunk.push(ch);
+        if fixed_wire_keycode(ch).is_none() {
+            unique.insert(ch);
         }
     }
 
-    if order.len() > MAX_UNIQUE_CHARS {
-        return Err(format!(
-            "{} distinct characters exceeds the {} keycode limit",
-            order.len(),
-            MAX_UNIQUE_CHARS
-        ));
+    if !chunk.is_empty() {
+        chunks.push(chunk);
+    }
+    chunks
+}
+
+/// Build an XKB keymap plus a character-to-wire-keycode lookup. Whitespace uses
+/// its matching physical key; every other symbol occupies a printable raw code.
+fn build_keymap(text: &str) -> Result<(String, HashMap<char, u32>), String> {
+    let mut keycode_of = HashMap::new();
+    let mut symbols_by_wire = BTreeMap::new();
+    let mut next_safe = 0;
+
+    for ch in text.chars() {
+        if keycode_of.contains_key(&ch) {
+            continue;
+        }
+        let wire_keycode = if let Some(keycode) = fixed_wire_keycode(ch) {
+            keycode
+        } else {
+            let keycode = SAFE_TEXT_WIRE_KEYCODES
+                .get(next_safe)
+                .copied()
+                .ok_or_else(|| {
+                    format!(
+                        "more than {} distinct printable characters in one keymap",
+                        SAFE_TEXT_WIRE_KEYCODES.len()
+                    )
+                })?;
+            next_safe += 1;
+            keycode
+        };
+
+        keycode_of.insert(ch, wire_keycode);
+        symbols_by_wire
+            .entry(wire_keycode)
+            .or_insert_with(|| keysym_token(ch));
     }
 
     let mut codes = String::new();
     let mut symbols = String::new();
-    for (i, &ch) in order.iter().enumerate() {
-        let name = i + 1; // <K1>, <K2>, ...
-        let xkb_keycode = i + 1 + XKB_KEYCODE_OFFSET;
-        codes.push_str(&format!("        <K{name}> = {xkb_keycode};\n"));
+    for (&wire_keycode, token) in &symbols_by_wire {
+        let xkb_keycode = wire_keycode as usize + XKB_KEYCODE_OFFSET;
+        codes.push_str(&format!("        <K{wire_keycode}> = {xkb_keycode};\n"));
         symbols.push_str(&format!(
-            "        key <K{name}> {{ [ {} ] }};\n",
-            keysym_token(ch)
+            "        key <K{wire_keycode}> {{ [ {token} ] }};\n"
         ));
     }
-    let maximum = order.len() + XKB_KEYCODE_OFFSET;
+    let maximum = symbols_by_wire
+        .last_key_value()
+        .map(|(&wire_keycode, _)| wire_keycode as usize + XKB_KEYCODE_OFFSET)
+        .unwrap_or(XKB_KEYCODE_OFFSET);
 
     let keymap = format!(
         "xkb_keymap {{\n\
@@ -196,7 +274,41 @@ fn build_keymap(text: &str) -> Result<(String, HashMap<char, usize>), String> {
          }};\n\0"
     );
 
-    Ok((keymap, index_of))
+    Ok((keymap, keycode_of))
+}
+
+fn build_paste_keymap() -> String {
+    let xkb_keycode = PASTE_WIRE_KEYCODE as usize + XKB_KEYCODE_OFFSET;
+    format!(
+        "xkb_keymap {{\n\
+         xkb_keycodes \"(unnamed)\" {{\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20minimum = 8;\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20maximum = {xkb_keycode};\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20<K{PASTE_WIRE_KEYCODE}> = {xkb_keycode};\n\
+         \x20\x20\x20\x20}};\n\
+         xkb_types \"(unnamed)\" {{ include \"complete\" }};\n\
+         xkb_compat \"(unnamed)\" {{ include \"complete\" }};\n\
+         xkb_symbols \"(unnamed)\" {{\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20key <K{PASTE_WIRE_KEYCODE}> {{ [ U0076 ] }};\n\
+         \x20\x20\x20\x20}};\n\
+         }};\n\0"
+    )
+}
+
+fn upload_keymap(
+    keyboard: &ZwpVirtualKeyboardV1,
+    queue: &mut wayland_client::EventQueue<State>,
+    state: &mut State,
+    keymap: &str,
+) -> Result<(), String> {
+    let fd = keymap_memfd(keymap)?;
+    keyboard.keymap(KEYMAP_FORMAT_XKB_V1, fd.as_fd(), keymap.len() as u32);
+    keyboard.modifiers(0, 0, 0, 0);
+    queue
+        .roundtrip(state)
+        .map_err(|e| format!("Wayland roundtrip (keymap) failed: {e}"))?;
+    std::thread::sleep(std::time::Duration::from_millis(KEYMAP_SETTLE_MS));
+    Ok(())
 }
 
 /// Write the keymap into an anonymous in-memory file and return its descriptor.
@@ -218,6 +330,58 @@ fn keymap_memfd(keymap: &str) -> Result<OwnedFd, String> {
         .map_err(|e| format!("failed to flush keymap: {e}"))?;
     // The compositor mmaps from offset 0, so the file position is irrelevant.
     Ok(unsafe { OwnedFd::from_raw_fd(file.into_raw_fd()) })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chromium_regression_never_assigns_text_to_backspace_tab_or_enter() {
+        let (_, backspace_case) = build_keymap("abcdefghijklm?").unwrap();
+        let text = "abcdefghijklmnopqrstuvwxyz?ó łśćąęźżń";
+        let (_, keycode_of) = build_keymap(text).unwrap();
+
+        for ch in text.chars().filter(|ch| fixed_wire_keycode(*ch).is_none()) {
+            assert!(SAFE_TEXT_WIRE_KEYCODES.contains(&keycode_of[&ch]));
+        }
+        assert_ne!(backspace_case[&'?'], 14);
+        assert_ne!(keycode_of[&'ó'], 28);
+        assert_eq!(keycode_of[&'ó'], 47);
+    }
+
+    #[test]
+    fn preserves_whitespace_on_matching_physical_keys() {
+        let (_, keycode_of) = build_keymap("a b\tc\nd\r").unwrap();
+
+        assert_eq!(keycode_of[&' '], 57);
+        assert_eq!(keycode_of[&'\t'], 15);
+        assert_eq!(keycode_of[&'\n'], 28);
+        assert_eq!(keycode_of[&'\r'], 28);
+    }
+
+    #[test]
+    fn splits_diverse_unicode_without_changing_the_text() {
+        let text: String = (0..SAFE_TEXT_WIRE_KEYCODES.len() + 1)
+            .map(|offset| char::from_u32(0x1000 + offset as u32).unwrap())
+            .collect();
+        let chunks = split_text_for_keymaps(&text);
+
+        assert_eq!(chunks.concat(), text);
+        assert_eq!(chunks.len(), 2);
+        for chunk in chunks {
+            let unique: HashSet<_> = chunk.chars().collect();
+            assert!(unique.len() <= SAFE_TEXT_WIRE_KEYCODES.len());
+            build_keymap(&chunk).unwrap();
+        }
+    }
+
+    #[test]
+    fn paste_map_uses_the_standard_physical_v_key() {
+        let keymap = build_paste_keymap();
+        assert!(keymap.contains("<K47> = 55;"));
+        assert!(keymap.contains("key <K47> { [ U0076 ] };"));
+    }
 }
 
 /// Wayland globals we care about, collected during the registry roundtrip.

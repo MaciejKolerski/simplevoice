@@ -23,7 +23,6 @@ import { changeLanguage } from "@/i18n/language";
 import { SUPPORTED_LANGUAGES, Language } from "@/i18n/detect";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useOnboarding } from "@/components/onboarding/OnboardingProvider";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -147,17 +146,6 @@ const LIVE_SPEED_MS: Record<string, number> = {
   accurate: 1000,
 };
 
-/** Maps an onboarding tour target (`data-tour`) to the settings tab that hosts it,
- * so the tour can spotlight elements that now live behind tabs — the view switches
- * to the right tab and the spotlight's poll picks the element up once it appears. */
-const TAB_FOR_TOUR_TARGET: Record<string, string> = {
-  "language-select": "general",
-  "permissions-section": "general",
-  "shortcuts-section": "shortcuts",
-  "record-shortcut": "shortcuts",
-  "recording-section": "recording",
-};
-
 const WM_DISPLAY_NAMES: Record<string, string> = {
   niri: "niri",
   hyprland: "Hyprland",
@@ -171,11 +159,9 @@ const WM_DISPLAY_NAMES: Record<string, string> = {
 function ShortcutButton({
   value,
   onStart,
-  tour,
 }: {
   value: string;
   onStart: () => void;
-  tour?: string;
 }) {
   const { t } = useTranslation();
   const rowLabelId = useSettingRowLabelId();
@@ -188,7 +174,6 @@ function ShortcutButton({
           <button
             type="button"
             id={selfId}
-            data-tour={tour}
             onClick={onStart}
             aria-labelledby={rowLabelId ? `${rowLabelId} ${selfId}` : undefined}
             className="font-mono text-sm px-3.5 py-1.5 bg-surface-active rounded-md border border-border text-foreground min-w-[150px] text-center hover:border-border-hover hover:bg-surface-hover active:scale-[0.985] transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
@@ -234,14 +219,12 @@ function CollapsibleCard({
 function SettingsCard({
   title,
   children,
-  ...rest
 }: {
   title?: string;
   children: ReactNode;
-  "data-tour"?: string;
 }) {
   return (
-    <div {...rest}>
+    <div>
       {title && (
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 px-1">
           {title}
@@ -257,7 +240,6 @@ function SettingsCard({
 export function SettingsView({ active = true }: { active?: boolean }) {
   const { updateConfig, updateConfigDebounced, getConfig, config } = useConfig();
   const { t, i18n } = useTranslation();
-  const { active: onboardingActive, step: onboardingStep } = useOnboarding();
   const [activeTab, setActiveTab] = useState("general");
   const [vadEnabled, setVadEnabled] = useState(false);
   const [vadThreshold, setVadThreshold] = useState("0.008");
@@ -327,19 +309,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
   const [copyShortcutError, setCopyShortcutError] = useState<string | null>(null);
   const [moveBarShortcutError, setMoveBarShortcutError] = useState<string | null>(null);
   const [showManualWMInstructions, setShowManualWMInstructions] = useState(false);
-
-  // During onboarding, jump to the tab that hosts the step's spotlight target so
-  // the tour can find and highlight it (the elements now live behind tabs).
-  useEffect(() => {
-    if (
-      onboardingActive &&
-      onboardingStep?.view === "settings" &&
-      onboardingStep.target
-    ) {
-      const tab = TAB_FOR_TOUR_TARGET[onboardingStep.target];
-      if (tab) setActiveTab(tab);
-    }
-  }, [onboardingActive, onboardingStep?.target, onboardingStep?.view]);
 
   useEffect(() => {
     isCompletedRef.current = isCompleted;
@@ -959,7 +928,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
             <SettingRow
               layout="column"
               title={t("settings.transcriptionLanguage")}
-              data-tour="language-select"
             >
               <Select
                 value={asrLanguage}
@@ -999,7 +967,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
           {platform === "macos" && (
             <SettingsCard
               title={t("settings.systemPermissionsGroup")}
-              data-tour="permissions-section"
             >
               <SettingRow
                 title={
@@ -1113,14 +1080,13 @@ export function SettingsView({ active = true }: { active?: boolean }) {
           </SettingsCard>
         </TabsContent>
 
-        <TabsContent value="shortcuts" className="flex flex-col gap-6" data-tour="shortcuts-section">
+        <TabsContent value="shortcuts" className="flex flex-col gap-6">
           <SettingsCard>
             <SettingRow
               title={t("settings.startStopRecording")}
               description={t("settings.startStopRecordingDesc")}
             >
               <ShortcutButton
-                tour="record-shortcut"
                 value={shortcutText}
                 onStart={() => startRecordingShortcut("record")}
               />
@@ -1237,7 +1203,7 @@ export function SettingsView({ active = true }: { active?: boolean }) {
         </TabsContent>
 
         <TabsContent value="recording" className="flex flex-col gap-6">
-          <SettingsCard data-tour="recording-section">
+          <SettingsCard>
             <SettingRow title={t("settings.vad")} description={t("settings.vadDesc")}>
               <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />
             </SettingRow>
