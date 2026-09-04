@@ -8,6 +8,37 @@ const __dirname = path.dirname(__filename);
 
 const env = { ...process.env };
 
+function prependPath(currentValue, entry) {
+  const entries = (currentValue || '').split(path.delimiter).filter(Boolean);
+  return entries.includes(entry)
+    ? entries.join(path.delimiter)
+    : [entry, ...entries].join(path.delimiter);
+}
+
+if (process.platform !== 'win32') {
+  const cargoHome = env.CARGO_HOME || (env.HOME && path.join(env.HOME, '.cargo'));
+  const cargoBin = cargoHome && path.join(cargoHome, 'bin');
+
+  if (cargoBin && fs.existsSync(path.join(cargoBin, 'cargo'))) {
+    env.PATH = prependPath(env.PATH, cargoBin);
+  }
+}
+
+if (process.platform === 'linux' && env.HOME) {
+  const buildTools = env.SIMPLEVOICE_BUILD_TOOLS
+    || path.join(env.HOME, '.local', 'share', 'simplevoice-build-tools', 'usr');
+  const buildToolsBin = path.join(buildTools, 'bin');
+  const buildToolsLib = path.join(buildTools, 'lib');
+
+  if (fs.existsSync(path.join(buildToolsLib, 'libclang.so'))) {
+    env.PATH = prependPath(env.PATH, buildToolsBin);
+    env.LD_LIBRARY_PATH = prependPath(env.LD_LIBRARY_PATH, buildToolsLib);
+    env.CMAKE_PREFIX_PATH = prependPath(env.CMAKE_PREFIX_PATH, buildTools);
+    env.LIBCLANG_PATH ||= buildToolsLib;
+    env.VULKAN_SDK ||= buildTools;
+  }
+}
+
 if (process.platform === 'win32') {
   const shortTargetDir = 'C:\\t\\sv';
 
