@@ -14,7 +14,7 @@ import {
   transcribeCloudRecording,
 } from "@/lib/byok";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Mic, Square } from "lucide-react";
 
 import { TitleBar } from "./components/layout/TitleBar";
 import { Updater } from "./components/Updater";
@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type ViewId = "usage" | "models" | "transcriptions" | "settings";
+
+const IS_FLATPAK = import.meta.env.VITE_FLATPAK === "1";
 
 function App() {
   const { t } = useTranslation();
@@ -153,38 +155,40 @@ function App() {
     // Register the record/toggle shortcut on startup so the global hotkey works
     // before the Settings view is ever opened (required on Linux, where evdev
     // grabs are not persisted across launches like a compositor config bind).
-    const savedRecordShortcut =
-      localStorage.getItem("global_record_shortcut") ||
-      "CommandOrControl+Shift+Space";
-    if (savedRecordShortcut) {
-      invoke("register_shortcut", {
-        shortcutStr: savedRecordShortcut,
-      }).catch((err) => {
-        console.error("Failed to register record shortcut on mount:", err);
-      });
-    }
+    if (!IS_FLATPAK) {
+      const savedRecordShortcut =
+        localStorage.getItem("global_record_shortcut") ||
+        "CommandOrControl+Shift+Space";
+      if (savedRecordShortcut) {
+        invoke("register_shortcut", {
+          shortcutStr: savedRecordShortcut,
+        }).catch((err) => {
+          console.error("Failed to register record shortcut on mount:", err);
+        });
+      }
 
-    const savedCopyShortcut =
-      localStorage.getItem("global_copy_shortcut") ||
-      "CommandOrControl+Shift+C";
-    if (savedCopyShortcut) {
-      invoke("register_copy_shortcut", {
-        shortcutStr: savedCopyShortcut,
-      }).catch((err) => {
-        console.error("Failed to register copy-last shortcut on mount:", err);
-      });
-    }
+      const savedCopyShortcut =
+        localStorage.getItem("global_copy_shortcut") ||
+        "CommandOrControl+Shift+C";
+      if (savedCopyShortcut) {
+        invoke("register_copy_shortcut", {
+          shortcutStr: savedCopyShortcut,
+        }).catch((err) => {
+          console.error("Failed to register copy-last shortcut on mount:", err);
+        });
+      }
 
-    // Opt-in: the move-bar shortcut has no default, register only when saved.
-    const savedMoveBarShortcut = localStorage.getItem(
-      "global_move_bar_shortcut",
-    );
-    if (savedMoveBarShortcut) {
-      invoke("register_move_bar_shortcut", {
-        shortcutStr: savedMoveBarShortcut,
-      }).catch((err) => {
-        console.error("Failed to register move-bar shortcut on mount:", err);
-      });
+      // Opt-in: the move-bar shortcut has no default, register only when saved.
+      const savedMoveBarShortcut = localStorage.getItem(
+        "global_move_bar_shortcut",
+      );
+      if (savedMoveBarShortcut) {
+        invoke("register_move_bar_shortcut", {
+          shortcutStr: savedMoveBarShortcut,
+        }).catch((err) => {
+          console.error("Failed to register move-bar shortcut on mount:", err);
+        });
+      }
     }
   }, []);
 
@@ -549,6 +553,23 @@ function App() {
               )}
             </div>
           </div>
+        )}
+        {IS_FLATPAK && !isTranscribing && (
+          <button
+            type="button"
+            className={`absolute right-6 bottom-6 z-[60] inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium shadow-xl transition-colors ${
+              isRecording
+                ? "bg-danger text-black hover:bg-danger/90"
+                : "bg-white text-black hover:bg-white/90"
+            }`}
+            onClick={() => invoke("toggle_recording_from_window")}
+            aria-label={
+              isRecording ? t("tray.stopRecording") : t("tray.startRecording")
+            }
+          >
+            {isRecording ? <Square size={14} fill="currentColor" /> : <Mic size={16} />}
+            {isRecording ? t("tray.stopRecording") : t("tray.startRecording")}
+          </button>
         )}
         <Updater />
       </div>

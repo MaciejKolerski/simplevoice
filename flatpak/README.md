@@ -77,10 +77,11 @@ disclose that Codex generated most of the Flatpak packaging and identify the
 affected files and approximate extent. Target the `new-pr` branch, not `master`.
 
 The sandbox cannot read `/dev/input` or edit the host compositor configuration,
-so global shortcuts are not reliable in this Flatpak build on Wayland. Recording
-is still available from the tray menu. Do not work around this with broad device
-or home-directory permissions; use the XDG GlobalShortcuts portal in a future
-application update if sandboxed global shortcuts are required.
+so shortcut settings are hidden in this Flatpak build. Recording remains
+available from the always-visible in-app control and the tray menu. Do not work
+around this with broad device or home-directory permissions; use the XDG
+GlobalShortcuts portal in a future application update if sandboxed global
+shortcuts are required.
 
 ## Automatic updates after acceptance
 

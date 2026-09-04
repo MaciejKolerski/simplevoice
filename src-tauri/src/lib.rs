@@ -1612,6 +1612,13 @@ fn toggle_recording(app: &tauri::AppHandle) {
     }
 }
 
+/// Window-accessible recording control used by sandboxed builds where neither
+/// host compositor bindings nor a status tray can be assumed to be available.
+#[tauri::command]
+fn toggle_recording_from_window(app_handle: tauri::AppHandle) {
+    toggle_recording(&app_handle);
+}
+
 fn handle_tray_menu_event(app: &tauri::AppHandle, id: &str) {
     if id == "toggle_recording" {
         toggle_recording(app);
@@ -3694,6 +3701,7 @@ pub fn run() {
             set_selected_device,
             start_recording,
             stop_recording,
+            toggle_recording_from_window,
             register_shortcut,
             set_vad_enabled,
             scan_models,

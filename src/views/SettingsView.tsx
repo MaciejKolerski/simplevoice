@@ -858,7 +858,9 @@ export function SettingsView({ active = true }: { active?: boolean }) {
 
   const tabs: { value: string; label: string; Icon: typeof Mic }[] = [
     { value: "general", label: t("settings.tabGeneral"), Icon: SlidersHorizontal },
-    { value: "shortcuts", label: t("settings.tabShortcuts"), Icon: Keyboard },
+    ...(!IS_FLATPAK
+      ? [{ value: "shortcuts", label: t("settings.tabShortcuts"), Icon: Keyboard }]
+      : []),
     { value: "recording", label: t("settings.tabRecording"), Icon: Mic },
     { value: "wavebar", label: t("settings.tabWavebar"), Icon: AudioWaveform },
     { value: "text", label: t("settings.tabText"), Icon: Type },
