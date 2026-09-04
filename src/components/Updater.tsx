@@ -56,7 +56,7 @@ export function Updater() {
   // react-i18next binds `t` to the language of the render that produced it.
   // runCheck is memoized with [] deps (so it doesn't re-arm the startup timer or
   // the manual-trigger listener), which would otherwise freeze `t` at the first
-  // render's language — the OS-detected language, before applyPersistedLanguage()
+  // render's language, which is the OS-detected language before applyPersistedLanguage()
   // swaps in the saved UI language. Read the latest `t` through a ref so the
   // up-to-date / failure toasts always match the currently selected language.
   const tRef = useRef(t);
@@ -77,7 +77,7 @@ export function Updater() {
     const seq = ++checkSeqRef.current;
     setStatus("checking");
     try {
-      console.log("[Updater] Checking for updates...");
+      console.log("[Updater] Checking for updates");
       const update = await check();
       if (checkSeqRef.current !== seq) return;
       if (update) {
@@ -125,7 +125,7 @@ export function Updater() {
     setErrorMsg(null);
 
     try {
-      console.log("[Updater] Downloading and installing update...");
+      console.log("[Updater] Downloading and installing update");
 
       let contentLength: number | undefined = 0;
       let downloaded = 0;
@@ -145,16 +145,15 @@ export function Updater() {
             }
             break;
           case "Finished":
-            console.log("[Updater] Download finished, installing...");
+            console.log("[Updater] Download finished, installing");
             setStatus("installing");
             break;
         }
       });
 
       setStatus("completed");
-      console.log("[Updater] Update completed, relaunching app...");
+      console.log("[Updater] Update completed, relaunching app");
 
-      // Wait 1.5 seconds to show completion state then relaunch
       setTimeout(async () => {
         try {
           await relaunch();
@@ -180,7 +179,7 @@ export function Updater() {
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        // Only allow dismissal in resting states — never mid-update.
+        // Only allow dismissal in resting states, never mid-update.
         if (!open && (status === "available" || status === "error")) {
           setIsOpen(false);
         }

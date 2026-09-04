@@ -44,7 +44,7 @@ export function transcriptions() {
   });
   return [
     mk(0, "09:14", "Ship the release notes today, then schedule the launch review for Friday morning.", 9),
-    mk(0, "11:32", "Sounds great — let's lock Friday for the launch review.", 5),
+    mk(0, "11:32", "Sounds great. Let's lock Friday for the launch review.", 5),
     mk(1, "14:05", "Draft the changelog before standup and flag anything risky for the desktop build.", 8),
     mk(2, "16:48", "Remember to test the new recording overlay position controls on the external display.", 9),
     mk(3, "10:21", "Shipping the fix in ten minutes.", 4),

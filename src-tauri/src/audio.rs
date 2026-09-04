@@ -84,7 +84,7 @@ pub(crate) fn save_wav_file(
 /// before any blocking work; WAV save and notifications run on a new thread,
 /// mirroring the previous VAD auto-stop behavior. The is_recording guard makes
 /// it a no-op when a manual stop won the race in between two consumer
-/// iterations — without it, this would overwrite last_samples (the real
+/// iterations. Without it, this would overwrite last_samples (the real
 /// recording) with the ≤1024-sample residue drained after the manual stop.
 fn auto_stop_recording(
     mut s: std::sync::MutexGuard<'_, AudioState>,
@@ -379,7 +379,7 @@ impl AudioController {
 
                 // Device-disconnect watchdog: if no audio arrived for 5 s while
                 // recording (mic unplugged / asleep / Bluetooth dropped), the data
-                // callback has gone silent — stop instead of "recording" dead air.
+                // callback has gone silent. Stop instead of "recording" dead air.
                 if is_recording && last_audio.elapsed() > std::time::Duration::from_secs(5) {
                     let _ = app_handle_clone.emit("recording-error", "device_lost");
                     let s = state_clone.lock().unwrap();

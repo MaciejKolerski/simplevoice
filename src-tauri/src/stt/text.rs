@@ -29,7 +29,7 @@ const FILLERS_EN: &[&str] = &["uh", "uhh", "um", "umm", "hmm", "er", "erm", "ah"
 const FILLERS_PL: &[&str] = &["yyy", "yy", "eee", "ee", "mmm", "eem", "yhy"];
 const FILLERS_DE: &[&str] = &["äh", "ähm", "öh", "hm", "ähem"];
 
-/// Removes filler interjections ("uh", "um", …) for the given language. Tokens are
+/// Removes filler interjections such as "uh" and "um" for the given language. Tokens are
 /// matched by their alphanumeric, lowercased core so attached punctuation is dropped
 /// with the filler ("Um, hello" -> "hello"). Unknown/`None` language uses the English
 /// set (those sounds are not words in most languages). Off by default; gated by the

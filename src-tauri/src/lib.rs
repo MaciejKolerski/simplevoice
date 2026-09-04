@@ -42,7 +42,7 @@ enum ShortcutAction {
     Record,
     CopyLast,
     /// Toggle the recording overlay (wavebar) between locked and movable, so it
-    /// can be dragged to a new spot and pinned again — a keyboard alternative to
+    /// can be dragged to a new spot and pinned again as a keyboard alternative to
     /// the modifier-drag / lock switch.
     MoveBar,
 }
@@ -169,7 +169,7 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
     if c.engine == "local" {
         let stt_state = stt.state.lock().unwrap();
         // An idle-unloaded model keeps `active_model_path` and is reloaded
-        // transparently, so only block when no model is selected at all — not
+        // transparently, so only block when no model is selected at all rather than
         // merely when the engine is currently unloaded. A load that is still in
         // flight (the seconds after launch, while the frontend restores the last
         // model) also counts as selected: it will be ready long before the
@@ -430,7 +430,7 @@ fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
 }
 
 /// Background watcher: when "unload when idle" is enabled, drops the loaded model
-/// after 5 min of no transcription — never while recording or transcribing. The next
+/// after 5 min of no transcription, but never while recording or transcribing. The next
 /// transcription reloads it transparently.
 fn spawn_idle_unload_watcher(app_handle: tauri::AppHandle) {
     std::thread::spawn(move || {
@@ -456,7 +456,7 @@ fn spawn_idle_unload_watcher(app_handle: tauri::AppHandle) {
 }
 
 /// Whether the in-app updater can download and install an update itself. False for
-/// Linux installs that are NOT AppImages — a .deb/AUR/pacman-managed copy is owned
+/// Linux installs that are not AppImages. A .deb/AUR/pacman-managed copy is owned
 /// by the system package manager, so a self-install fails (no write access to the
 /// system prefix, and it would desync the package database). Those users update
 /// through their package manager instead, so the UI points them there rather than
@@ -530,7 +530,7 @@ fn begin_live_session(app: &tauri::AppHandle) {
     }
     let stt = app.state::<SttController>();
     // The engine may be idle-unloaded right now. Handing the session a lazy
-    // handle installs the audio tap immediately — losing no speech — and the
+    // handle installs the audio tap immediately without losing speech, and the
     // first re-decode reloads the model. Bailing out here instead (as this used
     // to) left live mode with no session at all: the recording produced no text
     // and the frontend, which skips the batch path in live mode, waited forever.
@@ -575,7 +575,7 @@ pub(crate) fn end_live_session(app: &tauri::AppHandle) {
     // thread). Recording has already stopped, so the app meets every App Nap
     // criterion; on a long recording the final decode outlasts App Nap's engage
     // latency, the run loop naps, and the event sits undelivered until the next
-    // wake (the next recording) — the live transcription appears to hang. Mirror
+    // wake (the next recording). The live transcription appears to hang. Mirror
     // the guard `transcribe_audio` already holds for the batch path.
     #[cfg(target_os = "macos")]
     let _app_nap_guard = AppNapGuard::begin("SimpleVoice is finalizing live transcription");
@@ -731,7 +731,7 @@ pub(crate) fn get_recording_window_mode(app_handle: &tauri::AppHandle) -> String
         Err(e) => {
             // With atomic config writes a reader never sees a half-written file, so
             // this should not fire from a write race anymore. If it does, the config
-            // is genuinely malformed — log it instead of silently defaulting to
+            // is genuinely malformed. Log it instead of silently defaulting to
             // "always" (which would resurrect the overlay despite a "never" setting).
             tracing::warn!("get_recording_window_mode: config.json parse failed, defaulting to 'always': {e}");
             return "always".to_string();
@@ -845,7 +845,7 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     // screen so the process stays ineligible for App Nap while the result is
     // delivered to the hidden main webview. With no visible window the run loop
     // naps and a long transcription's result sits undelivered until the next wake
-    // (the next recording) — the reported "processing never finishes" hang.
+    // (the next recording), causing the reported "processing never finishes" hang.
     let is_busy =
         controller.is_recording() || controller.is_saving() || controller.is_transcribing();
 
@@ -907,7 +907,7 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
 /// creation; tao re-applies it from its NSView `drawRect:`, but the content
 /// view of a wry window is a WKWebView, so that hook rarely fires. After the
 /// window is shown AppKit re-lays out the buttons, and the timing differs
-/// between a `tauri dev` binary and a bundled `.app` — so the release build
+/// between a `tauri dev` binary and a bundled `.app`, so the release build
 /// drifts lower than dev. Re-running tao's exact inset math on the relevant
 /// window events keeps the buttons pinned identically in both.
 #[cfg(target_os = "macos")]
@@ -1330,7 +1330,7 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     let base_icon = app_handle.default_window_icon().cloned();
 
     // macOS menu bar: use a transparent monochrome template image (just the waveform
-    // bars) so the system tints it for light/dark — no baked background. The colored
+    // bars) so the system tints it for light/dark with no baked background. The colored
     // recording/processing dot needs a non-template icon, so template mode is toggled
     // per state. On Windows/Linux a transparent white icon would be invisible on light
     // trays, so those keep the full app icon (existing behaviour).
@@ -1687,7 +1687,7 @@ fn sync_all_shortcuts(app_handle: &tauri::AppHandle) -> Result<(), String> {
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum LinuxShortcutMechanism {
     /// Keypresses read straight from /dev/input (Wayland WMs, needs read
-    /// access to the input nodes — typically the `input` group).
+    /// access to the input nodes, typically the `input` group).
     Evdev,
     /// Marker-delimited binds written into the compositor config
     /// (niri/hyprland/sway/i3) that spawn the binary with --toggle etc.
@@ -1703,7 +1703,7 @@ enum LinuxShortcutMechanism {
 
 /// Picks the shortcut mechanism once per app run. Wayland window-manager
 /// sessions (and unknown environments) prefer evdev so no user config is
-/// edited, but that only works when the input nodes are readable — when they
+/// edited, but that only works when the input nodes are readable. When they
 /// are not (the default on most installs), fall back to compositor config
 /// binds rather than failing silently.
 #[cfg(target_os = "linux")]
@@ -1771,7 +1771,7 @@ fn apply_linux_shortcut(
         }
         LinuxShortcutMechanism::WmConfig | LinuxShortcutMechanism::Desktop => {
             // The register commands run concurrently and the WM path
-            // read-modify-writes one config file — serialize to not lose one
+            // read-modify-writes one config file. Serialize to avoid losing one
             // action's section to the other's write.
             static NATIVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
             let _guard = NATIVE_LOCK.lock().unwrap();
@@ -1800,7 +1800,6 @@ fn register_shortcut(shortcut_str: String, app_handle: tauri::AppHandle) -> Resu
     let registry = app_handle.state::<ShortcutRegistry>();
     let mut entries = registry.entries.lock().unwrap();
 
-    // Remove existing Record entry
     entries.retain(|e| e.action != ShortcutAction::Record);
 
     if !shortcut_str.trim().is_empty() {
@@ -1841,7 +1840,6 @@ fn register_copy_shortcut(
     let registry = app_handle.state::<ShortcutRegistry>();
     let mut entries = registry.entries.lock().unwrap();
 
-    // Remove existing CopyLast entry
     entries.retain(|e| e.action != ShortcutAction::CopyLast);
 
     if !shortcut_str.trim().is_empty() {
@@ -1884,7 +1882,6 @@ fn register_move_bar_shortcut(
     let registry = app_handle.state::<ShortcutRegistry>();
     let mut entries = registry.entries.lock().unwrap();
 
-    // Remove existing MoveBar entry
     entries.retain(|e| e.action != ShortcutAction::MoveBar);
 
     if !shortcut_str.trim().is_empty() {
@@ -2208,12 +2205,12 @@ fn has_secure_api_key(provider: String) -> Result<bool, String> {
 ///
 /// SimpleVoice runs as an `Accessory` (menu-bar) app with its main window
 /// `visible: false`. Once recording stops, the process has no visible window,
-/// is no longer audible, and holds no power assertions — so it satisfies every
+/// is no longer audible, and holds no power assertions, so it satisfies every
 /// macOS App Nap eligibility criterion and gets napped, which throttles the
 /// main run loop. Tauri can only deliver a command's result to the webview by
 /// evaluating JavaScript on that main thread (WKWebView is main-thread-only),
 /// so while the app is napping the `transcribe_audio` response sits undelivered
-/// until the next event (e.g. starting another recording) wakes the run loop —
+/// until the next event (e.g. starting another recording) wakes the run loop,
 /// the transcription appears to "hang" until you record again.
 ///
 /// Holding an `NSProcessInfo` activity opts the app out of App Nap for the
@@ -2263,7 +2260,7 @@ impl Drop for AppNapGuard {
 /// Tauri only hands the result to the webview by evaluating JS on the main
 /// thread *after* that. On a long recording the app has been UI-idle for the
 /// entire inference, so App Nap re-engages in that gap and the result sits
-/// undelivered until the next run-loop wake (the next recording) — the hang the
+/// undelivered until the next run-loop wake (the next recording), causing the hang the
 /// per-command guard was meant to fix, still reachable for long clips. The
 /// frontend closes this only once it has received the text and pasted, so
 /// holding the activity until then keeps the run loop awake through delivery.
@@ -2446,7 +2443,7 @@ static CONFIG_FILE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// the target. `rename` is atomic on POSIX, so concurrent readers (which do not
 /// take CONFIG_FILE_LOCK) always observe a complete, parseable file instead of a
 /// half-written one. A half-written read made config readers fall back to their
-/// defaults — e.g. `get_recording_window_mode` returning "always", which made the
+/// defaults. For example, `get_recording_window_mode` returning "always" made the
 /// recording overlay reappear intermittently even when set to "never".
 fn write_config_atomic<C: AsRef<[u8]>>(
     path: &std::path::Path,
@@ -2465,8 +2462,8 @@ const BACKEND_OWNED_CONFIG_KEYS: &[&str] = &["gpu_enabled", "active_model_path"]
 /// Records which local model is selected, in config.json, so the *backend* knows
 /// it at the next launch. The choice used to live only in the webview's
 /// localStorage, which means every moment the webview had not (yet) called
-/// `load_model` — the seconds right after launch, or a run where the webview
-/// crashed or was never shown — left the backend believing no model was selected,
+/// `load_model`, such as the seconds right after launch or a run where the webview
+/// crashed or was never shown, left the backend believing no model was selected,
 /// and the record shortcut failed with "errors.no_model_loaded".
 /// `None` clears the entry (the model was deleted).
 fn remember_active_model(app_handle: &tauri::AppHandle, model_path: Option<&str>) {
@@ -2523,7 +2520,7 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
     // back, so a plain overwrite silently drops keys it never loaded. Merge the
     // incoming config over what is already on disk so unknown keys survive. `gpu_enabled`
     // (set_gpu_enabled) and `active_model_path` (load_model) are owned by the
-    // backend, so for those the on-disk value still wins — a settings write from a
+    // backend, so for those the on-disk value still wins. A settings write from a
     // snapshot taken before the user switched models must not resurrect the old one.
     let to_write = match serde_json::from_str::<serde_json::Value>(&config) {
         Ok(incoming) => {
@@ -3155,7 +3152,7 @@ fn check_permissions_status() -> PermissionsStatus {
 /// Backend-side wrapper for [`paste_text`]. On macOS the enigo call must run on
 /// the main thread: mapping `Key::Unicode('v')` to a keycode goes through the
 /// TIS API (`TSMGetInputSourceProperty`), and when HIToolbox has to revalidate
-/// its input-source list it asserts the main dispatch queue — off it, the
+/// its input-source list it asserts the main dispatch queue; off it, the
 /// process dies with SIGTRAP in `dispatch_assert_queue`. Frontend invocations
 /// of the `paste_text` command are safe (sync commands already run on the main
 /// thread); this wrapper is for backend callers on runtime/blocking threads.
@@ -3511,7 +3508,7 @@ pub fn run() {
         })
         .setup(|app| {
             // Structured logging goes to a rolling file under <app_data>/logs/ and
-            // stderr. Fault-tolerant — never blocks startup.
+            // stderr. It is fault-tolerant and never blocks startup.
             if let Ok(dir) = app.path().app_local_data_dir() {
                 crate::logging::init(&dir);
             }
@@ -3651,7 +3648,7 @@ pub fn run() {
                 }
             }
 
-            // Restore the selected local model (path only — the engine itself is
+            // Restore the selected local model path. The engine itself is
             // loaded on demand, so a cloud user never pays for it). Recording is
             // therefore allowed from the first second of the run, without waiting
             // for the webview to call `load_model`.
@@ -3681,7 +3678,6 @@ pub fn run() {
                     .await
                     .expect("Failed to create SQLite pool");
 
-                // Run database migrations to ensure all tables exist
                 let _ = sqlx::migrate!("./migrations").run(&pool).await;
 
                 pool

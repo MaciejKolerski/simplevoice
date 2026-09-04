@@ -301,7 +301,7 @@ impl AsrEngine for CandleWhisperEngine {
         language: Option<&str>,
     ) -> Result<String, AppError> {
         let start_time = std::time::Instant::now();
-        println!("[Candle Whisper] Starting transcription of {} samples ({:.2}s)...", samples.len(), samples.len() as f32 / 16000.0);
+        println!("[Candle Whisper] Starting transcription of {} samples ({:.2}s)", samples.len(), samples.len() as f32 / 16000.0);
         
         let mel_bytes = match self.config.num_mel_bins {
             80 => MEL_FILTERS_80,
@@ -317,7 +317,7 @@ impl AsrEngine for CandleWhisperEngine {
             .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
             .collect();
 
-        println!("[Candle Whisper] Computing Mel Spectrogram...");
+        println!("[Candle Whisper] Computing Mel Spectrogram");
         let mel = audio::pcm_to_mel(&self.config, samples, &mel_filters);
         
         let mel_len = mel.len();
@@ -339,7 +339,7 @@ impl AsrEngine for CandleWhisperEngine {
                     id
                 }
                 _ => {
-                    println!("[Candle Whisper] Auto-detecting language...");
+                    println!("[Candle Whisper] Auto-detecting language");
                     let id = self.detect_language(&mut model, &mel_t).ok();
                     println!("[Candle Whisper] Auto-detection returned token id: {:?}", id);
                     id
@@ -358,11 +358,11 @@ impl AsrEngine for CandleWhisperEngine {
         let num_segments = (content_frames + n_frames - 1) / n_frames;
         let mut segment_idx = 0;
 
-        println!("[Candle Whisper] Starting decoding loop ({} segments)...", num_segments);
+        println!("[Candle Whisper] Starting decoding loop ({} segments)", num_segments);
         while seek < content_frames {
             segment_idx += 1;
             let segment_size = usize::min(content_frames - seek, n_frames);
-            println!("[Candle Whisper] Decoding segment {}/{} (seek: {}, size: {})...", segment_idx, num_segments, seek, segment_size);
+            println!("[Candle Whisper] Decoding segment {}/{} (seek: {}, size: {})", segment_idx, num_segments, seek, segment_size);
             
             let mel_segment = mel_t.narrow(2, seek, segment_size)
                 .map_err(|e| AppError::Model(e.to_string()))?;

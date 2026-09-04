@@ -33,7 +33,7 @@
   "bundle": {
     "active": true,
     "shortDescription": "Privacy-first, local & offline Speech-to-Text and voice typing.",
-    "longDescription": "Simplevoice is a privacy-first Speech-to-Text desktop assistant that runs fully local and offline. Record system audio, transcribe with local ASR engines, and auto-paste or copy the result — no cloud, no telemetry.",
+    "longDescription": "Simplevoice is a privacy-first Speech-to-Text desktop assistant that works locally and offline, with optional BYOK cloud transcription. Record audio, transcribe it with a local ASR engine or a configured cloud provider, and auto-paste or copy the result. No telemetry.",
     "createUpdaterArtifacts": true,
     "targets": "all",
     "resources": {

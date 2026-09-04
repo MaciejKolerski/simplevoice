@@ -10,7 +10,7 @@
 //! Trade-offs: this needs read access to the input devices (fine when the nodes
 //! are world-readable, otherwise the user must be in the `input` group), and the
 //! keypress is observed rather than consumed, so it still reaches the focused
-//! application — pick a dedicated combination accordingly.
+//! application. Pick a dedicated combination accordingly.
 //!
 //! Because most users are not in the `input` group, `probe()` checks at startup
 //! whether any keyboard node is readable. When none is, `lib.rs` falls back to
@@ -70,7 +70,7 @@ static STATE: OnceLock<State> = OnceLock::new();
 pub struct Probe {
     /// Keyboard devices we can open and read.
     pub keyboards: usize,
-    /// Event nodes that failed to open with a permission error — typically
+    /// Event nodes that failed to open with a permission error, typically
     /// the user is not in the `input` group.
     pub denied: usize,
 }
@@ -398,7 +398,7 @@ fn parse_shortcut(s: &str) -> Result<(u8, u16), String> {
 }
 
 /// Map a frontend key name (`KeyboardEvent.key` style: uppercase letters,
-/// "Space", "ArrowUp", "F5", literal punctuation, …) to its evdev key code.
+/// "Space", "ArrowUp", "F5", or literal punctuation) to its evdev key code.
 fn key_name_to_code(name: &str) -> Option<u16> {
     // Single-character tokens: letters, digits, punctuation.
     let mut chars = name.chars();
@@ -457,7 +457,7 @@ fn letter_code(c: char) -> u16 {
 }
 
 fn digit_code(c: char) -> u16 {
-    // Top-row digits: '1'=2 … '9'=10, '0'=11.
+    // Top-row digits: '1'=2 through '9'=10, '0'=11.
     if c == '0' {
         11
     } else {
@@ -467,7 +467,7 @@ fn digit_code(c: char) -> u16 {
 
 fn fkey_code(n: u8) -> Option<u16> {
     match n {
-        1..=10 => Some(59 + (n as u16 - 1)), // F1=59 … F10=68
+        1..=10 => Some(59 + (n as u16 - 1)), // F1=59 through F10=68
         11 => Some(87),
         12 => Some(88),
         _ => None,

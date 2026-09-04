@@ -3,7 +3,7 @@ use simplevoice_app_lib::stt::traits::AsrEngine;
 use std::path::Path;
 
 fn main() {
-    println!("Testing CandleWhisperEngine with language auto-detect...");
+    println!("Testing CandleWhisperEngine with language auto-detect");
 
     let home = std::env::var("HOME").unwrap_or_default();
     let model_dir_str = std::env::var("WHISPER_MODEL_DIR").unwrap_or_else(|_| {
@@ -19,7 +19,7 @@ fn main() {
         return;
     }
 
-    println!("Initializing engine...");
+    println!("Initializing engine");
     let engine: CandleWhisperEngine = match CandleWhisperEngine::initialize(model_dir, false) {
         Ok(eng) => eng,
         Err(e) => {
@@ -27,15 +27,15 @@ fn main() {
             return;
         }
     };
-    println!("Engine initialized successfully!");
+    println!("Engine initialized");
 
-    println!("Creating 3 seconds of dummy audio (16kHz)...");
+    println!("Creating 3 seconds of dummy audio (16kHz)");
     let samples = vec![0.0f32; 16000 * 3];
 
-    println!("Transcribing with auto-detect...");
+    println!("Transcribing with auto-detect");
     match engine.transcribe(&samples, None) {
         Ok(text) => {
-            println!("Transcription success! Result text: {:?}", text);
+            println!("Transcription result: {:?}", text);
         }
         Err(e) => {
             println!("Transcription failed: {:?}", e);

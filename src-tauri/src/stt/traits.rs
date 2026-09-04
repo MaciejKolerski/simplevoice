@@ -30,7 +30,7 @@ pub enum ModelFormat {
 pub struct ModelInfo {
     pub path: String,
     pub format: ModelFormat,
-    pub architecture: Option<String>, // "Whisper", "Wav2Vec2CTC", "FastConformer", ...
+    pub architecture: Option<String>, // Examples: "Whisper", "Wav2Vec2CTC", "FastConformer".
     pub hf_model_id: Option<String>,  // From config.json -> _name_or_path
     pub display_name: String,
     pub filename: String,

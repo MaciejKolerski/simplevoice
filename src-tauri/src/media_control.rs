@@ -1,7 +1,7 @@
 //! Cross-platform system media playback control for the "Pause System Audio" feature.
 //!
 //! # Strategy per platform
-//! - **macOS**  — `MRMediaRemoteSendCommand` (private MediaRemote.framework) pauses the
+//! - **macOS**: `MRMediaRemoteSendCommand` (private MediaRemote.framework) pauses the
 //!                system-wide "Now Playing" session, which covers any app integrated with
 //!                macOS media controls (music players, browsers, podcast apps). Playback
 //!                detection parses coreaudiod's `audio-out` entries in `pmset -g
@@ -13,12 +13,12 @@
 //!                none), while Play is the one dangerous command: without a session
 //!                macOS launches Music.app, and with a session the user paused it
 //!                overrides their choice. So after sending Pause a watcher thread
-//!                records which holders release their assertion within ~3 s — only
+//!                records which holders release their assertion within ~3 s. Only
 //!                those were demonstrably paused by us, and only their presence
 //!                allows resume to send Play.
-//! - **Windows** — WinRT (PowerShell) to detect playback state + Win32 `keybd_event` FFI
+//! - **Windows**: WinRT (PowerShell) to detect playback state + Win32 `keybd_event` FFI
 //!                 to send `VK_MEDIA_PLAY_PAUSE` (0xB3)
-//! - **Linux**  — MPRIS2 over the session D-Bus, spoken natively with `zbus`
+//! - **Linux**: MPRIS2 over the session D-Bus, spoken natively with `zbus`
 //!                (already in the tree via Tauri). Deliberately no external
 //!                binaries: `dbus-send` and `playerctl` are separate packages
 //!                that are not installed everywhere, their text output is not a
@@ -77,9 +77,9 @@ fn macos_audio_out_assertions() -> Vec<AudioOutAssertion> {
 }
 
 /// Parses `pmset -g assertions` output. Assertion rows look like
-/// `   pid 414(coreaudiod): [0x…] 00:01:33 PreventUserIdleSystemSleep named: "…"`,
+/// `   pid 414(coreaudiod): [hex value] 00:01:33 PreventUserIdleSystemSleep named: "name"`,
 /// followed by indented detail rows, of which two matter here:
-/// `Created for PID: 1006.` and `Resources: audio-out …`.
+/// `Created for PID: 1006.` and `Resources: audio-out details`.
 #[cfg(target_os = "macos")]
 fn parse_audio_out_assertions(pmset_output: &str) -> Vec<AudioOutAssertion> {
     fn age_secs(row: &str) -> Option<u64> {
@@ -145,7 +145,7 @@ fn parse_audio_out_assertions(pmset_output: &str) -> Vec<AudioOutAssertion> {
 /// Outcome of the post-Pause verification, shared between the pause-time
 /// watcher thread and the resume-time thread. `confirmed: None` means the
 /// watcher is still running; `Some(pids)` lists the holders that released
-/// their audio-out assertion shortly after our Pause — i.e. the processes the
+/// their audio-out assertion shortly after our Pause, meaning the processes the
 /// Pause demonstrably paused. The generation ties a verdict to one
 /// pause/resume cycle so a stale watcher cannot feed a later recording.
 #[cfg(target_os = "macos")]
@@ -173,7 +173,7 @@ fn platform_pause() -> Vec<String> {
     // playing": WebAudio pages, games and calls hold one without registering a
     // Now Playing session, and those MRMediaRemoteSendCommand cannot pause.
     // Filter what we can here (our own process, short-lived notification
-    // sounds), then send Pause — which is always safe: on an already-paused or
+    // sounds), then send Pause. This is safe because on an already-paused or
     // absent Now Playing session it is a no-op. Play is the dangerous command
     // (it resumes sessions the *user* paused, or launches Music.app when no
     // session exists), so whether resume may send it is decided by watching
@@ -418,7 +418,7 @@ fn windows_send_media_play_pause() {
 }
 
 /// Bus-name prefix every MPRIS2 media player registers under, e.g.
-/// `org.mpris.MediaPlayer2.spotify` or `…firefox.instance_1_96`.
+/// `org.mpris.MediaPlayer2.spotify` or `org.mpris.MediaPlayer2.firefox.instance_1_96`.
 #[cfg(target_os = "linux")]
 const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
 
@@ -521,7 +521,7 @@ fn mpris_playback_status(props: &zbus::blocking::fdo::PropertiesProxy<'_>) -> zb
     Ok(String::try_from(value).unwrap_or_default())
 }
 
-/// Pauses `player` if — and only if — it currently reports `Playing`.
+/// Pauses `player` if and only if it currently reports `Playing`.
 /// Returns whether a pause command was sent.
 #[cfg(target_os = "linux")]
 fn linux_pause_player(conn: &zbus::blocking::Connection, player: &str) -> zbus::Result<bool> {

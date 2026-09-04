@@ -348,7 +348,7 @@ fn update_wm_config_file(de: &str, command_to_run: &str, shortcut_str: &str, act
             if let Some(inserted_content) = insert_inside_binds_block(&new_content, &section_content) {
                 new_content = inserted_content;
             } else {
-                // Fallback: if no binds block found, wrap in binds { ... } and append to end
+                // If no binds block exists, create one around the generated entries and append it.
                 let mut fallback_content = String::new();
                 fallback_content.push_str(&start_marker);
                 fallback_content.push('\n');

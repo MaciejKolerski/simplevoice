@@ -2,7 +2,7 @@
 pkgname=simplevoice-bin
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Simplevoice — fast speech-to-text transcription (Tauri)"
+pkgdesc="Simplevoice: fast speech-to-text transcription (Tauri)"
 arch=('x86_64')
 url="https://github.com/MaciejKolerski/simplevoice"
 license=('Apache-2.0')

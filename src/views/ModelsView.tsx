@@ -244,8 +244,8 @@ const PROVIDER_SETTING_KEYS: Record<
   },
 };
 
-// Unique identifier for a recommended model. repo_id alone is NOT unique —
-// every whisper.cpp GGML model shares "ggerganov/whisper.cpp" — so include the
+// Unique identifier for a recommended model. repo_id alone is not unique because
+// every whisper.cpp GGML model shares "ggerganov/whisper.cpp", so include the
 // file list to distinguish them.
 const modelKey = (model: RecommendedModel) =>
   `${model.repo_id}::${model.files.join("|")}`;
@@ -718,7 +718,7 @@ export function ModelsView() {
   const handleCancelDownload = async (model: RecommendedModel) => {
     if (!downloadingKey) return;
     if (downloadPaused) {
-      // Paused downloads have no running task to signal — remove partial data
+      // Paused downloads have no running task to signal, so remove partial data
       // directly and tear down the UI ourselves.
       try {
         await invoke("discard_download", {

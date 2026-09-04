@@ -441,7 +441,7 @@ export function UsageView() {
       return (
         <>
           <span className="trend flat flex items-center gap-0.5 text-muted font-semibold whitespace-nowrap shrink-0">
-            — {numberFormat.format(0)}%
+            {numberFormat.format(0)}%
           </span>
           <span className="truncate">{t("usage.vsLastPeriod")}</span>
         </>

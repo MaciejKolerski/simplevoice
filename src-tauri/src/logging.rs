@@ -2,7 +2,7 @@
 //! stderr, via `tracing`. Initialised once at startup.
 //!
 //! Fault-tolerant by design: any failure to set up file logging falls back to
-//! stderr-only (or nothing) and NEVER panics — logging must not be able to stop
+//! stderr-only (or nothing) and never panics. Logging must not be able to stop
 //! the app from starting. The non-blocking writer's `WorkerGuard` is parked in a
 //! `static` so it lives for the whole process (dropping it would silently stop
 //! the file writer).
@@ -18,7 +18,7 @@ static GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 /// Initialise logging. Writes a daily-rotated `simplevoice.log.<date>` in
 /// `<app_data>/logs/` and mirrors to stderr at INFO and above. Safe and cheap to
-/// call more than once — only the first call installs the subscriber.
+/// call more than once; only the first call installs the subscriber.
 pub fn init(app_data_dir: &Path) {
     if GUARD.get().is_some() {
         return;

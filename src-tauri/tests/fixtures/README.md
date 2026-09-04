@@ -14,10 +14,10 @@ point the harness at a local manifest.
 }
 ```
 
-- `wav` — path to a 16 kHz, mono, 16-bit (or float) WAV, resolved **relative to the
+- `wav`: path to a 16 kHz, mono, 16-bit (or float) WAV, resolved **relative to the
   manifest file's directory**.
-- `reference` — the exact human-verified transcript (the WER ground truth).
-- `language` — optional ISO code passed to the engine; omit for auto-detect.
+- `reference`: the exact human-verified transcript (the WER ground truth).
+- `language`: optional ISO code passed to the engine; omit for auto-detect.
 
 See `manifest.example.json` for a starting point.
 
@@ -32,8 +32,8 @@ cargo run --bin eval
 
 Optional environment variables:
 
-- `SV_EVAL_GPU=1` — load the model on GPU.
-- `SV_EVAL_OUT=/path/to/results.json` — results location (default:
+- `SV_EVAL_GPU=1`: load the model on GPU.
+- `SV_EVAL_OUT=/path/to/results.json`: results location (default:
   `eval-results.json` next to the manifest).
 
 ## Assembling a corpus

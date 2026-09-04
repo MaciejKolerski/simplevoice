@@ -7,7 +7,7 @@ interface WaveBarProps {
 }
 
 /**
- * Simplevoice "WaveBar" symbol — five rounded bars forming a sound wave.
+ * Simplevoice "WaveBar" symbol with five rounded bars forming a sound wave.
  * Geometry is fixed per the brand book; color is inherited via currentColor.
  */
 export function WaveBar({ className, animated = false }: WaveBarProps) {

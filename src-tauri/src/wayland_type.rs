@@ -54,7 +54,7 @@ const CONTROL_MODIFIER_MASK: u32 = 1 << 2;
 // compositor has compiled it AND that the focused client has recompiled its own
 // copy (the client does that asynchronously when it receives the `wl_keyboard.keymap`
 // event). Key events that reach the client before that swap finishes are resolved
-// against the stale keymap and silently dropped — which is exactly the "first part
+// against the stale keymap and silently dropped, which is exactly the "first part
 // of the dictation goes missing" symptom. The race is unackable, so the only cure
 // is a wall-clock settle delay before the first keystroke. 90ms is reliable on
 // lightweight wlroots compositors (Sway/Hyprland/niri) and the heavier KWin alike;

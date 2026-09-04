@@ -130,7 +130,7 @@ impl StreamingController {
             if h.is_finished() {
                 let _ = h.join();
             }
-            // else: detach — drop the handle without joining.
+            // Otherwise, detach by dropping the handle without joining.
         }
     }
 }

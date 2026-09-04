@@ -187,7 +187,7 @@ function ShortcutButton({
   );
 }
 
-/** A card whose body is hidden until the user opens it — used to tuck advanced,
+/** A card whose body is hidden until the user opens it, used to tuck advanced,
  * rarely-touched knobs out of the way so a tab isn't overwhelming at a glance. */
 function CollapsibleCard({
   title,
@@ -1065,7 +1065,11 @@ export function SettingsView({ active = true }: { active?: boolean }) {
           <SettingsCard title={t("settings.aboutGroup")}>
             <SettingRow
               title="Simplevoice"
-              description={t("settings.version", { version: appVersion || "…" })}
+              description={
+                appVersion
+                  ? t("settings.version", { version: appVersion })
+                  : t("common.loading")
+              }
             >
               <Button
                 variant="outline"

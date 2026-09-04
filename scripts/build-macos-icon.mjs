@@ -22,7 +22,7 @@ const iconSource = path.join(projectRoot, 'Simplevoice.icon');
 const outDir = path.join(projectRoot, 'src-tauri', 'icons', 'macos');
 
 if (process.platform !== 'darwin') {
-  console.log('[macos-icon] Not macOS — skipping Liquid Glass icon build.');
+  console.log('[macos-icon] Not macOS. Skipping Liquid Glass icon build.');
   process.exit(0);
 }
 

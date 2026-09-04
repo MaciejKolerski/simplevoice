@@ -104,7 +104,7 @@ pub struct SttState {
 
 /// Keeps the engine alive for one operation: while a lease exists the idle-unload
 /// watcher leaves the engine alone, and dropping the lease restarts the idle
-/// clock — so "idle" means "5 minutes since the last use ended", not "since it
+/// clock, so "idle" means "5 minutes since the last use ended", not "since it
 /// started" (a long transcription could otherwise be unloaded mid-run).
 pub struct EngineLease {
     state: std::sync::Arc<Mutex<SttState>>,
@@ -146,7 +146,7 @@ impl SttController {
 
     pub fn load_model(&self, model_path: &str, use_gpu: bool) -> Result<(), String> {
         let _guard = self.load_lock.lock().unwrap_or_else(|e| e.into_inner());
-        // Someone may have loaded exactly this while we waited for the lock — the
+        // Someone may have loaded exactly this while we waited for the lock. The
         // record-start preload and the frontend's restore can ask at the same
         // moment. Loading it twice would briefly hold two copies of a
         // multi-gigabyte model (in VRAM, on the GPU path).
@@ -203,7 +203,7 @@ impl SttController {
 
     /// Returns the engine, reloading the selected model first when an idle-unload
     /// dropped it. `Ok(None)` means no local model is selected at all (cloud
-    /// engine, or a fresh install) — not an error at this level.
+    /// engine, or a fresh install), which is not an error at this level.
     pub fn ensure_loaded(&self) -> Result<Option<std::sync::Arc<dyn traits::AsrEngine>>, String> {
         if let Some(engine) = self.engine_now() {
             return Ok(Some(engine));
@@ -337,7 +337,7 @@ impl SttController {
 /// An engine handle that resolves the controller's engine on every call instead of
 /// capturing it once. Handed to the live (streaming) session so a recording started
 /// while the model is idle-unloaded still transcribes: the audio tap is
-/// installed immediately — no speech is lost — and the first re-decode reloads the
+/// installed immediately without losing speech, and the first re-decode reloads the
 /// model. It holds a lease for the session's lifetime, so the watcher cannot unload
 /// the engine underneath a live recording.
 pub struct LazyEngine {
@@ -472,10 +472,10 @@ mod tests {
         make_idle_for(&c, 4_000);
         assert!(!c.unload_if_idle(300), "must not unload while in use");
         assert!(c.state.lock().unwrap().engine.is_some());
-        // Dropping the lease restarts the idle clock, so the next tick is a no-op…
+        // Dropping the lease restarts the idle clock, so the next tick is a no-op.
         drop(lease);
         assert!(!c.unload_if_idle(300));
-        // …and only idling again from that point unloads.
+        // Only idling again from that point unloads.
         make_idle_for(&c, 400);
         assert!(c.unload_if_idle(300));
     }
@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn loading_the_already_loaded_model_is_a_no_op() {
-        // The path does not exist, so a real load would fail — reaching Ok proves
+        // The path does not exist, so a real load would fail. Reaching Ok proves
         // the redundant reload was skipped instead of tearing the engine down.
         let c = controller_with(FakeEngine::ok());
         {

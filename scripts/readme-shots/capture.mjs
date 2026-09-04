@@ -48,7 +48,7 @@ async function settle(page) {
 }
 
 async function captureView(browser, { name, navLabel }) {
-  // --- Pass 1: raw capture at exact app size, no chrome ---
+  // Capture at the exact app viewport without window chrome.
   const rawPath = resolve(OUT, `_raw-${name}.png`);
   {
     const ctx = await browser.newContext({
@@ -88,7 +88,7 @@ async function captureView(browser, { name, navLabel }) {
     await ctx.close();
   }
 
-  // --- Pass 2: chrome composite via frame.html ---
+  // Add window chrome with frame.html.
   {
     const ctx = await browser.newContext({
       viewport: { width: 1360, height: 880 },
@@ -126,7 +126,7 @@ try {
   await captureView(browser, { name: "transcriptions", navLabel: "Transcriptions" });
   await captureView(browser, { name: "settings", navLabel: "Settings" });
 
-  // --- recording overlay: pose the REAL RecordingWindowView, then stage it ---
+  // Capture the real RecordingWindowView before composing the staged screenshot.
   {
     const overlayRawPath = resolve(OUT, "_overlay-raw.png");
     const ctx = await browser.newContext({
@@ -166,7 +166,6 @@ try {
         window.__fireTauriEvent("audio-amplitude", AMPS[i]);
         await new Promise((r) => setTimeout(r, 50));
       }
-      // Final settle pose — mid-speech amplitude
       window.__fireTauriEvent("audio-amplitude", 0.155);
     });
 
@@ -215,7 +214,7 @@ try {
       const kb = size / 1024;
       console.log(`captured recording.png (DSF ${dsf}, ${Math.round(kb)} KB)`);
       if (dsf === 2 && kb > 600) {
-        console.log("recording.png exceeds 600 KB at DSF 2 — retrying at DSF 1");
+        console.log("recording.png exceeds 600 KB at DSF 2. Retrying at DSF 1");
         continue;
       }
       break;

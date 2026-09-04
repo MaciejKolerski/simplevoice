@@ -1,6 +1,6 @@
 //! LocalAgreement-2 live strategy: re-decode the growing utterance buffer every
 //! `min_chunk_ms` and commit only words that have stabilized across two decodes.
-//! Works with any batch `AsrEngine` (uses `transcribe()` + whitespace split — no
+//! Works with any batch `AsrEngine` (uses `transcribe()` + whitespace split, with no
 //! word timestamps required). The audio buffer is only ever reset at a whole
 //! end-of-speech pause or a hard cap, never mid-word, so a word is never split.
 

@@ -1,5 +1,5 @@
 //! Splits long 16 kHz mono recordings into transcription-sized chunks.
-//! Cuts are placed in the quietest pause found in a 45–90 s window, so words
+//! Cuts are placed in the quietest pause found in a 45-90 s window, so words
 //! are not bisected when a pause exists; chunks that contain no speech at all are dropped
 //! (this also prevents Whisper hallucinations on silence).
 

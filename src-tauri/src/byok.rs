@@ -244,7 +244,7 @@ fn truncate(value: &str, max_chars: usize) -> String {
     if value.chars().count() <= max_chars {
         value.to_string()
     } else {
-        value.chars().take(max_chars).collect::<String>() + "…"
+        value.chars().take(max_chars).collect::<String>() + " [truncated]"
     }
 }
 
@@ -351,7 +351,7 @@ async fn checked_bytes(request: reqwest::RequestBuilder) -> Result<Vec<u8>, Stri
     let body = read_response_body(response).await?;
     if !status.is_success() {
         return Err(format!(
-            "errors.cloud_api_error::{} — {}",
+            "errors.cloud_api_error::{}: {}",
             status,
             truncate(&String::from_utf8_lossy(&body), 400)
         ));
@@ -378,7 +378,7 @@ async fn optional_json(
     }
     if !status.is_success() {
         return Err(format!(
-            "errors.cloud_api_error::{} — {}",
+            "errors.cloud_api_error::{}: {}",
             status,
             truncate(&String::from_utf8_lossy(&body), 400)
         ));
@@ -400,7 +400,7 @@ fn required_setting<'a>(
         .filter(|value| !value.is_empty() && value.len() <= 256)
         .ok_or_else(|| {
             format!(
-                "errors.provider_setting_missing::{} — {name}",
+                "errors.provider_setting_missing::{} ({name})",
                 provider.name
             )
         })
@@ -417,7 +417,7 @@ fn validated_region(
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
     {
         return Err(format!(
-            "errors.provider_setting_invalid::{} — region",
+            "errors.provider_setting_invalid::{} (region)",
             provider.name
         ));
     }
@@ -431,7 +431,7 @@ fn validated_cloudflare_account(
     let account_id = required_setting(provider, settings, "accountId")?;
     if account_id.len() != 32 || !account_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(format!(
-            "errors.provider_setting_invalid::{} — accountId",
+            "errors.provider_setting_invalid::{} (accountId)",
             provider.name
         ));
     }
@@ -447,7 +447,7 @@ fn validated_aws_access_key(
         || !access_key.bytes().all(|byte| byte.is_ascii_alphanumeric())
     {
         return Err(format!(
-            "errors.provider_setting_invalid::{} — accessKeyId",
+            "errors.provider_setting_invalid::{} (accessKeyId)",
             provider.name
         ));
     }

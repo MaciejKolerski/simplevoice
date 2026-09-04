@@ -6,13 +6,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* =========================================================================
-   Simplevoice design tokens
+/* Simplevoice design tokens.
    Monochrome by decision: pure-black surfaces, white is the only accent.
    Functional color is reserved for status signals and the live waveform.
-   The app is permanently dark — values live in :root and the `dark` class is
-   set on <html> so Base UI / shadcn `dark:` variants engage as designed.
-   ========================================================================= */
+   The app is permanently dark. Values live in :root and the `dark` class is
+   set on <html> so Base UI / shadcn `dark:` variants engage as designed. */
 :root {
   --bg: #000000;
   --surface: #0a0a0a;

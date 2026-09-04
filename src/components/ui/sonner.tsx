@@ -7,7 +7,7 @@ import {
   Loader2Icon,
 } from "lucide-react"
 
-// Simplevoice is permanently dark — no next-themes provider needed.
+// Simplevoice is permanently dark, so no next-themes provider is needed.
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner

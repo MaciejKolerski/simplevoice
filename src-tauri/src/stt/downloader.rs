@@ -84,7 +84,7 @@ fn write_completion_manifest(model_dir: &Path, files: &[String]) {
 }
 
 /// Streaming SHA-256 of a file as lowercase hex, or `None` on an I/O error (so a
-/// transient read failure never blocks a download — verification is skipped).
+/// transient read failure never blocks a download; verification is skipped).
 fn sha256_of_file(path: &Path) -> Option<String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
@@ -319,7 +319,7 @@ async fn run_download(
         }
 
         // Verify the finished file against Hugging Face's published SHA-256 when known.
-        // A mismatch means a corrupt or tampered download — delete it and fail so
+        // A mismatch means a corrupt or tampered download. Delete it and fail so
         // the user re-downloads rather than loading bad weights. Non-LFS files
         // have no hash and are skipped.
         if let Some(expected_hash) = expected.get(file_path) {
@@ -503,7 +503,7 @@ pub fn cancel_download(download_id: String, registry: State<'_, DownloadRegistry
 /// cancels a paused download.
 ///
 /// If a task with this `download_id` is somehow still active (e.g. a resume
-/// raced this call), do nothing — deleting its `.part` out from under it would
+/// raced this call), do nothing. Deleting its `.part` out from under it would
 /// corrupt the in-flight write. Cancelling an active download goes through
 /// `cancel_download` instead.
 #[tauri::command]

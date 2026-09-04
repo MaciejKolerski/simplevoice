@@ -4,7 +4,7 @@ use crate::stt::traits::{AsrEngine, ModelFormat, ModelInfo};
 use crate::stt::ggml_whisper::GgmlWhisperEngine;
 
 /// If `dir` holds a download completion manifest, return the comma-joined
-/// list of required files that are missing — or `None` when there is no manifest
+/// list of required files that are missing, or `None` when there is no manifest
 /// (legacy install) or every listed file is present.
 fn manifest_missing_files(dir: &Path) -> Option<String> {
     let text = std::fs::read_to_string(dir.join(super::downloader::COMPLETION_MANIFEST)).ok()?;
