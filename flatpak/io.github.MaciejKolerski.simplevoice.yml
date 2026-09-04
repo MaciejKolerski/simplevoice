@@ -1,6 +1,3 @@
-# Bootstrap source reference. Before the initial Flathub submission, run the
-# preparation step documented in README.md with the first tag that contains
-# this flatpak/ directory. v0.1.9 predates the upstream metadata files.
 id: io.github.MaciejKolerski.simplevoice
 runtime: org.gnome.Platform
 runtime-version: '50'
@@ -61,8 +58,8 @@ modules:
     sources:
       - type: git
         url: https://github.com/MaciejKolerski/simplevoice.git
-        tag: v0.1.9
-        commit: 861e7005ea2be9f4e1a0f1111ebd5bb72afdd1e7
+        tag: v0.2.0
+        commit: ae104ead51ec0a49a8c2cf522906dff879de4dd4
         x-checker-data:
           type: git
           tag-pattern: ^v([\d.]+)$

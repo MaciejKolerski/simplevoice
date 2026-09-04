@@ -3,14 +3,14 @@
 This directory contains upstream Flatpak metadata and the source-only manifest
 for `io.github.MaciejKolerski.simplevoice`.
 
-## Current bootstrap state
+## Release preparation
 
-The manifest currently points at `v0.1.9` so its dependency lists are pinned and
-reviewable, but that tag predates this directory. Do not submit it to Flathub
-yet: the first eligible tag must contain the desktop file, MetaInfo file,
-manifest, and downstream patch from this directory.
+The manifest and offline dependency lists are prepared for `v0.2.0`, pinned to
+upstream commit `ae104ead51ec0a49a8c2cf522906dff879de4dd4`. This is the first
+release containing the upstream desktop and MetaInfo files. Publishing it on
+Flathub still requires the initial human submission and review below.
 
-Before creating that tag:
+For later releases:
 
 1. Keep the versions in `package.json`, `src-tauri/Cargo.toml`, and
    `src-tauri/tauri.conf.json` identical.
