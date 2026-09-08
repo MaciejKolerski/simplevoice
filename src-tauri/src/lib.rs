@@ -1,4 +1,5 @@
 mod audio;
+mod audio_processing;
 mod byok;
 mod error;
 mod history_audio;
@@ -1170,6 +1171,72 @@ fn start_recording(
     apply_vad_config(&app_handle);
     begin_live_session(&app_handle);
     warm_up_engine(&app_handle);
+    Ok(())
+}
+
+#[tauri::command]
+fn start_microphone_test(
+    controller: tauri::State<'_, AudioController>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    controller.start_microphone_test(app_handle)
+}
+
+#[tauri::command]
+fn stop_microphone_test(controller: tauri::State<'_, AudioController>) {
+    controller.stop_microphone_test();
+}
+
+#[tauri::command]
+fn get_microphone_level(
+    controller: tauri::State<'_, AudioController>,
+) -> Option<audio_processing::MicrophoneLevel> {
+    controller
+        .state
+        .lock()
+        .unwrap()
+        .microphone_level
+        .as_mut()
+        .map(std::mem::take)
+}
+
+#[tauri::command]
+fn get_audio_processing(
+    app_handle: tauri::AppHandle,
+) -> Result<audio_processing::AudioProcessingSettings, String> {
+    let config = serde_json::from_str(&load_config(app_handle)?)
+        .map_err(|_| "errors.invalid_config".to_string())?;
+    audio_processing::AudioProcessingSettings::from_config(&config)
+}
+
+#[tauri::command]
+fn set_audio_processing(
+    app_handle: tauri::AppHandle,
+    settings: audio_processing::AudioProcessingSettings,
+) -> Result<(), String> {
+    let settings = settings.validate()?;
+    let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut config: serde_json::Value = serde_json::from_str(&load_config(app_handle.clone())?)
+        .map_err(|_| "errors.invalid_config".to_string())?;
+    let object = config.as_object_mut().ok_or("errors.invalid_config")?;
+    let values = serde_json::to_value(settings).map_err(|e| e.to_string())?;
+    object.extend(values.as_object().unwrap().clone());
+    let dir = app_handle
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    write_config_atomic(
+        &dir.join("config.json"),
+        serde_json::to_vec_pretty(&config).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    app_handle
+        .state::<AudioController>()
+        .state
+        .lock()
+        .unwrap()
+        .processing = settings;
     Ok(())
 }
 
@@ -2464,7 +2531,8 @@ fn write_config_atomic<C: AsRef<[u8]>>(
 
 /// config.json keys the backend owns: a frontend save (which posts its whole
 /// cached blob) must never overwrite them, only the dedicated commands may.
-const BACKEND_OWNED_CONFIG_KEYS: &[&str] = &["gpu_enabled", "active_model_path"];
+const BACKEND_OWNED_CONFIG_KEYS: &[&str] =
+    &["gpu_enabled", "active_model_path", "microphone_gain_db"];
 
 /// Records which local model is selected, in config.json, so the *backend* knows
 /// it at the next launch. The choice used to live only in the webview's
@@ -2523,14 +2591,9 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
 
     let _guard = CONFIG_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
-    // The frontend caches the whole config at mount and writes the entire blob
-    // back, so a plain overwrite silently drops keys it never loaded. Merge the
-    // incoming config over what is already on disk so unknown keys survive. `gpu_enabled`
-    // (set_gpu_enabled) and `active_model_path` (load_model) are owned by the
-    // backend, so for those the on-disk value still wins. A settings write from a
-    // snapshot taken before the user switched models must not resurrect the old one.
+    // Merge stale frontend snapshots without overwriting keys managed by dedicated IPC.
     let to_write = match serde_json::from_str::<serde_json::Value>(&config) {
-        Ok(incoming) => {
+        Ok(incoming) if incoming.is_object() => {
             let mut merged = std::fs::read_to_string(&config_path)
                 .ok()
                 .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
@@ -2559,8 +2622,7 @@ fn save_config(app_handle: tauri::AppHandle, config: String) -> Result<(), Strin
             }
             serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?
         }
-        // Not a JSON object we can reason about: persist verbatim.
-        Err(_) => config,
+        _ => return Err("errors.invalid_config".to_string()),
     };
 
     write_config_atomic(&config_path, to_write).map_err(|e| e.to_string())?;
@@ -3704,6 +3766,11 @@ pub fn run() {
             toggle_recording_from_window,
             register_shortcut,
             set_vad_enabled,
+            start_microphone_test,
+            stop_microphone_test,
+            get_microphone_level,
+            get_audio_processing,
+            set_audio_processing,
             scan_models,
             load_model,
             get_gpu_enabled,

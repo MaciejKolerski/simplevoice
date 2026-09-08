@@ -421,8 +421,8 @@ function App() {
     const unlistenSaveFailed = listen<string>("recording-save-failed", () => {
       toast.error(t("common.saveFailed"));
     });
-    const unlistenDeviceError = listen<string>("recording-error", () => {
-      toast.error(t("common.deviceLost"));
+    const unlistenDeviceError = listen<string>("recording-error", (event) => {
+      toast.error(t(event.payload === "audio_processing" ? "errors.audio_processing_failed" : "common.deviceLost"));
     });
 
     return () => {

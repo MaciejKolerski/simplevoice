@@ -1,8 +1,9 @@
+use crate::audio_processing::{AudioProcessingSettings, AudioProcessor, MicrophoneLevel};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::Sender;
 use ringbuf::{storage::Heap, traits::*, SharedRb};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 
 /// Safety net for forgotten recordings (the design target is ~1 h sessions).
@@ -17,6 +18,11 @@ unsafe impl Sync for StreamWrapper {}
 
 pub struct AudioState {
     pub is_recording: bool,
+    pub is_testing: bool,
+    pub microphone_level: Option<MicrophoneLevel>,
+    pub processing: AudioProcessingSettings,
+    consumer_thread: Option<std::thread::JoinHandle<()>>,
+    capture_id: u64,
     pub is_saving: bool,
     pub is_transcribing: bool,
     pub buffer: Vec<f32>,
@@ -41,6 +47,16 @@ pub struct AudioState {
 
 pub struct AudioController {
     pub state: Arc<Mutex<AudioState>>,
+}
+
+fn stop_microphone_test(state: &mut AudioState) {
+    if state.is_testing {
+        state.capture_id = state.capture_id.wrapping_add(1);
+        state.is_testing = false;
+        state.microphone_level = None;
+        drop(state.stream.take());
+        drop(state.consumer_thread.take());
+    }
 }
 
 pub(crate) fn save_wav_file(
@@ -165,6 +181,11 @@ impl AudioController {
         Self {
             state: Arc::new(Mutex::new(AudioState {
                 is_recording: false,
+                is_testing: false,
+                microphone_level: None,
+                processing: AudioProcessingSettings::default(),
+                consumer_thread: None,
+                capture_id: 0,
                 is_saving: false,
                 is_transcribing: false,
                 buffer: Vec::new(),
@@ -209,6 +230,7 @@ impl AudioController {
 
     pub fn set_selected_device(&self, device_name: Option<String>) {
         let mut s = self.state.lock().unwrap();
+        stop_microphone_test(&mut s);
         s.selected_device = device_name;
     }
 
@@ -233,10 +255,33 @@ impl AudioController {
         app_handle: tauri::AppHandle,
         pause_audio: bool,
     ) -> Result<(), String> {
+        self.start_capture(app_handle, pause_audio, false)
+    }
+
+    pub fn start_microphone_test(&self, app_handle: tauri::AppHandle) -> Result<(), String> {
+        self.start_capture(app_handle, false, true)
+    }
+
+    pub fn stop_microphone_test(&self) {
+        stop_microphone_test(&mut self.state.lock().unwrap());
+    }
+
+    fn start_capture(
+        &self,
+        app_handle: tauri::AppHandle,
+        pause_audio: bool,
+        testing: bool,
+    ) -> Result<(), String> {
         let mut s = self.state.lock().unwrap();
-        if s.is_recording {
-            return Err("Already recording".to_string());
+        if s.is_recording || s.is_saving || (testing && s.is_transcribing) {
+            return Err("errors.microphone_busy".to_string());
         }
+        stop_microphone_test(&mut s);
+        let config: serde_json::Value = crate::load_config(app_handle.clone())
+            .ok()
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        s.processing = AudioProcessingSettings::from_config(&config)?;
 
         let device_name = s.selected_device.clone();
 
@@ -263,71 +308,169 @@ impl AudioController {
                 .ok_or_else(|| "No default input device found".to_string())?,
         };
 
-        if pause_audio {
-            s.paused_media_apps = crate::media_control::pause_system_media();
-        } else {
-            s.paused_media_apps = Vec::new();
-        }
-
         let config = choose_input_config(&device)?;
         let sample_format = config.sample_format();
         let stream_config: cpal::StreamConfig = config.into();
 
         let channels = stream_config.channels;
         let src_rate = stream_config.sample_rate.0;
-        let dst_rate = 16000;
+        let mut processor = AudioProcessor::new(src_rate)?;
 
-        // Create the ring buffer (10 seconds capacity)
-        let rb = SharedRb::<Heap<f32>>::new((dst_rate * 10) as usize);
+        // Bound native-rate input to two seconds; DSP runs only on the consumer.
+        let rb = SharedRb::<Heap<f32>>::new((src_rate * 2) as usize);
         let (mut producer, mut consumer) = rb.split();
 
-        s.buffer.clear();
-        s.is_recording = true;
-        s.recording_start = Some(chrono::Local::now());
+        let err_app = app_handle.clone();
+        let err_fn = move |err| {
+            tracing::error!("an error occurred on stream: {}", err);
+            if !testing {
+                let _ = err_app.emit("recording-error", "device_lost");
+            }
+        };
+
+        // Build the capture stream for whatever sample format the device reports.
+        // cpal's `to_sample::<f32>` conversion is generic over every integer/float
+        // sample type, so one macro covers them all. Some Linux/PipeWire devices
+        // default to I32 (or other formats) that a F32/I16/U16-only match rejected
+        // with "Unsupported sample format".
+        macro_rules! capture_stream {
+            ($t:ty) => {
+                device.build_input_stream(
+                    &stream_config,
+                    move |data: &[$t], _: &cpal::InputCallbackInfo| {
+                        let f32_data: Vec<f32> = data
+                            .iter()
+                            .map(|&s| cpal::Sample::to_sample::<f32>(s))
+                            .collect();
+                        let mono = downmix(&f32_data, channels);
+                        let pushed = producer.push_slice(&mono);
+                        if pushed < mono.len() {
+                            note_ring_overflow(mono.len() - pushed);
+                        }
+                    },
+                    err_fn,
+                    None,
+                )
+            };
+        }
+
+        let stream = match sample_format {
+            cpal::SampleFormat::I8 => capture_stream!(i8),
+            cpal::SampleFormat::I16 => capture_stream!(i16),
+            cpal::SampleFormat::I32 => capture_stream!(i32),
+            cpal::SampleFormat::I64 => capture_stream!(i64),
+            cpal::SampleFormat::U8 => capture_stream!(u8),
+            cpal::SampleFormat::U16 => capture_stream!(u16),
+            cpal::SampleFormat::U32 => capture_stream!(u32),
+            cpal::SampleFormat::U64 => capture_stream!(u64),
+            cpal::SampleFormat::F32 => capture_stream!(f32),
+            cpal::SampleFormat::F64 => capture_stream!(f64),
+            other => return Err(format!("Unsupported sample format: {other:?}")),
+        }
+        .map_err(|e| e.to_string())?;
+
+        stream.play().map_err(|e| e.to_string())?;
+        s.stream = Some(StreamWrapper(stream));
+
+        s.capture_id = s.capture_id.wrapping_add(1);
+        let capture_id = s.capture_id;
+        s.is_testing = testing;
+        s.microphone_level = testing.then(MicrophoneLevel::default);
+        if !testing {
+            s.buffer.clear();
+            s.is_recording = true;
+            s.recording_start = Some(chrono::Local::now());
+            if pause_audio {
+                s.paused_media_apps = crate::media_control::pause_system_media();
+            } else {
+                s.paused_media_apps = Vec::new();
+            }
+        }
 
         let state_clone = Arc::clone(&self.state);
         let app_handle_clone = app_handle.clone();
-        std::thread::spawn(move || {
-            let mut local_buf = vec![0.0; 1024];
+        s.consumer_thread = Some(std::thread::spawn(move || {
+            let mut local_buf = vec![0.0; (src_rate / 50) as usize];
             let mut has_spoken = false;
             let mut silence_samples = 0;
             let mut warned_about_cap = false;
             let mut last_audio = std::time::Instant::now();
+            let test_start = last_audio;
 
             loop {
-                let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms) = {
-                    let s = state_clone.lock().unwrap();
+                let (is_recording, vad_enabled, vad_threshold, vad_silence_duration_ms, processing) = {
+                    let mut s = state_clone.lock().unwrap();
+                    // A stopped test must never append samples to a subsequent recording.
+                    if s.capture_id != capture_id {
+                        break;
+                    }
+                    if testing
+                        && (test_start.elapsed().as_secs() >= 30
+                            || last_audio.elapsed().as_secs() >= 5)
+                    {
+                        stop_microphone_test(&mut s);
+                        break;
+                    }
                     (
                         s.is_recording,
                         s.vad_enabled,
                         s.vad_threshold,
                         s.vad_silence_duration_ms,
+                        s.processing,
                     )
                 };
 
-                if !is_recording {
-                    let mut s = state_clone.lock().unwrap();
-                    while !consumer.is_empty() {
-                        let read = consumer.pop_slice(&mut local_buf);
-                        s.buffer.extend_from_slice(&local_buf[..read]);
-                    }
-                    break;
-                }
-
                 let read = consumer.pop_slice(&mut local_buf);
-                if read > 0 {
-                    last_audio = std::time::Instant::now();
-                    let mut sum_sq = 0.0;
-                    for &sample in &local_buf[..read] {
-                        sum_sq += sample * sample;
+                let finishing = !is_recording && !testing && consumer.is_empty();
+                if read > 0 || finishing {
+                    if read > 0 {
+                        last_audio = std::time::Instant::now();
                     }
-                    let rms = (sum_sq / read as f32).sqrt();
+                    let (processed, mut level) =
+                        match processor.process(&local_buf[..read], processing, finishing) {
+                            Ok(result) => result,
+                            Err(error) => {
+                                tracing::error!("Audio processing failed: {}", error);
+                                let mut s = state_clone.lock().unwrap();
+                                if s.capture_id != capture_id {
+                                    break;
+                                }
+                                if testing {
+                                    stop_microphone_test(&mut s);
+                                } else if s.is_recording {
+                                    auto_stop_recording(s, &state_clone, &app_handle_clone);
+                                }
+                                let _ =
+                                    app_handle_clone.emit("recording-error", "audio_processing");
+                                break;
+                            }
+                        };
+                    if testing {
+                        let mut s = state_clone.lock().unwrap();
+                        if s.capture_id != capture_id {
+                            break;
+                        }
+                        if let Some(previous) = s.microphone_level {
+                            level.input_peak = level.input_peak.max(previous.input_peak);
+                            level.peak = level.peak.max(previous.peak);
+                            level.clipped |= previous.clipped;
+                            level.limited |= previous.limited;
+                        }
+                        s.microphone_level = Some(level);
+                        drop(s);
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        continue;
+                    }
+                    let rms = level.rms;
                     let _ = app_handle_clone.emit("audio-amplitude", rms);
 
                     let mut should_warn = false;
                     {
                         let mut s = state_clone.lock().unwrap();
-                        s.buffer.extend_from_slice(&local_buf[..read]);
+                        if s.capture_id != capture_id {
+                            break;
+                        }
+                        s.buffer.extend_from_slice(&processed);
                         let buffer_len = s.buffer.len();
 
                         // Read live state under the same lock as the fan-out so the two stay
@@ -337,9 +480,16 @@ impl AudioController {
                         // Live fan-out: hand the chunk to the streaming session. Non-blocking;
                         // the bounded channel returns Full rather than stalling the audio path.
                         if let Some(tx) = &s.stream_tx {
-                            if tx.try_send(local_buf[..read].to_vec()).is_err() {
+                            if tx.try_send(processed.clone()).is_err() {
                                 note_live_drop();
                             }
+                        }
+
+                        if finishing {
+                            break;
+                        }
+                        if !s.is_recording {
+                            continue;
                         }
 
                         if buffer_len >= RECORDING_MAX_SECS * 16_000 {
@@ -352,7 +502,7 @@ impl AudioController {
                                 has_spoken = true;
                                 silence_samples = 0;
                             } else if has_spoken {
-                                silence_samples += read;
+                                silence_samples += processed.len();
                                 let timeout_samples =
                                     (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
                                 if silence_samples >= timeout_samples {
@@ -387,66 +537,12 @@ impl AudioController {
                     break;
                 }
 
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
-        });
-
-        let mut resampler = Resampler::new(src_rate, dst_rate);
-        let mut dc_blocker = DcBlocker::new();
-
-        let err_app = app_handle.clone();
-        let err_fn = move |err| {
-            tracing::error!("an error occurred on stream: {}", err);
-            let _ = err_app.emit("recording-error", "device_lost");
-        };
-
-        // Build the capture stream for whatever sample format the device reports.
-        // cpal's `to_sample::<f32>` conversion is generic over every integer/float
-        // sample type, so one macro covers them all. Some Linux/PipeWire devices
-        // default to I32 (or other formats) that a F32/I16/U16-only match rejected
-        // with "Unsupported sample format".
-        macro_rules! capture_stream {
-            ($t:ty) => {
-                device.build_input_stream(
-                    &stream_config,
-                    move |data: &[$t], _: &cpal::InputCallbackInfo| {
-                        let f32_data: Vec<f32> =
-                            data.iter().map(|&s| cpal::Sample::to_sample::<f32>(s)).collect();
-                        let mono = downmix(&f32_data, channels);
-                        let resampled = dc_blocker.process(&resampler.process(&mono));
-                        let pushed = producer.push_slice(&resampled);
-                        if pushed < resampled.len() {
-                            note_ring_overflow(resampled.len() - pushed);
-                        }
-                    },
-                    err_fn,
-                    None,
-                )
-            };
-        }
-
-        let stream = match sample_format {
-            cpal::SampleFormat::I8 => capture_stream!(i8),
-            cpal::SampleFormat::I16 => capture_stream!(i16),
-            cpal::SampleFormat::I32 => capture_stream!(i32),
-            cpal::SampleFormat::I64 => capture_stream!(i64),
-            cpal::SampleFormat::U8 => capture_stream!(u8),
-            cpal::SampleFormat::U16 => capture_stream!(u16),
-            cpal::SampleFormat::U32 => capture_stream!(u32),
-            cpal::SampleFormat::U64 => capture_stream!(u64),
-            cpal::SampleFormat::F32 => capture_stream!(f32),
-            cpal::SampleFormat::F64 => capture_stream!(f64),
-            other => return Err(format!("Unsupported sample format: {other:?}")),
-        }
-        .map_err(|e| e.to_string())?;
-
-        stream.play().map_err(|e| e.to_string())?;
-        s.stream = Some(StreamWrapper(stream));
+        }));
 
         Ok(())
     }
-
-
 
     pub fn stop_recording(&self, app_handle: &tauri::AppHandle) -> Result<Option<String>, String> {
         let (samples, start_time) = {
@@ -463,13 +559,15 @@ impl AudioController {
                 crate::media_control::resume_system_media(&paused_apps_stop);
             }
 
-            if let Some(wrapper) = s.stream.as_ref() {
-                let _ = wrapper.0.pause();
-            }
-
-            // Consumer thread will drain remaining samples. We drop lock immediately
-            // to avoid deadlock with VAD path. No artificial sleep.
+            drop(s.stream.take());
+            let worker = s.consumer_thread.take();
+            // Finish the bounded queue and DSP delay before taking the saved/live audio.
             drop(s);
+            if let Some(worker) = worker {
+                if worker.join().is_err() {
+                    tracing::error!("Audio consumer panicked while stopping");
+                }
+            }
 
             let mut s = self.state.lock().unwrap();
             let samples = Arc::new(std::mem::take(&mut s.buffer));
@@ -491,7 +589,6 @@ impl AudioController {
                 Ok(None)
             }
         };
-
 
         {
             let mut s = self.state.lock().unwrap();
@@ -521,9 +618,7 @@ impl AudioController {
     }
 }
 
-/// Prefer a native 16 kHz input config so the resampler runs in passthrough (no
-/// decimation, no aliasing). Picks the lowest-channel supported range that covers
-/// 16 kHz; falls back to the device default (current behavior) when none does.
+/// Prefer the output rate and the smallest available channel count.
 fn choose_input_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, String> {
     const TARGET: u32 = 16_000;
     if let Ok(ranges) = device.supported_input_configs() {
@@ -609,99 +704,5 @@ mod downmix_tests {
         assert_eq!(out.len(), 2);
         assert!((out[0] - 1.0).abs() < 1e-6);
         assert!((out[1] - 9.0).abs() < 1e-6);
-    }
-}
-
-/// One-pole DC-blocking high-pass filter (`y[n] = x[n] - x[n-1] + R*y[n-1]`).
-/// Removes a constant/near-DC offset that would otherwise inflate RMS and bias the
-/// VAD/chunker silence thresholds, while preserving speech. State carries across
-/// callbacks.
-struct DcBlocker {
-    prev_x: f32,
-    prev_y: f32,
-}
-
-impl DcBlocker {
-    fn new() -> Self {
-        Self { prev_x: 0.0, prev_y: 0.0 }
-    }
-
-    fn process(&mut self, input: &[f32]) -> Vec<f32> {
-        const R: f32 = 0.995;
-        input
-            .iter()
-            .map(|&x| {
-                let y = x - self.prev_x + R * self.prev_y;
-                self.prev_x = x;
-                self.prev_y = y;
-                y
-            })
-            .collect()
-    }
-}
-
-#[cfg(test)]
-mod dc_blocker_tests {
-    use super::DcBlocker;
-
-    #[test]
-    fn removes_constant_offset() {
-        let mut f = DcBlocker::new();
-        let out = f.process(&vec![0.5; 1000]);
-        assert!(out.last().unwrap().abs() < 0.05, "DC not removed: {}", out.last().unwrap());
-    }
-
-    #[test]
-    fn preserves_alternating_ac() {
-        let mut f = DcBlocker::new();
-        let input: Vec<f32> = (0..1000).map(|i| if i % 2 == 0 { 0.5 } else { -0.5 }).collect();
-        let out = f.process(&input);
-        let max = out.iter().cloned().fold(0.0f32, |a, b| a.max(b.abs()));
-        assert!(max > 0.4, "AC attenuated too much: {}", max);
-    }
-}
-
-pub struct Resampler {
-    src_rate: u32,
-    dst_rate: u32,
-    buffer: Vec<f32>,
-    pos: f64,
-}
-
-impl Resampler {
-    pub fn new(src_rate: u32, dst_rate: u32) -> Self {
-        Self {
-            src_rate,
-            dst_rate,
-            buffer: Vec::new(),
-            pos: 0.0,
-        }
-    }
-
-    pub fn process(&mut self, input: &[f32]) -> Vec<f32> {
-        if self.src_rate == self.dst_rate {
-            return input.to_vec();
-        }
-
-        self.buffer.extend_from_slice(input);
-        let mut output = Vec::new();
-        let ratio = self.src_rate as f64 / self.dst_rate as f64;
-
-        while (self.pos + 1.0) < self.buffer.len() as f64 {
-            let idx = self.pos as usize;
-            let frac = self.pos - idx as f64;
-            let sample =
-                self.buffer[idx] * (1.0 - frac as f32) + self.buffer[idx + 1] * frac as f32;
-            output.push(sample);
-            self.pos += ratio;
-        }
-
-        let remove_count = (self.pos.floor() as usize).min(self.buffer.len());
-        if remove_count > 0 {
-            self.buffer.drain(0..remove_count);
-            self.pos -= remove_count as f64;
-        }
-
-        output
     }
 }

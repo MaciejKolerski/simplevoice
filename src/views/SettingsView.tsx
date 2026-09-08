@@ -22,6 +22,7 @@ import { useTranslation, Trans } from "react-i18next";
 import { changeLanguage } from "@/i18n/language";
 import { SUPPORTED_LANGUAGES, Language } from "@/i18n/detect";
 import { cn } from "@/lib/utils";
+import { localizeError } from "@/lib/localizeError";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -236,6 +237,146 @@ function SettingsCard({
         {children}
       </div>
     </div>
+  );
+}
+
+type AudioProcessingSettings = {
+  microphone_gain_db: number;
+};
+
+const EMPTY_MICROPHONE_LEVEL = {
+  input_peak: 0, rms: 0, peak: 0, clipped: false, limited: false,
+};
+
+function MicrophoneSettings({ active, device }: { active: boolean; device: string }) {
+  const { t } = useTranslation();
+  const [settings, setSettings] = useState<AudioProcessingSettings | null>(null);
+  const settingsRef = useRef<AudioProcessingSettings | null>(null);
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [level, setLevel] = useState(EMPTY_MICROPHONE_LEVEL);
+  const testQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const gain = settings?.microphone_gain_db ?? 0;
+  const levelStatus = level.clipped ? "microphoneClipping"
+    : level.limited ? "microphoneLimited"
+    : level.rms < 0.008 ? "microphoneQuiet" : "microphoneGood";
+
+  useEffect(() => {
+    if (settingsRef.current) return;
+    let disposed = false;
+    invoke<AudioProcessingSettings>("get_audio_processing").then((loaded) => {
+      if (disposed) return;
+      settingsRef.current = loaded;
+      setSettings(loaded);
+    }).catch((error) => { if (!disposed) setSettingsError(localizeError(t, error)); });
+    return () => { disposed = true; };
+  }, [t]);
+
+  const updateSettings = (patch: Partial<AudioProcessingSettings>) => {
+    if (!settingsRef.current) return;
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next;
+    setSettings(next);
+    setSettingsError(null);
+    // Coalesce superseded slider positions and keep IPC writes in user order.
+    saveQueue.current = saveQueue.current.then(async () => {
+      if (settingsRef.current !== next) return;
+      await invoke("set_audio_processing", { settings: next });
+    }).catch(async (error) => {
+      if (settingsRef.current !== next) return;
+      setSettingsError(localizeError(t, error));
+      try {
+        const saved = await invoke<AudioProcessingSettings>("get_audio_processing");
+        if (settingsRef.current !== next) return;
+        settingsRef.current = saved;
+        setSettings(saved);
+      } catch { /* Keep the failed setting visible alongside the error. */ }
+    });
+  };
+
+  useEffect(() => { setTesting(false); }, [device]);
+
+  useEffect(() => {
+    if (!testing || !active) {
+      setTesting(false);
+      return;
+    }
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let clippedUntil = 0;
+    setLevel(EMPTY_MICROPHONE_LEVEL);
+    const poll = async () => {
+      const next = await invoke<typeof level | null>("get_microphone_level");
+      if (disposed) return;
+      if (!next) {
+        setTesting(false);
+        return;
+      }
+      if (next.clipped) clippedUntil = Date.now() + 1000;
+      setLevel({ ...next, clipped: Date.now() < clippedUntil });
+      timer = setTimeout(() => { poll().catch(fail); }, 100);
+    };
+    const fail = (error: unknown) => {
+      if (disposed) return;
+      toast.error(t("settings.microphoneTestError"), { description: localizeError(t, error) });
+      setTesting(false);
+    };
+    const start = testQueue.current.then(() => saveQueue.current).then(() => invoke("start_microphone_test"));
+    testQueue.current = start.catch(() => {});
+    start.then(() => { if (!disposed) return poll(); }).catch(fail);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      testQueue.current = start.catch(() => {})
+        .then(() => invoke("stop_microphone_test"))
+        .catch((error) => console.error("Failed to stop microphone test:", error));
+    };
+  }, [testing, active, t]);
+
+  return (
+    <>
+      <SettingRow layout="column" title={t("settings.microphoneGain")} description={t("settings.microphoneGainDesc")}>
+        <div className="flex items-center gap-4">
+          <input type="range" min={-20} max={30} step={1} value={gain} disabled={!settings}
+            aria-label={t("settings.microphoneGain")} aria-valuetext={`${gain > 0 ? "+" : ""}${gain} dB`}
+            onChange={(event) => updateSettings({ microphone_gain_db: Number(event.target.value) })}
+            className="min-w-0 flex-1 h-6 accent-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded" />
+          <span className="w-16 text-right text-sm font-mono tabular-nums">{gain > 0 ? "+" : ""}{gain} dB</span>
+          <Button variant="outline" size="sm" disabled={!settings || gain === 0} onClick={() => updateSettings({ microphone_gain_db: 0 })}>
+            {t("settings.microphoneGainReset")}
+          </Button>
+        </div>
+        {settingsError && <p role="alert" className="text-danger text-[13px] mt-2">{t("settings.audioSettingsError")}: {settingsError}</p>}
+      </SettingRow>
+      <SettingRow layout="column" title={t("settings.microphoneTest")} description={t("settings.microphoneTestDesc")}>
+        <Button variant="outline" size="sm" className="self-start mb-3" disabled={!settings} aria-pressed={testing} onClick={() => setTesting(!testing)}>
+          {t(testing ? "settings.microphoneTestStop" : "settings.microphoneTestStart")}
+        </Button>
+        {[
+          { label: "microphoneInputLevel", peak: level.input_peak },
+          { label: "microphoneOutputLevel", peak: level.peak },
+        ].map(({ label, peak }) => {
+          const db = testing ? Math.min(0, Math.max(-60, 20 * Math.log10(Math.max(peak, 0.001)))) : -60;
+          return (
+            <div key={label} className="flex items-center gap-3 mb-2">
+              <span className="w-36 shrink-0 text-[13px] text-muted">{t(`settings.${label}`)}</span>
+              <div role="meter" aria-label={t(`settings.${label}`)} aria-valuemin={-60} aria-valuemax={0}
+                aria-valuenow={Math.round(db)} aria-valuetext={`${Math.round(db)} dBFS`}
+                className="h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-active">
+                <div className={cn("h-full transition-[width] duration-100 motion-reduce:transition-none", peak >= 1 ? "bg-danger" : peak >= 0.9 ? "bg-warning" : "bg-success")}
+                  style={{ width: `${(db + 60) / 60 * 100}%` }} />
+              </div>
+              <span className="w-12 text-right text-xs font-mono tabular-nums">{Math.round(db)} dB</span>
+            </div>
+          );
+        })}
+        <p role="status" className={cn("text-[13px] mt-2 min-h-5", testing && level.clipped ? "text-danger" : "text-muted")}>
+          {t(testing ? `settings.${levelStatus}` : "settings.microphoneTestIdle")}
+        </p>
+        <p className="text-muted text-[13px] mt-2">{t("settings.microphoneHardwareHint")}</p>
+      </SettingRow>
+    </>
   );
 }
 
@@ -931,10 +1072,9 @@ export function SettingsView({ active = true }: { active?: boolean }) {
               </Select>
             </SettingRow>
 
-            <SettingRow
-              layout="column"
-              title={t("settings.transcriptionLanguage")}
-            >
+            <MicrophoneSettings active={active && activeTab === "general"} device={selectedDevice} />
+
+            <SettingRow layout="column" title={t("settings.transcriptionLanguage")}>
               <Select
                 value={asrLanguage}
                 onValueChange={(v) => handleAsrLanguageChange(v ?? "auto")}

@@ -72,10 +72,9 @@ pub(crate) fn prepare_samples(samples: &[f32]) -> Vec<f32> {
         samples
     };
 
-    let sum_sq: f64 = trimmed.iter().map(|&x| x as f64 * x as f64).sum();
-    let rms = (sum_sq / trimmed.len() as f64).sqrt().max(0.001) as f32;
-    let gain = 0.70 / rms;
-    trimmed.iter().map(|&s| (s * gain).clamp(-1.0, 1.0)).collect()
+    // Capture applies the user's gain before VAD and live/batch fan-out.
+    // Renormalizing here would undo that gain and clip speech peaks.
+    trimmed.to_vec()
 }
 
 pub struct ChunkedTranscription {

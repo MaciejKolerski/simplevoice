@@ -7,6 +7,10 @@ export function installTauriMock(payload) {
   const respond = (cmd, args) => {
     switch (cmd) {
       case "load_config": return JSON.stringify(fixtures.config);
+      case "get_audio_processing": return {
+        microphone_gain_db: fixtures.config.microphone_gain_db ?? 0,
+      };
+      case "set_audio_processing": Object.assign(fixtures.config, args.settings); return null;
       case "check_permissions_status": return fixtures.permissions;
       case "get_usage_stats": return fixtures.usage;
       case "get_transcriptions": return fixtures.transcriptions;

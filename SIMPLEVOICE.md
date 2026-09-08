@@ -79,8 +79,10 @@ needed on Windows.
 - `src-tauri/src/lib.rs`: imperative backend shell. It owns Tauri setup and
   commands, state, tray, shortcuts, recording orchestration, output delivery,
   config access, history queries, and platform wiring.
-- `src-tauri/src/audio.rs`: CPAL microphone capture, conversion to 16 kHz mono,
+- `src-tauri/src/audio.rs`: CPAL microphone capture, conversion to mono,
   buffering, VAD, WAV persistence, device-loss detection, and the live audio tap.
+- `src-tauri/src/audio_processing.rs`: Rubato resampling, DC blocking,
+  microphone gain, peak limiting, and input/output metering.
 - `src-tauri/src/stt/`: local ASR abstractions, loaders, engines, chunking,
   downloading, streaming, text cleanup, and the intentionally disabled converter.
 - `src-tauri/src/byok.rs`: cloud credential boundary, provider model discovery,
@@ -124,9 +126,17 @@ provider, not only OpenAI. Do not rename it without a complete state migration.
 ### Recording pipeline
 
 `audio.rs` captures a selected or default microphone, not system output. It
-prefers a native 16 kHz input configuration, supports CPAL sample formats,
-downmixes multichannel input, linearly resamples when required, applies a DC
-blocker, and stores mono `f32` samples. The saved WAV is 16-bit PCM, mono, 16 kHz:
+prefers a native 16 kHz input configuration, supports CPAL sample formats, and
+downmixes multichannel input into a bounded ring. The consumer runs the shared
+`audio_processing.rs` pipeline: direct Rubato resampling to 16 kHz, DC blocking,
+gain, and a peak limiter. `microphone_gain_db` defaults to 0 dB and accepts
+−20 to +30 dB. Gain is applied before VAD, recording storage, and live fan-out.
+The limiter keeps output peaks below full scale without hard clipping.
+Settings can test the same capture path for up to 30 seconds without saving or
+transcribing audio, with separate raw-input and processed-output meters; a
+recording or device change ends that test. Manual stop drains the bounded input
+queue and flushes resampler delays before saving and finalizing live audio.
+The saved WAV is 16-bit PCM, mono, 16 kHz:
 
 `app_local_data_dir/recordings/YYYY-MM-DD_HH-MM-SS/output.wav`
 
@@ -159,8 +169,10 @@ model after five idle minutes. `load_model` runs through `spawn_blocking`; the
 outer Tauri command catches panics and can retry without GPU. Do not duplicate
 these guards in React effects or bypass the controller.
 
-Before decoding, leading and trailing near-silence is trimmed and RMS is
-normalized. Long audio is split near a quiet window into 45 to 90 second chunks.
+Before decoding, leading and trailing near-silence is trimmed. The captured
+level is preserved so batch processing does not undo microphone gain or clip
+speech peaks through forced RMS normalization.
+Long audio is split near a quiet window into 45 to 90 second chunks.
 Local chunks run sequentially. Fully silent chunks are dropped. If a later chunk
 fails, the successful prefix is retained and a localized truncation marker is
 added.
@@ -251,9 +263,11 @@ browser/WebKit audio playback.
 ## Persistence boundaries
 
 - `app_local_data_dir/config.json`: durable backend/frontend settings. Writes use
-  a process mutex, a sibling temporary file, and rename. `gpu_enabled` and
-  `active_model_path` are backend-owned keys and must survive frontend whole-file
-  saves.
+  a process mutex, a sibling temporary file, and rename. `gpu_enabled`,
+  `active_model_path`, and `microphone_gain_db` are backend-owned keys and must
+  survive frontend whole-file saves. Audio settings use validated
+  `get_audio_processing`/`set_audio_processing` IPC; a successful write also
+  updates an active capture before acknowledging the change.
 - `app_local_data_dir/models/`: downloaded and imported local models, partial
   downloads, and completion manifests.
 - `app_local_data_dir/recordings/`: timestamped WAV directories.
@@ -338,9 +352,8 @@ remains.
    check rejects a literal `..` component. It is a broad opener, not a validated
    app-directory-only command. Split trusted URL opening from constrained folder
    opening before relying on it as a security boundary.
-5. `save_config` writes malformed incoming JSON verbatim when parsing fails, even
-   though readers and comments assume a parseable object. Reject non-object JSON
-   instead of persisting it.
+5. Resolved: `save_config` rejects malformed/non-object JSON. The dedicated
+   audio-settings command validates types and ranges before persisting settings.
 6. Tauri's CSP is currently `null`, and both windows receive the same default
    capability. Any frontend injection would therefore reach a wide custom IPC
    surface. Define a restrictive CSP and keep custom command validation as the
