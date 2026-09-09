@@ -6,8 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 
-/// Safety net for forgotten recordings (the design target is ~1 h sessions).
-/// Checked in the consumer thread regardless of VAD or live mode.
+/// Hard recording-duration limit, checked by the consumer in every capture mode.
 pub(crate) const RECORDING_MAX_SECS: usize = 5400;
 /// Warn the user this long before the cap (emits `recording-time-warning`).
 pub(crate) const RECORDING_WARNING_SECS: usize = 5100;
@@ -33,8 +32,7 @@ pub struct AudioState {
     pub vad_threshold: f32,
     pub vad_silence_duration_ms: u32,
     pub last_samples: Arc<Vec<f32>>,
-    /// Identifiers of media sessions paused on recording start (cross-platform).
-    /// Used to selectively resume only what *we* paused.
+    /// Only these paused media sessions may be resumed when recording stops.
     pub paused_media_apps: Vec<String>,
     pub cached_devices: Vec<String>,
     /// When `Some`, the consumer thread fans out drained chunks to a live
@@ -340,11 +338,7 @@ impl AudioController {
             }
         };
 
-        // Build the capture stream for whatever sample format the device reports.
-        // cpal's `to_sample::<f32>` conversion is generic over every integer/float
-        // sample type, so one macro covers them all. Some Linux/PipeWire devices
-        // default to I32 (or other formats) that a F32/I16/U16-only match rejected
-        // with "Unsupported sample format".
+        // CPAL devices may expose any integer or floating-point sample format.
         macro_rules! capture_stream {
             ($t:ty) => {
                 device.build_input_stream(
@@ -600,9 +594,7 @@ impl AudioController {
 
         let _ = crate::rebuild_tray_menu(app_handle);
 
-        // A write failure must not abort transcription: surface it and continue with
-        // no path (the samples are still transcribed from memory). Only a genuine
-        // 0-sample recording yields Ok(None) now.
+        // Preserve in-memory samples for transcription even when WAV persistence fails.
         let save_result = match save_wav_file(app_handle, &samples, start_time) {
             Ok(p) => Ok(p),
             Err(e) => {
@@ -675,9 +667,7 @@ fn preferred_input_config(
 static RING_DROPPED: AtomicUsize = AtomicUsize::new(0);
 static RING_WARNED: AtomicBool = AtomicBool::new(false);
 
-/// Records samples dropped because the consumer fell behind and the ring filled
-/// (previously a silent `let _ = push_slice`). Warns once per process so a
-/// persistent fault is visible without log spam.
+/// Count capture drops and warn once per process to avoid flooding the log.
 fn note_ring_overflow(dropped: usize) {
     RING_DROPPED.fetch_add(dropped, Ordering::Relaxed);
     if !RING_WARNED.swap(true, Ordering::Relaxed) {
@@ -688,9 +678,7 @@ fn note_ring_overflow(dropped: usize) {
 static LIVE_DROPPED: AtomicUsize = AtomicUsize::new(0);
 static LIVE_WARNED: AtomicBool = AtomicBool::new(false);
 
-/// Records a live-fan-out chunk dropped because the streaming worker fell behind
-/// (the bounded channel returned Full). Warns once per process. With G3 coalescing
-/// this should be rare; surfacing it makes a real overload visible.
+/// Count bounded live-channel drops and warn once per process.
 fn note_live_drop() {
     LIVE_DROPPED.fetch_add(1, Ordering::Relaxed);
     if !LIVE_WARNED.swap(true, Ordering::Relaxed) {
@@ -733,7 +721,6 @@ mod downmix_tests {
 
     #[test]
     fn keeps_trailing_partial_frame() {
-        // 3 channels, 4 samples: one full frame (0+1+2)/3 = 1.0 plus remainder [9.0].
         let out = downmix(&[0.0, 1.0, 2.0, 9.0], 3);
         assert_eq!(out.len(), 2);
         assert!((out[0] - 1.0).abs() < 1e-6);

@@ -6,12 +6,11 @@ import i18n from "../i18n";
 import { isSupported } from "../i18n/detect";
 import { applyTranscribingStatus, type OverlayStatus as Status } from "@/lib/overlayStatus";
 
-// Bar geometry (logical CSS pixels)
 const BAR_COUNT = 9;
-const BAR_WIDTH = 4; // matches previous w-1 (4px)
-const BAR_GAP = 4; // matches previous gap-1 (4px)
-const CANVAS_W = BAR_COUNT * BAR_WIDTH + (BAR_COUNT - 1) * BAR_GAP; // 68px
-const CANVAS_H = 24; // matches previous h-6
+const BAR_WIDTH = 4;
+const BAR_GAP = 4;
+const CANVAS_W = BAR_COUNT * BAR_WIDTH + (BAR_COUNT - 1) * BAR_GAP;
+const CANVAS_H = 24;
 
 // Gaussian-ish multiplier per bar (left-to-right), louder in the center
 const MULTIPLIERS = [0.2, 0.45, 0.75, 0.95, 1.0, 0.95, 0.75, 0.45, 0.2];
@@ -52,7 +51,6 @@ export function RecordingWindowView() {
   const startedAtRef = useRef<number>(0);
 
   useEffect(() => {
-    // Override body backgrounds for transparency
     document.body.style.background = "transparent";
     document.body.style.backgroundColor = "transparent";
     document.documentElement.style.background = "transparent";
@@ -78,7 +76,6 @@ export function RecordingWindowView() {
       })
       .catch(() => {});
 
-    // Follow live language switches made in the main window's settings.
     const unlistenLanguage = listen<string>("ui-language-changed", (event) => {
       const lang = event.payload;
       if (typeof lang === "string" && isSupported(lang) && i18n.language !== lang) {
@@ -209,8 +206,6 @@ export function RecordingWindowView() {
     canvas.style.height = `${CANVAS_H}px`;
     ctx.scale(dpr, dpr);
 
-    // Drive the waveform gradient from the brand tokens so it stays in sync with
-    // the design system (brand: live waveform is indigo -> purple).
     const rootStyles = getComputedStyle(document.documentElement);
     const waveFrom = rootStyles.getPropertyValue("--wave-from").trim() || "#6366f1";
     const waveTo = rootStyles.getPropertyValue("--wave-to").trim() || "#a855f7";
@@ -242,7 +237,7 @@ export function RecordingWindowView() {
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
       const status = statusRef.current;
 
-      // Smoothly approach the target amplitude (replaces the CSS height transition).
+      // Smooth the displayed amplitude between capture updates.
       const target = status === "recording" ? Math.min(amplitudeRef.current * 6.0, 1.0) : 0;
       displayAmp += (target - displayAmp) * 0.35;
 
@@ -338,11 +333,8 @@ export function RecordingWindowView() {
       : `${m}:${String(s).padStart(2, "0")}`;
   };
 
-  // The overlay window is a fixed 200x180 transparent, click-through panel. We
-  // top-anchor the content (pt-3 == the old 12px vertical centering inside the
-  // former 60px window) so the waveform pill sits in exactly the same on-screen
-  // spot as before; the live-text panel renders below it in the (otherwise
-  // transparent) space, so nothing is clipped.
+  // Anchor the waveform at the panel top and reserve transparent space below
+  // for live text without shifting the waveform position.
   return (
     <div className="w-full h-full flex flex-col items-center justify-start pt-3 select-none pointer-events-none">
       <div

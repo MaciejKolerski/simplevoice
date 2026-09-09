@@ -8,8 +8,7 @@ use tauri::{AppHandle, Emitter};
 
 use super::{StreamEvent, StreamingStrategy};
 
-/// Pure mapping from a strategy event to a Tauri (event-name, JSON payload).
-/// Kept free of `AppHandle` so it is unit-testable.
+/// Map strategy events to the Tauri event-name and JSON payload contract.
 pub fn event_payload(ev: &StreamEvent) -> (&'static str, serde_json::Value) {
     match ev {
         StreamEvent::Partial { text } => (
@@ -37,7 +36,6 @@ struct Session {
     handle: Option<JoinHandle<()>>,
 }
 
-/// Owns the live worker thread. Managed Tauri state.
 pub struct StreamingController {
     session: Mutex<Option<Session>>,
 }
@@ -130,7 +128,6 @@ impl StreamingController {
             if h.is_finished() {
                 let _ = h.join();
             }
-            // Otherwise, detach by dropping the handle without joining.
         }
     }
 }

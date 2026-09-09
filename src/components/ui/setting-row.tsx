@@ -22,11 +22,6 @@ type SettingRowProps = {
   className?: string;
 };
 
-/**
- * One bordered row inside a settings card. Encapsulates the
- * title/description/control pattern shared by SettingsView and ModelsView so
- * spacing, typography and dividers stay consistent.
- */
 export function SettingRow({
   title,
   description,

@@ -12,7 +12,7 @@ the runtime SDK. Keep the fully local Candle/Whisper CPU backend enabled.
  [target.'cfg(target_os = "linux")'.dependencies]
 -whisper-rs = { version = "0.16.0", default-features = false, features = ["vulkan"] }
 +whisper-rs = { version = "0.16.0", default-features = false }
- # Native Wayland text injection (replaces the external `wtype` binary).
+ # Native Wayland keyboard injection without an external executable.
  wayland-client = "0.31"
  wayland-protocols-misc = { version = "0.3", features = ["client"] }
 @@ -97,4 +97,4 @@

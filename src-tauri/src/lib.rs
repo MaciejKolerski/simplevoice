@@ -91,7 +91,6 @@ fn draw_status_dot(
     let height = base_image.height();
     let mut rgba = base_image.rgba().to_vec();
 
-    // Draw a status dot twice as large (radius factor 0.24 instead of 0.12)
     let radius = (width as f32 * 0.24).max(4.0) as i32;
     let cx = (width as i32) - radius - 2;
     let cy = (height as i32) - radius - 2;
@@ -169,13 +168,8 @@ fn is_recording_allowed(config: &AppConfig, stt: &SttController) -> Result<(), S
     let c = config.active.lock().unwrap();
     if c.engine == "local" {
         let stt_state = stt.state.lock().unwrap();
-        // An idle-unloaded model keeps `active_model_path` and is reloaded
-        // transparently, so only block when no model is selected at all rather than
-        // merely when the engine is currently unloaded. A load that is still in
-        // flight (the seconds after launch, while the frontend restores the last
-        // model) also counts as selected: it will be ready long before the
-        // recording is stopped, and failing here is what produced the spurious
-        // "no model loaded" on the first shortcut press after a restart.
+        // Idle-unloaded and loading models remain selected; transcription acquires
+        // or reloads the engine after capture, so recording can start immediately.
         if stt_state.engine.is_none()
             && stt_state.active_model_path.is_none()
             && stt_state.loading_model_path.is_none()
@@ -284,10 +278,6 @@ fn live_buffer_cap_s(app_handle: &tauri::AppHandle) -> u32 {
         .unwrap_or(20)
 }
 
-/// Starts a live session if the flag is set and a local engine is loaded.
-/// No-op otherwise (cloud/no-model/flag-off => classic batch behavior).
-/// Reads `filler_removal_enabled` from config.json (default false). Opt-in so the
-/// default behavior is unchanged.
 fn is_filler_removal_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return false;
@@ -301,7 +291,6 @@ fn is_filler_removal_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Reads `sentence_case_enabled` from config.json (default false).
 fn is_sentence_case_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return false;
@@ -315,7 +304,6 @@ fn is_sentence_case_enabled(app_handle: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Reads `append_trailing_space` from config.json (default false).
 fn is_trailing_space_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return false;
@@ -416,7 +404,6 @@ fn paste_key_hold_ms(app_handle: &tauri::AppHandle) -> u64 {
         .clamp(0, 500)
 }
 
-/// Reads `model_unload_enabled` from config.json (default false).
 fn is_model_unload_enabled(app_handle: &tauri::AppHandle) -> bool {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return false;
@@ -530,11 +517,8 @@ fn begin_live_session(app: &tauri::AppHandle) {
         return;
     }
     let stt = app.state::<SttController>();
-    // The engine may be idle-unloaded right now. Handing the session a lazy
-    // handle installs the audio tap immediately without losing speech, and the
-    // first re-decode reloads the model. Bailing out here instead (as this used
-    // to) left live mode with no session at all: the recording produced no text
-    // and the frontend, which skips the batch path in live mode, waited forever.
+    // A lazy handle installs the audio tap before an idle-unloaded model reloads,
+    // so live capture cannot lose the beginning of speech.
     let engine: std::sync::Arc<dyn crate::stt::traits::AsrEngine> = {
         let selected = {
             let s = stt.state.lock().unwrap();
@@ -553,9 +537,8 @@ fn begin_live_session(app: &tauri::AppHandle) {
         (s.vad_threshold, s.vad_silence_duration_ms)
     };
 
-    // LocalAgreement-2: re-decode the growing utterance buffer every ~1s and
-    // commit only stabilized words live (no mid-word splits). Works with any
-    // local batch engine via transcribe() + whitespace split.
+    // LocalAgreement-2 commits only units shared by consecutive decodes of the
+    // growing utterance; the configured cadence bounds re-decode frequency.
     let min_chunk_ms = live_min_chunk_ms(app);
     // Use the user's configured ASR language (None = auto-detect) so live
     // re-decodes don't drift across languages on short buffers.
@@ -570,14 +553,8 @@ fn begin_live_session(app: &tauri::AppHandle) {
 /// Finishes the active live session (emits `transcription-final`) and clears
 /// the audio tap. No-op if no session is active.
 pub(crate) fn end_live_session(app: &tauri::AppHandle) {
-    // Keep the macOS run loop awake across finalization. `streaming.finish()`
-    // blocks until the worker has run its final re-decode and emitted
-    // `transcription-final` (deliverable only by evaluating JS on the main
-    // thread). Recording has already stopped, so the app meets every App Nap
-    // criterion; on a long recording the final decode outlasts App Nap's engage
-    // latency, the run loop naps, and the event sits undelivered until the next
-    // wake (the next recording). The live transcription appears to hang. Mirror
-    // the guard `transcribe_audio` already holds for the batch path.
+    // Keep the main run loop awake until finalization emits its result; App Nap
+    // can defer delivery to the hidden webview after recording stops.
     #[cfg(target_os = "macos")]
     let _app_nap_guard = AppNapGuard::begin("SimpleVoice is finalizing live transcription");
 
@@ -640,13 +617,11 @@ fn config_ui_language(app_handle: &tauri::AppHandle) -> String {
         .unwrap_or_default()
 }
 
-/// Marker appended to a partially transcribed recording when a chunk after
-/// the first one failed (spec: partial text beats losing the whole dictation).
+/// Marks the failure offset when an earlier transcription chunk succeeded.
 fn truncation_marker(app_handle: &tauri::AppHandle, secs: f32) -> String {
     marker_for(&config_ui_language(app_handle), secs)
 }
 
-/// Pure so the locale selection and mm:ss formatting are unit-testable.
 fn marker_for(lang: &str, secs: f32) -> String {
     let total = secs.max(0.0) as u32;
     let (mm, ss) = (total / 60, total % 60);
@@ -730,10 +705,8 @@ pub(crate) fn get_recording_window_mode(app_handle: &tauri::AppHandle) -> String
     let json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(v) => v,
         Err(e) => {
-            // With atomic config writes a reader never sees a half-written file, so
-            // this should not fire from a write race anymore. If it does, the config
-            // is genuinely malformed. Log it instead of silently defaulting to
-            // "always" (which would resurrect the overlay despite a "never" setting).
+            // Atomic writes exclude partial reads; report malformed data instead of
+            // silently replacing the configured overlay mode with its default.
             tracing::warn!("get_recording_window_mode: config.json parse failed, defaulting to 'always': {e}");
             return "always".to_string();
         }
@@ -841,12 +814,8 @@ fn apply_default_recording_window_position(window: &tauri::WebviewWindow) {
 pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
     let mode = get_recording_window_mode(app);
     let controller = app.state::<AudioController>();
-    // Keep the overlay up through saving + transcription, not just recording. It
-    // gives "transcribing" feedback and, crucially on macOS, keeps a window on
-    // screen so the process stays ineligible for App Nap while the result is
-    // delivered to the hidden main webview. With no visible window the run loop
-    // naps and a long transcription's result sits undelivered until the next wake
-    // (the next recording), causing the reported "processing never finishes" hang.
+    // Keeping the overlay visible through saving and transcription prevents
+    // App Nap from deferring result delivery to the hidden main webview.
     let is_busy =
         controller.is_recording() || controller.is_saving() || controller.is_transcribing();
 
@@ -858,7 +827,6 @@ pub(crate) fn update_recording_window_visibility(app: &tauri::AppHandle) {
         };
 
         if should_show {
-            // Position the window bottom-center dynamically only on the very first show
             if !WINDOW_INITIALIZED.load(std::sync::atomic::Ordering::Relaxed) {
                 let mut positioned = false;
                 if let Some((x, y)) = get_recording_window_position(app) {
@@ -1068,12 +1036,10 @@ fn play_backend_sound(app_handle: &tauri::AppHandle, sound_type: &str) {
         }
         #[cfg(target_os = "linux")]
         {
-            // Use pw-play (part of PipeWire, already installed on most modern Arch setups)
             let _ = std::process::Command::new("pw-play").arg(&path).spawn();
         }
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
-            // Windows fallback using rodio
             std::thread::spawn(move || {
                 if let Ok(file) = std::fs::File::open(&path) {
                     if let Ok(source) = rodio::Decoder::new(std::io::BufReader::new(file)) {
@@ -1102,14 +1068,8 @@ fn warm_up_engine(app: &tauri::AppHandle) {
     }
 }
 
-/// Brings an idle-unloaded model back while the user is still speaking.
-///
-/// The reload used to happen inside the transcription, i.e. *after* the recording
-/// stopped, so every dictation that followed an idle period stalled for the whole
-/// model load before a single word was decoded. Doing it here overlaps the load
-/// with the recording; by the time the shortcut is pressed again the engine is
-/// usually loaded and warm. No-op when the engine is already loaded, when no model
-/// is selected, or for cloud transcription.
+/// Reload an idle-unloaded model during capture to overlap model-load latency
+/// with speech. No-op for loaded, unselected, or cloud engines.
 fn preload_engine_for_recording(app: &tauri::AppHandle) {
     {
         let config = app.state::<AppConfig>();
@@ -1294,7 +1254,6 @@ fn set_transcribing(
 fn open_folder(path: String) -> Result<(), String> {
     let path = std::path::Path::new(&path);
 
-    // Basic validation to prevent obvious path traversal
     if path.components().any(|c| c.as_os_str() == "..") {
         return Err("Access denied: invalid path".to_string());
     }
@@ -1396,11 +1355,8 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
 
     let base_icon = app_handle.default_window_icon().cloned();
 
-    // macOS menu bar: use a transparent monochrome template image (just the waveform
-    // bars) so the system tints it for light/dark with no baked background. The colored
-    // recording/processing dot needs a non-template icon, so template mode is toggled
-    // per state. On Windows/Linux a transparent white icon would be invisible on light
-    // trays, so those keep the full app icon (existing behaviour).
+    // macOS templates tint monochrome bars; colored status dots disable template
+    // mode. Other platforms use the full icon for contrast on light trays.
     #[cfg(target_os = "macos")]
     let (tray_icon_img, tray_is_template) = {
         let bars = tray_template_image().or_else(|| base_icon.clone());
@@ -1492,8 +1448,6 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
 
     let devices = controller.list_devices().unwrap_or_default();
     let mic_menu = {
-        // Show the currently selected microphone (or the default) as the submenu
-        // title; expanding it still lists devices to switch.
         let current_mic = selected_device
             .as_deref()
             .unwrap_or(labels.default_microphone.as_str());
@@ -1591,9 +1545,6 @@ fn rebuild_tray_menu_inner(app_handle: &tauri::AppHandle) -> Result<(), String> 
     Ok(())
 }
 
-/// Toggles the voice recording state.
-/// If active, stops the recording and emits the transcribed payload.
-/// If inactive, starts recording if allowed by configuration.
 /// Reads `push_to_talk_enabled` from config.json (default false): hold the record
 /// shortcut to record and release it to stop, instead of press-to-toggle.
 fn is_push_to_talk_enabled(app_handle: &tauri::AppHandle) -> bool {
@@ -2150,7 +2101,6 @@ async fn load_model(
 
     match res {
         Ok(Ok(())) => {
-            // Persist the choice for the next launch (see remember_active_model).
             remember_active_model(&app_handle, Some(&model_path));
             Ok(())
         }
@@ -2327,17 +2277,9 @@ impl Drop for AppNapGuard {
     }
 }
 
-/// App Nap suppression spanning the *whole* transcribing window, opened by
-/// `set_transcribing(true)` and closed by `set_transcribing(false)`.
-///
-/// `transcribe_audio`'s own guard ends the instant the command returns, but
-/// Tauri only hands the result to the webview by evaluating JS on the main
-/// thread *after* that. On a long recording the app has been UI-idle for the
-/// entire inference, so App Nap re-engages in that gap and the result sits
-/// undelivered until the next run-loop wake (the next recording), causing the hang the
-/// per-command guard was meant to fix, still reachable for long clips. The
-/// frontend closes this only once it has received the text and pasted, so
-/// holding the activity until then keeps the run loop awake through delivery.
+/// App Nap guard spanning capture completion through frontend output delivery.
+/// A command-local guard ends before Tauri dispatches its response to the
+/// main-thread-only webview, so the frontend releases this after delivery.
 #[cfg(target_os = "macos")]
 static TRANSCRIBE_ACTIVITY: std::sync::Mutex<Option<AppNapGuard>> =
     std::sync::Mutex::new(None);
@@ -2513,12 +2455,8 @@ fn has_last_recording_samples(
 /// and clobber each other.
 static CONFIG_FILE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// Writes config.json atomically: write a sibling temp file, then rename it over
-/// the target. `rename` is atomic on POSIX, so concurrent readers (which do not
-/// take CONFIG_FILE_LOCK) always observe a complete, parseable file instead of a
-/// half-written one. A half-written read made config readers fall back to their
-/// defaults. For example, `get_recording_window_mode` returning "always" made the
-/// recording overlay reappear intermittently even when set to "never".
+/// Persist a complete JSON document through a sibling temporary file. POSIX
+/// rename is atomic, so readers do not need CONFIG_FILE_LOCK to avoid partial JSON.
 fn write_config_atomic<C: AsRef<[u8]>>(
     path: &std::path::Path,
     contents: C,
@@ -2534,13 +2472,8 @@ fn write_config_atomic<C: AsRef<[u8]>>(
 const BACKEND_OWNED_CONFIG_KEYS: &[&str] =
     &["gpu_enabled", "active_model_path", "microphone_gain_db"];
 
-/// Records which local model is selected, in config.json, so the *backend* knows
-/// it at the next launch. The choice used to live only in the webview's
-/// localStorage, which means every moment the webview had not (yet) called
-/// `load_model`, such as the seconds right after launch or a run where the webview
-/// crashed or was never shown, left the backend believing no model was selected,
-/// and the record shortcut failed with "errors.no_model_loaded".
-/// `None` clears the entry (the model was deleted).
+/// Persist model selection so shortcuts work before the webview loads a model.
+/// `None` clears the selection after deletion.
 fn remember_active_model(app_handle: &tauri::AppHandle, model_path: Option<&str>) {
     let Ok(dir) = app_handle.path().app_local_data_dir() else {
         return;
@@ -2775,11 +2708,8 @@ fn reset_recording_window_position(app_handle: tauri::AppHandle) -> Result<(), S
         apply_default_recording_window_position(&window);
     }
 
-    // Clear the custom-position flag so the next first-show recomputes the
-    // default. The Moved event fired by set_position above may re-save the
-    // default coordinates as a "custom" position (exactly like the existing
-    // first-show flow does); either ordering leaves the bar at the default
-    // spot, so the race is benign.
+    // Reset first-show positioning even if the Moved event persists these
+    // default coordinates as a custom position; both paths use the same location.
     let app_local_data = app_handle
         .path()
         .app_local_data_dir()
@@ -2937,7 +2867,6 @@ async fn delete_transcription_cmd(
         }
     }
 
-    // Read usage inputs before deleting the transcription row.
     let trans_opt: Option<(String, Option<f64>, String)> =
         sqlx::query_as("SELECT date, duration_sec, text FROM transcriptions WHERE id = ?")
             .bind(&id)
@@ -3093,8 +3022,7 @@ fn open_accessibility_settings() -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        // Windows doesn't have an equivalent Accessibility permission page
-        // but we can open Settings
+        // Windows exposes no equivalent permission page; open general Settings.
         std::process::Command::new("ms-settings:easeofaccess-display")
             .spawn()
             .map_err(|e| format!("Failed to open settings: {}", e))?;
@@ -3108,20 +3036,17 @@ struct PermissionsStatus {
     accessibility: bool,
     /// Whether Microphone permission is granted (macOS only, always true elsewhere)
     microphone: bool,
-    /// The current platform identifier
     platform: String,
     /// Whether the current session is running under Wayland (Linux only, false elsewhere)
     is_wayland: bool,
     /// Detected Linux desktop environment (e.g. "gnome", "kde", "unknown", or "none" for non-Linux)
     desktop_env: String,
-    /// The active GDK backend
     gdk_backend: String,
     /// How global shortcuts are delivered: "evdev", "wm-config", "desktop" or
     /// "unavailable" on Linux; "system" on the other platforms
     shortcut_mechanism: String,
 }
 
-/// Returns the aggregated permissions status for the current platform.
 #[tauri::command]
 fn check_permissions_status() -> PermissionsStatus {
     let accessibility = {
@@ -3295,7 +3220,6 @@ fn paste_text() -> Result<(), String> {
         }
     }
 
-    // X11/macOS/Windows: simulate Ctrl+V / Cmd+V with enigo
     use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
     let settings = Settings::default();
@@ -3315,8 +3239,7 @@ fn paste_text() -> Result<(), String> {
         }
     })?;
 
-    // Optional hold around the paste keystroke for apps that drop a too-fast
-    // Cmd/Ctrl+V. 0 (default) keeps the original instant paste.
+    // Some applications require a modifier hold around the paste keystroke.
     let hold_ms = PASTE_KEY_HOLD_MS.load(std::sync::atomic::Ordering::Relaxed);
     let hold = || {
         if hold_ms > 0 {
@@ -3478,8 +3401,6 @@ pub fn run() {
                     }
                 }
                 Some(ShortcutAction::Record) | None => {
-                    // Push-to-talk holds to record and releases to stop. When off,
-                    // the record shortcut press-toggles recording as before.
                     if is_push_to_talk_enabled(app) {
                         match state {
                             ShortcutState::Pressed => start_recording_action(app),
@@ -3587,7 +3508,6 @@ pub fn run() {
             {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
                 if let Some(window) = app.get_webview_window("main") {
-                    // Enforce macOS constraints programmatically since they are removed from tauri.conf.json
                     let _ = window.set_max_size(Some(tauri::Size::Logical(tauri::LogicalSize {
                         width: 1200.0,
                         height: 900.0,
@@ -3636,7 +3556,6 @@ pub fn run() {
                                         let _ = app_handle.run_on_main_thread(move || {
                                             let _ = window_clone
                                                 .set_ignore_cursor_events(!command_pressed);
-                                            // When Cmd key is released, save the window's current coordinates
                                             if !command_pressed {
                                                 if let Ok(pos) = window_clone.outer_position() {
                                                     save_recording_window_position(
@@ -3717,10 +3636,8 @@ pub fn run() {
                 }
             }
 
-            // Restore the selected local model path. The engine itself is
-            // loaded on demand, so a cloud user never pays for it). Recording is
-            // therefore allowed from the first second of the run, without waiting
-            // for the webview to call `load_model`.
+            // Restore selection without loading weights so shortcuts work before the
+            // webview initializes and cloud mode avoids a local model load.
             if let Some(path) = remembered_active_model(&app_handle) {
                 let use_gpu = app_handle
                     .try_state::<AppConfig>()
@@ -3732,7 +3649,6 @@ pub fn run() {
                 tracing::info!("restored the selected ASR model from config: {}", path);
             }
 
-            // Initialize SQLite connection pool once (fixes connection leak)
             let pool = tauri::async_runtime::block_on(async {
                 let app_dir = app_handle
                     .path()
@@ -3879,7 +3795,6 @@ mod tests {
 
     #[test]
     fn no_local_model_selected_blocks_recording() {
-        // Nothing ever loaded: no engine AND no selected model -> blocked.
         let stt = SttController::new();
         assert_eq!(
             is_recording_allowed(&local_config(), &stt),
@@ -3898,10 +3813,7 @@ mod tests {
 
     #[test]
     fn a_model_still_loading_allows_recording() {
-        // The seconds right after launch: the frontend's `load_model` is in
-        // flight, so nothing is loaded yet. Pressing the record shortcut then used
-        // to fail with "no model loaded"; the model is ready long before the
-        // recording is stopped, so it must be allowed to start.
+        // Capture may start while model loading is in flight; decoding acquires it later.
         let stt = SttController::new();
         stt.state.lock().unwrap().loading_model_path = Some("/models/whisper.bin".to_string());
         assert!(is_recording_allowed(&local_config(), &stt).is_ok());
@@ -3909,9 +3821,7 @@ mod tests {
 
     #[test]
     fn a_model_restored_from_config_allows_recording() {
-        // A run whose webview never called `load_model` (crashed / not shown yet):
-        // the model restored from config.json is enough to start recording, the
-        // engine is loaded on demand.
+        // Backend selection permits capture before the webview requests model loading.
         let stt = SttController::new();
         stt.set_selected_model("/models/whisper.bin", true);
         assert!(is_recording_allowed(&local_config(), &stt).is_ok());
@@ -3919,8 +3829,6 @@ mod tests {
 
     #[test]
     fn write_config_atomic_replaces_file_and_cleans_temp() {
-        // Atomic write: the target ends up with the exact content and the sibling
-        // temp file is gone (so readers never see a half-written config).
         let dir = std::env::temp_dir().join(format!("sv-cfg-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.json");
@@ -3950,7 +3858,6 @@ mod tests {
 
     #[test]
     fn cloud_results_truncate_at_first_failure_keeping_earlier() {
-        // Chunk 2 (start 200) fails after 0,1 succeeded: keep [a,b], truncate at 200.
         let chunks = vec![0..100, 100..200, 200..300, 300..400];
         let r = vec![Ok("a".into()), Ok("b".into()), Err("boom".into()), Ok("d".into())];
         let (parts, trunc) = super::join_cloud_results(r, &chunks).unwrap();

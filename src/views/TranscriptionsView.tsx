@@ -128,7 +128,7 @@ export function TranscriptionsView() {
         path: item.wav_path,
       });
 
-      await loadHistory(true); // refresh from start after delete
+      await loadHistory(true);
       window.dispatchEvent(
         new CustomEvent("transcription-added", {
           detail: { source: "history" },

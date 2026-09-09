@@ -1,10 +1,5 @@
-// Compiles the Icon Composer `.icon` file into a macOS asset catalog (Assets.car)
-// so the app shows a fully native Liquid Glass icon on macOS 26+ (system tinting,
-// light/dark/clear/tinted appearances). Run automatically as Tauri's macOS
-// `beforeBundleCommand`. A fallback `.icns` is produced for older macOS.
-//
-// Output lands in src-tauri/icons/macos/ and is wired into the bundle via
-// `bundle.resources` + `CFBundleIconName` (see tauri.macos.conf.json / Info.plist).
+// Compile an Icon Composer asset into Assets.car and a fallback .icns.
+// Requires actool from a full Xcode installation.
 
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -31,14 +26,12 @@ if (!fs.existsSync(iconSource)) {
   process.exit(1);
 }
 
-// Resolve actool from the active Xcode toolchain.
 let actool = 'actool';
 try {
   const dev = execFileSync('xcode-select', ['-p'], { encoding: 'utf8' }).trim();
   const candidate = path.join(dev, 'usr', 'bin', 'actool');
   if (fs.existsSync(candidate)) actool = candidate;
 } catch {
-  // fall back to PATH lookup
 }
 
 fs.mkdirSync(outDir, { recursive: true });

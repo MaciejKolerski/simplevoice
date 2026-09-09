@@ -318,11 +318,9 @@ fn platform_resume(paused: &[String]) {
     }
 }
 
-/// Uses WinRT (GlobalSystemMediaTransportControls) + single PowerShell call
-/// to detect if any media is playing. Much faster than previous per-process loop.
+/// Query playback through WinRT in one PowerShell process.
 #[cfg(target_os = "windows")]
 fn windows_is_media_playing() -> bool {
-    // Primary: WinRT GlobalSystemMediaTransportControls (Windows 10 1903+)
     let winrt_script = r#"
 try {
     $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media,ContentType=WindowsRuntime]
@@ -365,7 +363,6 @@ Write-Output '0'
         }
     }
 
-    // Fallback: single PowerShell call to check multiple known media players
     let known_procs = [
         "Spotify", "vlc", "wmplayer", "groove", "msedge", "chrome", "firefox",
         "foobar2000", "winamp", "musicbee", "aimp", "iTunes", "AppleMusic",
@@ -391,7 +388,7 @@ Write-Output '0'
     if let Ok(output) = fallback_result {
         let text = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
         if !text.is_empty() {
-            return true; // any of the known media players is running
+            return true;
         }
     }
 
@@ -413,7 +410,7 @@ fn windows_send_media_play_pause() {
     unsafe {
         keybd_event(VK_MEDIA_PLAY_PAUSE, 0, 0, 0); // key down
         std::thread::sleep(std::time::Duration::from_millis(15));
-        keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0); // key up
+        keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0);
     }
 }
 
@@ -491,7 +488,6 @@ fn platform_resume(paused: &[String]) {
     }
 }
 
-/// Bus names of every MPRIS2 player currently registered on the session bus.
 #[cfg(target_os = "linux")]
 fn mpris_players(conn: &zbus::blocking::Connection) -> zbus::Result<Vec<String>> {
     Ok(zbus::blocking::fdo::DBusProxy::new(conn)?
@@ -575,8 +571,7 @@ fn platform_resume(_paused: &[String]) {}
 mod tests {
     use super::*;
 
-    // Captured verbatim from `pmset -g assertions` on macOS 26.5 (2026-06-11):
-    // Zen Browser (pid 1006) holding an audio-out assertion for 1 min 33 s.
+    // macOS 26.5 pmset fixture: an audio-out assertion with a nonzero age.
     const PMSET_ZEN_PLAYING: &str = r#"2026-06-11 13:02:17 +0200
 Assertion status system-wide:
    BackgroundTask                 0

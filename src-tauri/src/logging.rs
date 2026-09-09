@@ -26,7 +26,7 @@ pub fn init(app_data_dir: &Path) {
 
     let log_dir = app_data_dir.join("logs");
     if std::fs::create_dir_all(&log_dir).is_err() {
-        // No writable log dir: stderr-only, still better than nothing.
+        // File logging failure must not prevent startup.
         let _ = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::INFO)
             .with_target(false)

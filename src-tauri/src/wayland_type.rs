@@ -50,15 +50,8 @@ const SAFE_TEXT_WIRE_KEYCODES: [u32; 48] = [
 const PASTE_WIRE_KEYCODE: u32 = 47;
 const CONTROL_MODIFIER_MASK: u32 = 1 << 2;
 
-// After uploading a fresh keymap there is no protocol acknowledgement that the
-// compositor has compiled it AND that the focused client has recompiled its own
-// copy (the client does that asynchronously when it receives the `wl_keyboard.keymap`
-// event). Key events that reach the client before that swap finishes are resolved
-// against the stale keymap and silently dropped, which is exactly the "first part
-// of the dictation goes missing" symptom. The race is unackable, so the only cure
-// is a wall-clock settle delay before the first keystroke. 90ms is reliable on
-// lightweight wlroots compositors (Sway/Hyprland/niri) and the heavier KWin alike;
-// raise it first if leading characters still vanish on a slow compositor.
+// Keymap compilation is asynchronous and has no client acknowledgment. Wait
+// before sending keys so the focused application can replace its stale map.
 const KEYMAP_SETTLE_MS: u64 = 90;
 
 // Don't ship every keystroke in one buffered burst at the final roundtrip: flush
@@ -384,7 +377,7 @@ mod tests {
     }
 }
 
-/// Wayland globals we care about, collected during the registry roundtrip.
+/// Seat and virtual-keyboard globals collected during registry discovery.
 #[derive(Default)]
 struct State {
     seat: Option<wl_seat::WlSeat>,

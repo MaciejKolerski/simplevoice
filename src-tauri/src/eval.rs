@@ -1,5 +1,4 @@
-//! Offline evaluation metrics for the transcription harness.
-//! Pure and dependency-free: no audio, no model loading. Unit-tested directly.
+//! Dependency-free text metrics; evaluation does not load audio or models.
 
 use serde::{Deserialize, Serialize};
 
@@ -98,12 +97,9 @@ pub struct EvalManifest {
 #[derive(Debug, Clone, Serialize)]
 pub struct ClipResult {
     pub name: String,
-    /// The engine's actual transcription, recorded so a run is self-documenting
-    /// (you can read what came out, not only how far it was from the reference).
+    /// Raw engine output before metric normalization.
     pub hypothesis: String,
-    /// True when the normalized hypothesis equals the normalized reference, i.e.
-    /// the engine returned exactly what was recorded (word-for-word after casing
-    /// and punctuation normalization).
+    /// Equality after applying the same token normalization to reference and hypothesis.
     pub exact_match: bool,
     pub wer: f64,
     pub cer: f64,
@@ -217,16 +213,15 @@ mod tests {
     fn edit_distance_basic_cases() {
         assert_eq!(edit_distance::<u8>(&[], &[]), 0);
         assert_eq!(edit_distance(b"abc", b"abc"), 0);
-        assert_eq!(edit_distance(b"abc", b"abd"), 1); // substitution
-        assert_eq!(edit_distance(b"abc", b"abcd"), 1); // insertion
-        assert_eq!(edit_distance(b"abc", b"ab"), 1); // deletion
+        assert_eq!(edit_distance(b"abc", b"abd"), 1);
+        assert_eq!(edit_distance(b"abc", b"abcd"), 1);
+        assert_eq!(edit_distance(b"abc", b"ab"), 1);
         assert_eq!(edit_distance(b"", b"abc"), 3);
         assert_eq!(edit_distance(b"abc", b""), 3);
     }
 
     #[test]
     fn wer_is_edits_over_reference_words() {
-        // 4 reference words, one substituted -> 0.25
         assert!((word_error_rate("the quick brown fox", "the quick green fox") - 0.25).abs() < 1e-9);
         assert_eq!(word_error_rate("same words here", "same words here"), 0.0);
     }
@@ -239,7 +234,6 @@ mod tests {
 
     #[test]
     fn cer_counts_character_edits() {
-        // "kitten" vs "sitting": 3 char edits over 6 reference chars.
         assert!((char_error_rate("kitten", "sitting") - 0.5).abs() < 1e-9);
     }
 

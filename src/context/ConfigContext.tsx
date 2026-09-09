@@ -19,9 +19,7 @@ const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<Config>({});
-  // Single mutable snapshot so concurrent updateConfig calls never spread a
-  // stale `config` closure over each other (that race reverted freshly saved
-  // values when several settings were written in the same tick).
+  // One mutable snapshot prevents concurrent writes from merging stale state.
   const configRef = useRef<Config>({});
 
   const loadConfig = useCallback(async () => {
@@ -56,8 +54,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     configRef.current = { ...configRef.current, [key]: value };
     setConfig(configRef.current);
 
-    // A pending debounced write is now redundant: this save already carries the
-    // whole snapshot, including whatever that timer was waiting to flush.
+    // This whole-document write also includes the pending debounced changes.
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;

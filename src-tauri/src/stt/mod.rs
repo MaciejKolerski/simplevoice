@@ -178,10 +178,8 @@ impl SttController {
         Ok(())
     }
 
-    /// Marks a model as selected without loading it. Used at startup to restore
-    /// the last model from config: recording is then allowed immediately and the
-    /// engine is loaded on demand, instead of the app claiming "no model
-    /// selected" until the frontend gets around to calling `load_model`.
+    /// Restore model selection without loading weights so capture can start
+    /// before frontend initialization; decoding loads the model on demand.
     pub fn set_selected_model(&self, model_path: &str, use_gpu: bool) {
         let mut s = self.state.lock().unwrap();
         if s.active_model_path.is_none() {
@@ -190,7 +188,7 @@ impl SttController {
         }
     }
 
-    /// The engine, if it is loaded right now (refreshing the idle clock).
+    /// Return the loaded engine and refresh its idle timestamp.
     fn engine_now(&self) -> Option<std::sync::Arc<dyn traits::AsrEngine>> {
         let mut s = self.state.lock().unwrap();
         let engine = s.engine.clone();
@@ -464,8 +462,7 @@ mod tests {
 
     #[test]
     fn a_lease_keeps_the_engine_loaded_however_long_it_is_held() {
-        // A transcription longer than the idle period used to be able to lose its
-        // engine to the watcher half-way through.
+        // The active lease must prevent unload even after the idle timeout elapses.
         let c = controller_with(FakeEngine::ok());
         let lease = c.lease();
         make_idle_for(&c, 4_000);
@@ -474,7 +471,6 @@ mod tests {
         // Dropping the lease restarts the idle clock, so the next tick is a no-op.
         drop(lease);
         assert!(!c.unload_if_idle(300));
-        // Only idling again from that point unloads.
         make_idle_for(&c, 400);
         assert!(c.unload_if_idle(300));
     }
@@ -490,7 +486,6 @@ mod tests {
         let c = controller_with(FakeEngine::ok());
         make_idle_for(&c, 4_000);
         assert!(c.ensure_loaded().unwrap().is_some());
-        // Touching the engine counts as use: the watcher must not unload it now.
         assert!(!c.unload_if_idle(300));
     }
 

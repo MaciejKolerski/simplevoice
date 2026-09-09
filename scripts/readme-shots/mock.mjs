@@ -44,12 +44,12 @@ export function installTauriMock(payload) {
         const ev = args.event;
         if (!listeners.has(ev)) listeners.set(ev, []);
         listeners.get(ev).push(args.handler);
-        return nextCb++; // event id
+        return nextCb++;
       }
       if (cmd === "plugin:event|unlisten") return null;
       if (cmd === "plugin:app|version") return fixtures.appVersion;
       if (cmd === "plugin:app|name") return "Simplevoice";
-      if (cmd.startsWith("plugin:")) return null; // updater check -> no update, etc.
+      if (cmd.startsWith("plugin:")) return null;
       return respond(cmd, args);
     },
   };

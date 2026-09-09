@@ -276,13 +276,8 @@ function App() {
           if (text && text.trim().length > 0) {
             console.log(`[FRONTEND] Transcription successful, text length: ${text.length}`);
 
-            // Clipboard, auto-paste, the done sound, last-transcription and clearing
-            // the transcribing indicator are all handled inside the Rust
-            // `transcribe_audio` command now. The main window is `visible: false`, so
-            // macOS can defer this command's response to the occluded webview until an
-            // unrelated event wakes it; doing the user-facing work on the backend makes
-            // it independent of that delivery. Only history persistence and the in-app
-            // list refresh stay here (non-critical if they arrive late).
+            // Rust completes output delivery before returning, because App Nap can
+            // defer command responses to the hidden webview. Persist history here.
             if (wavPath && wavPath !== "Recording stopped") {
               try {
                 await invoke("save_transcription_data", {
@@ -325,7 +320,7 @@ function App() {
         (localStorage.getItem("asr_engine") || "local") === "local";
       if (!liveActive) return;
 
-      // Consume the stashed WAV path now so it never leaks into the next session.
+      // Consume the WAV path before another session can reuse it.
       const wavPath = liveWavPathRef.current;
       liveWavPathRef.current = null;
 

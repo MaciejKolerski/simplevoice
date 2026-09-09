@@ -14,10 +14,8 @@ fn is_cjk(c: char) -> bool {
         0x0E00..=0x0E7F)    // Thai
 }
 
-/// Split a transcript into agreement units. Whitespace-separated runs of
-/// non-CJK text are words (as before); each CJK character is its own unit, so
-/// LocalAgreement can commit space-less scripts character-by-character instead of
-/// degrading to one giant token.
+/// Split whitespace-separated runs into words and CJK text into individual
+/// characters so space-less scripts can be committed incrementally.
 pub fn split_words(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();

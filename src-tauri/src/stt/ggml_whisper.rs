@@ -17,7 +17,7 @@ pub struct GgmlWhisperEngine {
 
 impl GgmlWhisperEngine {
     pub fn initialize(model_path: &str, use_gpu: bool) -> Result<Self, AppError> {
-        // On macOS always try Metal first (safe, no Vulkan crashes). GPU flag is mainly for Linux.
+        // macOS uses Metal; other platforms honor the configured GPU setting.
         let try_gpu = use_gpu || cfg!(target_os = "macos");
         if try_gpu {
             if let Ok(result) = std::panic::catch_unwind(|| {
@@ -73,9 +73,8 @@ impl AsrEngine for GgmlWhisperEngine {
         let mut params = FullParams::new(strategy);
         params.set_temperature(0.0);
         params.set_temperature_inc(0.2);
-        // Optimize thread count per platform for fastest transcription.
-        // On macOS (Metal) use ~half the cores (preprocessing bottleneck), clamp to 2-6.
-        // On other platforms use 4-8.
+        // Metal preprocessing uses roughly half the CPU cores; cap threads to avoid
+        // oversubscribing the audio and UI workers.
         let n_threads = if cfg!(target_os = "macos") {
             ((num_cpus::get() as i32) / 2).clamp(2, 6)
         } else {

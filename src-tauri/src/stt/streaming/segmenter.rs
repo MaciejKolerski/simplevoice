@@ -50,7 +50,6 @@ impl SpeechSegmenter {
                 SegmenterEvent::None
             }
         } else {
-            // Leading silence: ignore.
             SegmenterEvent::None
         }
     }
@@ -114,7 +113,6 @@ mod tests {
     fn speech_then_silence_closes_segment_including_tail() {
         let mut seg = SpeechSegmenter::new(0.01, 100, 16_000);
         assert!(matches!(seg.push(&loud(1600)), SegmenterEvent::None));
-        // 1600 samples of silence reaches the 1600-sample threshold -> closes.
         let len = closed_len(seg.push(&quiet(1600)));
         assert_eq!(len, 3200); // speech (1600) + trailing silence (1600)
     }
@@ -126,6 +124,6 @@ mod tests {
         seg.push(&quiet(800)); // below the 1600 threshold -> no close
         let flushed = seg.flush().expect("speech buffered");
         assert_eq!(flushed.len(), 2400);
-        assert!(seg.flush().is_none()); // empty after flush
+        assert!(seg.flush().is_none());
     }
 }

@@ -1,8 +1,7 @@
 //! LocalAgreement-2 live strategy: re-decode the growing utterance buffer every
 //! `min_chunk_ms` and commit only words that have stabilized across two decodes.
-//! Works with any batch `AsrEngine` (uses `transcribe()` + whitespace split, with no
-//! word timestamps required). The audio buffer is only ever reset at a whole
-//! end-of-speech pause or a hard cap, never mid-word, so a word is never split.
+//! Uses batch AsrEngine results without word timestamps. Segment boundaries
+//! follow end-of-speech pauses or the configured utterance-duration cap.
 
 use std::sync::Arc;
 
@@ -206,17 +205,14 @@ mod tests {
         let mut s = LocalAgreementStrategy::new(engine, 0.01, 100, 100, None, 20);
         let (tx, rx) = crossbeam_channel::unbounded();
 
-        // Feed 4 loud chunks of 1600 samples each (no pause -> stays one utterance).
         for _ in 0..4 {
             s.push_audio(&loud(1600), &tx).unwrap();
         }
         let events = drain(&rx);
-        // By now several words have stabilized and been committed live.
         let full = last_committed_full(&events).expect("some words committed live");
         assert!(full.starts_with("alpha"), "got: {full}");
         assert!(full.contains("beta"), "expected live commit of earlier words, got: {full}");
 
-        // Finish flushes the rest.
         s.finish(&tx).unwrap();
         let tail = drain(&rx);
         let final_text = tail.iter().rev().find_map(|e| match e {
@@ -261,9 +257,8 @@ mod tests {
 
         // Utterance 1: one word, then a 1600-sample silence closes it (100ms @16k).
         s.push_audio(&loud(1600), &tx).unwrap();
-        s.push_audio(&quiet(1600), &tx).unwrap(); // SegmentClosed -> finalize
+        s.push_audio(&quiet(1600), &tx).unwrap();
 
-        // Utterance 2: same word again.
         s.push_audio(&loud(1600), &tx).unwrap();
         s.finish(&tx).unwrap();
 

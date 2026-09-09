@@ -1,11 +1,7 @@
 use tauri::AppHandle;
 
-/// On-device model conversion has been removed. It previously built a venv and ran
-/// `optimum-cli export onnx --trust-remote-code`, installing `optimum`/`torch`/
-/// `transformers` from git main with no pinned versions, which is non-reproducible and a
-/// supply-chain / RCE surface. SimpleVoice ships curated prebuilt ONNX models (e.g.
-/// Parakeet) instead. The command is retained so the existing UI resolves it and
-/// shows an actionable message rather than a missing-command error.
+/// Compatibility command that reports unsupported local conversion.
+/// Prebuilt models avoid executing unpinned converters or remote model code.
 #[tauri::command]
 pub async fn convert_model(_model_path: String, _app_handle: AppHandle) -> Result<(), String> {
     Err("On-device conversion has been removed. Download a prebuilt ONNX model \

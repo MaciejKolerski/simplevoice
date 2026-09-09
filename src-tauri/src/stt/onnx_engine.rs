@@ -6,9 +6,7 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "onnx")]
 use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig};
 
-/// Pure layout detection for a downloaded ONNX model directory. Lives outside the
-/// `onnx` feature gate (path logic only) so the fragile transducer-vs-Moonshine
-/// precedence can be unit-tested without sherpa or a real model.
+/// Detect ONNX layouts outside the feature gate without linking sherpa-onnx.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OnnxLayout {
     Transducer {
@@ -41,10 +39,8 @@ fn find_file_with_keywords(dir: &Path, contains: &[&str], extension: &str) -> Op
     None
 }
 
-/// Reproduces the exact precedence used by `OnnxEngine::initialize`: a transducer
-/// layout (encoder + decoder + joiner-or-`joint` decoder) wins only when the
-/// directory is NOT a Moonshine layout; otherwise Moonshine v1 (preprocess) then
-/// Moonshine v2 (merged_decoder); otherwise unsupported.
+/// Moonshine layouts take precedence over overlapping transducer filenames;
+/// v1 preprocess models take precedence over v2 merged-decoder models.
 pub fn detect_onnx_layout(dir: &Path) -> OnnxLayout {
     let encoder_opt = find_file_with_keywords(dir, &["encoder"], "onnx")
         .or_else(|| find_file_with_keywords(dir, &["encode"], "onnx"));

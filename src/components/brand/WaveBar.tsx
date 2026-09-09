@@ -2,14 +2,11 @@ import { cn } from "@/lib/utils";
 
 interface WaveBarProps {
   className?: string;
-  /** When true, the bars animate like a live equalizer (used on the splash/HUD). */
+  /** Enables the equalizer animation. */
   animated?: boolean;
 }
 
-/**
- * Simplevoice "WaveBar" symbol with five rounded bars forming a sound wave.
- * Geometry is fixed per the brand book; color is inherited via currentColor.
- */
+/** Fixed bar geometry inherits its fill from currentColor. */
 export function WaveBar({ className, animated = false }: WaveBarProps) {
   return (
     <svg

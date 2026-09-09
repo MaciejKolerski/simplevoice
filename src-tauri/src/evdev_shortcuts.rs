@@ -7,15 +7,11 @@
 //! straight from `/dev/input/event*` in background threads and match them
 //! against the registered combinations.
 //!
-//! Trade-offs: this needs read access to the input devices (fine when the nodes
-//! are world-readable, otherwise the user must be in the `input` group), and the
-//! keypress is observed rather than consumed, so it still reaches the focused
-//! application. Pick a dedicated combination accordingly.
+//! Capture requires read access to the input nodes. Events are observed rather
+//! than consumed and still reach the focused application.
 //!
-//! Because most users are not in the `input` group, `probe()` checks at startup
-//! whether any keyboard node is readable. When none is, `lib.rs` falls back to
-//! marker-delimited binds in the compositor config (`linux_shortcuts.rs`)
-//! instead of initializing this module.
+//! If `probe()` finds no readable keyboard, startup uses marker-delimited
+//! compositor bindings from `linux_shortcuts.rs`.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -27,7 +23,6 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{LastTranscription, ShortcutAction};
 
-// Modifier bitmask.
 const MOD_CTRL: u8 = 1 << 0;
 const MOD_SHIFT: u8 = 1 << 1;
 const MOD_ALT: u8 = 1 << 2;
@@ -46,7 +41,6 @@ const KEY_RIGHTMETA: u16 = 126;
 // Drop repeated triggers of the same action within this window. Guards against
 // duplicate input nodes for one physical keyboard reporting the same press.
 const DEBOUNCE: Duration = Duration::from_millis(300);
-// How often the manager thread rescans for (un)plugged keyboards.
 const RESCAN_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Clone)]
@@ -121,7 +115,7 @@ pub fn init(app: AppHandle) {
         ptt_key_down: Mutex::new(None),
     };
     if STATE.set(state).is_err() {
-        return; // already initialized
+        return;
     }
 
     std::thread::Builder::new()
@@ -400,7 +394,6 @@ fn parse_shortcut(s: &str) -> Result<(u8, u16), String> {
 /// Map a frontend key name (`KeyboardEvent.key` style: uppercase letters,
 /// "Space", "ArrowUp", "F5", or literal punctuation) to its evdev key code.
 fn key_name_to_code(name: &str) -> Option<u16> {
-    // Single-character tokens: letters, digits, punctuation.
     let mut chars = name.chars();
     if let (Some(c), None) = (chars.next(), chars.clone().next()) {
         match c {

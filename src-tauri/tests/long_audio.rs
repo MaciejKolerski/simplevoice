@@ -22,7 +22,7 @@ fn chunked_transcription_of_a_long_recording() {
         .map(|s| s.expect("wav sample") as f32 / i16::MAX as f32)
         .collect();
 
-    // Tile the recording past the old 90 s limit (target >= 3 minutes).
+    // Repeat the clip to exceed three minutes and exercise multiple ASR chunks.
     let copies = (200 * 16_000 / base.len()).max(2) + 1;
     let mut samples = Vec::with_capacity(base.len() * copies);
     for _ in 0..copies {

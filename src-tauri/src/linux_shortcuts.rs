@@ -2,7 +2,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Detects the currently active desktop environment on Linux.
 pub fn detect_desktop_environment() -> String {
     let vars = ["XDG_CURRENT_DESKTOP", "GDMSESSION", "DESKTOP_SESSION"];
     for var in &vars {
@@ -161,7 +160,6 @@ fn translate_to_wm_shortcut(shortcut: &str, de: &str) -> String {
             }
         }
         _ => {
-            // Niri, Sway, i3 join with +
             let mut binding = mods.join("+");
             if !binding.is_empty() {
                 binding.push('+');
@@ -172,7 +170,6 @@ fn translate_to_wm_shortcut(shortcut: &str, de: &str) -> String {
     }
 }
 
-/// Helper to get target config file path for window managers
 fn get_wm_config_path(de: &str) -> Option<PathBuf> {
     let home = std::env::var("HOME").ok()?;
     match de {
@@ -259,7 +256,7 @@ fn insert_inside_binds_block(content: &str, section_content: &str) -> Option<Str
     None
 }
 
-/// Safely updates or appends a custom shortcut section in the window manager config file
+/// Replace the marked shortcut section, preserving unmarked configuration.
 fn update_wm_config_file(de: &str, command_to_run: &str, shortcut_str: &str, action_id: &str) -> Result<(), String> {
     let config_path = match get_wm_config_path(de) {
         Some(path) => path,
@@ -348,7 +345,6 @@ fn update_wm_config_file(de: &str, command_to_run: &str, shortcut_str: &str, act
             if let Some(inserted_content) = insert_inside_binds_block(&new_content, &section_content) {
                 new_content = inserted_content;
             } else {
-                // If no binds block exists, create one around the generated entries and append it.
                 let mut fallback_content = String::new();
                 fallback_content.push_str(&start_marker);
                 fallback_content.push('\n');
@@ -374,7 +370,6 @@ fn update_wm_config_file(de: &str, command_to_run: &str, shortcut_str: &str, act
     fs::write(&config_path, new_content)
         .map_err(|e| format!("Failed to write WM config file: {}", e))?;
 
-    // Reload Sway or i3 configs if needed
     if de == "sway" {
         let _ = Command::new("swaymsg").arg("reload").status();
     } else if de == "i3" {
@@ -398,7 +393,6 @@ pub fn repair_wm_configs() {
                     let mut new_content = String::new();
                     for line in content.lines() {
                         if line.contains("SIMPLEVOICE SHORTCUTS") && line.trim().starts_with('#') {
-                            // Replace '#' with '//'
                             let repaired = line.replacen('#', "//", 1);
                             new_content.push_str(&repaired);
                         } else {

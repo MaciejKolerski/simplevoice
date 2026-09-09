@@ -16,7 +16,6 @@
       <stop offset="0" stop-color="#818cf8" stop-opacity="0.45"/>
       <stop offset="1" stop-color="#818cf8" stop-opacity="0"/>
     </radialGradient>
-    <!-- live waveform: indigo (bottom) -> purple (top), per-bar box -->
     <linearGradient id="waveGrad" x1="0" y1="1" x2="0" y2="0">
       <stop offset="0" stop-color="#6366f1"/>
       <stop offset="1" stop-color="#a855f7"/>
@@ -36,31 +35,22 @@
     </clipPath>
   </defs>
 
-  <!-- desktop / wallpaper backdrop -->
   <rect x="6" y="6" width="748" height="248" rx="24" fill="url(#deskBg)"/>
   <rect x="6" y="6" width="748" height="248" rx="24" fill="none" stroke="#ffffff" stroke-opacity="0.05"/>
 
-  <!-- ambient light cast by the overlay -->
   <ellipse cx="380" cy="130" rx="300" ry="150" fill="url(#ambient)"/>
 
-  <!-- contact shadow grounding the floating pill -->
   <ellipse cx="380" cy="206" rx="190" ry="26" fill="#000000" fill-opacity="0.55" filter="url(#blurMd)"/>
 
-  <!-- frosted floating pill (NSPanel-style overlay), 108x36 logical, shown at 3.5x -->
   <g filter="url(#pillShadow)">
     <rect x="191" y="67" width="378" height="126" rx="63" fill="#0d0d0e" fill-opacity="0.9"/>
   </g>
-  <!-- inner lighting clipped to the pill so no glow blooms past the edge -->
   <g clip-path="url(#pillClip)">
-    <!-- soft indigo wash behind the waveform -->
     <ellipse cx="380" cy="142" rx="140" ry="50" fill="url(#coreGlow)" filter="url(#blurMd)"/>
-    <!-- subtle 1px-style top sheen (matches the real inset highlight) -->
     <rect x="191" y="67" width="378" height="5" fill="url(#pillTop)"/>
   </g>
-  <!-- hairline border -->
   <rect x="191" y="67" width="378" height="126" rx="63" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.5"/>
 
-  <!-- live waveform: 9 bars, Gaussian envelope, indigo->purple, fading at the edges -->
   <g fill="url(#waveGrad)">
     <rect x="261" y="117.4" width="14" height="25.2" rx="7" fill-opacity="0.44"/>
     <rect x="289" y="108.2" width="14" height="43.6" rx="7" fill-opacity="0.615"/>

@@ -85,7 +85,6 @@ interface RecommendedModel {
   descriptionKey: string;
   format: string;
   size_formatted: string;
-  /** Highlight as a recommended default (best accuracy/speed tradeoff). */
   recommended?: boolean;
 }
 

@@ -25,7 +25,6 @@ fn manifest_missing_files(dir: &Path) -> Option<String> {
 pub struct AsrFactory;
 
 impl AsrFactory {
-    /// Detects the format and creates the corresponding engine.
     pub fn load(path: &Path, use_gpu: bool) -> Result<Box<dyn AsrEngine>, AppError> {
         let format = Self::detect_format(path)?;
         match format {
@@ -371,7 +370,6 @@ mod tests {
         let dir = d.path().join("multi");
         fs::create_dir(&dir).unwrap();
         File::create(dir.join("encoder.onnx")).unwrap();
-        // decoder.onnx is listed in the manifest but never finished downloading.
         fs::write(
             dir.join(crate::stt::downloader::COMPLETION_MANIFEST),
             r#"{"files":["encoder.onnx","decoder.onnx"]}"#,

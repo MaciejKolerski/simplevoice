@@ -44,7 +44,6 @@ function Root() {
       };
 
       const handleKeyDown = (e: KeyboardEvent) => {
-        // Prevent reload / refresh keys: F5, Ctrl+R, Cmd+R, Ctrl+Shift+R, Cmd+Shift+R
         if (
           e.key === "F5" ||
           ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r")
@@ -53,7 +52,6 @@ function Root() {
           return;
         }
 
-        // Prevent devtools keys: F12, Ctrl+Shift+I, Cmd+Alt+I, Ctrl+Shift+J, Cmd+Alt+J, Ctrl+Shift+C, Cmd+Alt+C
         if (
           e.key === "F12" ||
           ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "i") ||
@@ -67,7 +65,6 @@ function Root() {
           return;
         }
 
-        // Prevent view source: Ctrl+U, Cmd+U, Cmd+Alt+U
         if (
           ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "u") ||
           (e.metaKey && e.altKey && e.key.toLowerCase() === "u")

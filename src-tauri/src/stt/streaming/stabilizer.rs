@@ -79,7 +79,7 @@ mod tests {
         s.observe(&v(&["a", "x"]));
         assert_eq!(s.committed(), &v(&["a"])[..]);
 
-        // "x" repeats -> now it agrees twice and commits.
+        // Agreement across consecutive decodes commits the replacement token.
         s.observe(&v(&["a", "x"]));
         assert_eq!(s.committed(), &v(&["a", "x"])[..]);
     }

@@ -255,7 +255,6 @@ async fn run_download(
         );
         let dest_path = model_dir.join(file_path);
 
-        // Ensure parent directories exist (e.g. for onnx/encoder_model.onnx)
         if let Some(parent) = dest_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 format!("Failed to create parent directories for {}: {}", file_path, e)
@@ -278,7 +277,6 @@ async fn run_download(
             );
         };
 
-        // Already finished on a previous run; otherwise download with retries.
         if dest_path.exists() {
             emit_progress(100.0);
         } else {
@@ -545,8 +543,8 @@ mod tests {
         assert_eq!(backoff_delay(3).as_secs(), 4);
         assert_eq!(backoff_delay(4).as_secs(), 8);
         assert_eq!(backoff_delay(5).as_secs(), 16);
-        assert_eq!(backoff_delay(6).as_secs(), 30); // 32 capped to 30
-        assert_eq!(backoff_delay(100).as_secs(), 30); // saturating: no overflow, still capped
+        assert_eq!(backoff_delay(6).as_secs(), 30);
+        assert_eq!(backoff_delay(100).as_secs(), 30);
     }
 
     #[test]

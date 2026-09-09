@@ -1,5 +1,4 @@
 fn main() {
-    // Link Metal, Foundation and Accelerate frameworks on macOS to enable GPU backend
     #[cfg(target_os = "macos")]
     {
         println!("cargo:rustc-link-lib=framework=Metal");

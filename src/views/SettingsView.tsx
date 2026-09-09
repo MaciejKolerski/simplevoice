@@ -43,7 +43,6 @@ import {
 
 const IS_FLATPAK = import.meta.env.VITE_FLATPAK === "1";
 
-/** Keeps a hand-typed number inside the range the backend accepts. */
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -190,8 +189,6 @@ function ShortcutButton({
   );
 }
 
-/** A card whose body is hidden until the user opens it, used to tuck advanced,
- * rarely-touched knobs out of the way so a tab isn't overwhelming at a glance. */
 function CollapsibleCard({
   title,
   children,
@@ -533,10 +530,8 @@ export function SettingsView({ active = true }: { active?: boolean }) {
     });
   }, []);
 
-  // config.json is the source of truth for settings the backend reads at
-  // runtime. It loads asynchronously, so re-sync the switches whenever it
-  // arrives instead of seeding them from localStorage (which differs between
-  // dev and installed builds and used to silently overwrite the config).
+  // Re-sync backend settings when asynchronous config loading finishes;
+  // webview localStorage may differ between development and installed builds.
   useEffect(() => {
     setSoundEnabled(getConfig("sound_feedback_enabled", true) !== false);
     setFillerRemovalEnabled(getConfig("filler_removal_enabled", false) === true);
@@ -1270,7 +1265,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
             </SettingRow>
           </SettingsCard>
 
-          {/* Linux status: the active shortcut delivery mechanism */}
           {platform === "linux" &&
             (shortcutMechanism === "evdev" ? (
               <div className="p-4 bg-success/10 border border-success/20 rounded-lg text-success text-xs leading-relaxed flex flex-col gap-1.5">
@@ -1342,7 +1336,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
               </div>
             ) : null)}
 
-          {/* Shortcut registration errors */}
           {(shortcutError || copyShortcutError || moveBarShortcutError) && (
             <Alert variant="destructive" className="border-danger/20 bg-danger/5">
               <Shield />
@@ -1541,9 +1534,7 @@ export function SettingsView({ active = true }: { active?: boolean }) {
               <Switch checked={liveEnabled} onCheckedChange={handleLiveToggle} />
             </SettingRow>
 
-            {/* `inert` plus the controls' own disabled styling carries the off
-                state. A wrapper opacity would compound with `disabled:opacity-50`
-                and drop the explanatory copy to ~2:1 contrast. */}
+            {/* Wrapper opacity would compound with disabled controls and reduce contrast. */}
             <div inert={!liveEnabled || undefined}>
               <SettingRow title={t("settings.liveAutopaste")} description={t("settings.liveAutopasteDesc")}>
                 <Switch checked={liveAutopaste} disabled={!liveEnabled} onCheckedChange={handleLiveAutopasteToggle} />

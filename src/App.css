@@ -6,11 +6,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Simplevoice design tokens.
-   Monochrome by decision: pure-black surfaces, white is the only accent.
-   Functional color is reserved for status signals and the live waveform.
-   The app is permanently dark. Values live in :root and the `dark` class is
-   set on <html> so Base UI / shadcn `dark:` variants engage as designed. */
+/* The app uses a dark palette; <html class="dark"> enables Base UI variants. */
 :root {
   --bg: #000000;
   --surface: #0a0a0a;
@@ -39,7 +35,6 @@
   --wave-from: #6366f1;
   --wave-to: #a855f7;
 
-  /* shadcn / Base UI semantic tokens -> brand (always dark) */
   --background: var(--bg);
   --foreground: var(--fg);
   --card: var(--surface);
@@ -343,10 +338,8 @@
   50% { transform: scaleY(1.05); }
 }
 
-/* Collapse decorative animation and transitions to an instant state change.
-   Spinners are exempt: they are the only signal that a long backend job (model
-   load, download, transcription) is still running. The recording overlay's
-   canvas loop makes the same check in JS (RecordingWindowView). */
+/* Preserve progress spinners under reduced motion so pending backend work
+   remains visible. RecordingWindowView applies the same preference to canvas. */
 @media (prefers-reduced-motion: reduce) {
   *:not(.animate-spin),
   *:not(.animate-spin)::before,
