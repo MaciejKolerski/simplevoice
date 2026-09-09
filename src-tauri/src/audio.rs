@@ -640,24 +640,36 @@ impl AudioController {
     }
 }
 
-/// Prefer the output rate and the smallest available channel count.
 fn choose_input_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, String> {
+    device
+        .supported_input_configs()
+        .ok()
+        .and_then(preferred_input_config)
+        .map(Ok)
+        .unwrap_or_else(|| device.default_input_config().map_err(|e| e.to_string()))
+}
+
+fn preferred_input_config(
+    ranges: impl Iterator<Item = cpal::SupportedStreamConfigRange>,
+) -> Option<cpal::SupportedStreamConfig> {
     const TARGET: u32 = 16_000;
-    if let Ok(ranges) = device.supported_input_configs() {
-        let mut best: Option<cpal::SupportedStreamConfigRange> = None;
-        for r in ranges {
-            if r.min_sample_rate().0 <= TARGET && TARGET <= r.max_sample_rate().0 {
-                let better = best.as_ref().map_or(true, |b| r.channels() < b.channels());
-                if better {
-                    best = Some(r);
-                }
-            }
-        }
-        if let Some(r) = best {
-            return Ok(r.with_sample_rate(cpal::SampleRate(TARGET)));
-        }
-    }
-    device.default_input_config().map_err(|e| e.to_string())
+    // ALSA can enumerate 8-bit formats first; boosting that quantized input
+    // amplifies distortion that float conversion and limiting cannot undo.
+    ranges
+        .filter(|r| {
+            r.sample_format().sample_size() >= 2
+                && r.min_sample_rate().0 <= TARGET
+                && TARGET <= r.max_sample_rate().0
+        })
+        .max_by_key(|r| {
+            (
+                r.sample_format() == cpal::SampleFormat::F32,
+                r.sample_format().is_float(),
+                r.sample_format().sample_size(),
+                std::cmp::Reverse(r.channels()),
+            )
+        })
+        .map(|r| r.with_sample_rate(cpal::SampleRate(TARGET)))
 }
 
 static RING_DROPPED: AtomicUsize = AtomicUsize::new(0);
@@ -726,5 +738,53 @@ mod downmix_tests {
         assert_eq!(out.len(), 2);
         assert!((out[0] - 1.0).abs() < 1e-6);
         assert!((out[1] - 9.0).abs() < 1e-6);
+    }
+}
+
+#[cfg(test)]
+mod input_config_tests {
+    use super::preferred_input_config;
+    use cpal::{SampleFormat::*, SampleRate, SupportedBufferSize, SupportedStreamConfigRange};
+
+    #[test]
+    fn capture_preserves_precision_before_boosting() {
+        let range = |format, channels, rate| {
+            SupportedStreamConfigRange::new(
+                channels,
+                SampleRate(rate),
+                SampleRate(48_000),
+                SupportedBufferSize::Unknown,
+                format,
+            )
+        };
+        for (formats, expected) in [
+            (vec![I8, U8, I16, I32, F32], F32),
+            (vec![I8, I16, I32], I32),
+            (vec![U8, U16], U16),
+            (vec![F64, F32], F32),
+            (vec![I16], I16),
+        ] {
+            let mut ranges: Vec<_> = formats.iter().map(|&f| range(f, 1, 8_000)).collect();
+            for _ in 0..2 {
+                let selected = preferred_input_config(ranges.iter().copied()).unwrap();
+                assert_eq!(selected.sample_format(), expected);
+                assert_eq!(selected.sample_rate().0, 16_000);
+                ranges.reverse();
+            }
+        }
+        let selected =
+            preferred_input_config([range(U8, 1, 8_000), range(F32, 2, 8_000)].into_iter())
+                .unwrap();
+        assert_eq!(selected.sample_format(), F32);
+        assert_eq!(selected.channels(), 2);
+        let selected =
+            preferred_input_config([range(F32, 1, 8_000), range(F32, 2, 8_000)].into_iter())
+                .unwrap();
+        assert_eq!(selected.channels(), 1);
+        assert!(
+            preferred_input_config([range(U8, 1, 8_000), range(F32, 1, 44_100)].into_iter())
+                .is_none()
+        );
+        assert!(preferred_input_config(std::iter::empty()).is_none());
     }
 }

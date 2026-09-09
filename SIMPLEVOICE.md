@@ -126,8 +126,11 @@ provider, not only OpenAI. Do not rename it without a complete state migration.
 ### Recording pipeline
 
 `audio.rs` captures a selected or default microphone, not system output. It
-prefers a native 16 kHz input configuration, supports CPAL sample formats, and
-downmixes multichannel input into a bounded ring. The consumer runs the shared
+prefers a 16 kHz input configuration with at least 16-bit precision, choosing
+float32 before other floating-point and integer formats and fewer channels at
+equal precision. Otherwise it uses the device default; it never chooses 8-bit
+capture just to obtain 16 kHz. It supports CPAL sample formats and downmixes
+multichannel input into a bounded ring. The consumer runs the shared
 `audio_processing.rs` pipeline: direct Rubato resampling to 16 kHz, DC blocking,
 gain, and a lookahead peak limiter. `microphone_gain_db` defaults to 0 dB and accepts
 −20 to +30 dB. Gain changes use sample-based smoothing with a 10 ms time constant.

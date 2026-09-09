@@ -6,15 +6,24 @@ level test. Its controls are in Settings > Recording.
 
 ## Signal path
 
-1. Convert the device's sample format to floating point and downmix to mono.
-2. Sanitize invalid input and resample to 16 kHz with Rubato.
-3. Remove DC offset and apply the requested gain in floating point.
-4. Apply the lookahead limiter, then deliver audio to meters, VAD, storage, and
+1. Select a capture format with at least 16-bit precision at 16 kHz when available:
+   prefer float32, then other floating-point formats, then wider integer formats.
+   Prefer fewer channels at equal precision. Fall back to the device default if
+   no such configuration exists, letting Rubato handle its sample rate.
+2. Convert the device's sample format to floating point and downmix to mono.
+3. Sanitize invalid input and resample to 16 kHz with Rubato.
+4. Remove DC offset and apply the requested gain in floating point.
+5. Apply the lookahead limiter, then deliver audio to meters, VAD, storage, and
    transcription.
 
 The saved WAV remains mono, 16 kHz, 16-bit PCM. DSP runs on the audio consumer,
 outside the microphone callback. Gain and limiting have the same timing for every
 input sample rate and callback size because their time base is the 16 kHz stream.
+
+Capture precision must be selected before opening the stream. ALSA/PipeWire can
+enumerate 8-bit formats before float32. Selecting the first mono format quantizes
+quiet speech before the application receives it; converting those samples to
+float and increasing gain also increases the audible quantization error.
 
 ## Gain and limiter behavior
 
@@ -60,6 +69,11 @@ Simplevoice uses an independently implemented lookahead limiter and adds gain
 smoothing. Its settings and algorithm are not an exact reproduction of OBS.
 
 ## Regression coverage
+
+`cargo test --locked --lib audio::input_config_tests` checks that device format
+enumeration order cannot select 8-bit capture over higher precision, including
+integer-only devices, stereo-only high-resolution input, mono preference at equal
+precision, and fallback when only low-resolution formats support 16 kHz.
 
 `cargo test --locked --lib audio_processing::tests` covers:
 
