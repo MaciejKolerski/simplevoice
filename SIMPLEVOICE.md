@@ -396,8 +396,9 @@ examples. Documentation and localized user-facing strings are not code comments.
 
 - Default to no comment. Prefer a clear name, small function, explicit type, or
   simpler control flow.
-- Every comment that is added or modified must be technical and written only in
-  English. No non-English code comments are allowed.
+- All code comments must be technical and written in English, including inline
+  comments, documentation comments, and comments in tests and configuration.
+  This requirement is independent of the conversation or UI language.
 - A comment is justified only when it explains a non-obvious reason, invariant,
   safety boundary, concurrency or lifetime rule, performance constraint,
   algorithm, protocol/API contract, or platform workaround.
@@ -435,8 +436,9 @@ Only create a commit when the user explicitly asks. Before committing, inspect
 `git status`, `git diff`, `git diff --cached`, and `git diff --check`. Stage only
 the intended logical change and base the message on the staged diff.
 
-Every agent-authored commit message must be in English and use Conventional
-Commits with this exact subject shape:
+Write every new commit subject and body in English, regardless of the
+conversation or UI language. Use Conventional Commits with this exact subject
+shape:
 
 ```text
 <type>(<scope>): <imperative summary>
@@ -460,6 +462,10 @@ Subject rules:
   footer that states the migration impact.
 - Do not add emojis, AI attribution, `Co-authored-by`, or `Signed-off-by` trailers
   unless the user or repository policy explicitly requires them.
+
+Before committing, review added or modified comments and the complete commit
+message for English wording. Preserve localized UI strings and multilingual test
+data in their intended languages.
 
 The commit body is mandatory for agent-authored commits. Leave one blank line
 after the subject and use these exact sections:
