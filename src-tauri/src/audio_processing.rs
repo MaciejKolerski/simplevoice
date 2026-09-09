@@ -106,11 +106,115 @@ impl SampleRateConverter {
     }
 }
 
+const SAMPLE_RATE: usize = 16_000;
+const LOOKAHEAD_SAMPLES: usize = SAMPLE_RATE * 5 / 1000;
+const PEAK_HOLD_SAMPLES: usize = SAMPLE_RATE * 10 / 1000;
+const GAIN_FILTER_SAMPLES: usize = LOOKAHEAD_SAMPLES / 2 + 1;
+const LIMITER_CEILING: f64 = 0.8912509381337456;
+
+struct GainAverage {
+    values: [f64; GAIN_FILTER_SAMPLES],
+    position: usize,
+    sum: f64,
+}
+
+impl GainAverage {
+    fn new() -> Self {
+        Self {
+            values: [1.0; GAIN_FILTER_SAMPLES],
+            position: 0,
+            sum: GAIN_FILTER_SAMPLES as f64,
+        }
+    }
+
+    fn push(&mut self, gain: f64) -> f64 {
+        self.sum += gain - self.values[self.position];
+        self.values[self.position] = gain;
+        self.position = (self.position + 1) % GAIN_FILTER_SAMPLES;
+        if self.position == 0 {
+            // Recompute periodically so rounding drift cannot accumulate over long recordings.
+            self.sum = self.values.iter().sum();
+        }
+        (self.sum / GAIN_FILTER_SAMPLES as f64).clamp(0.0, 1.0)
+    }
+}
+
+struct LookaheadLimiter {
+    delay: VecDeque<f64>,
+    peaks: VecDeque<(u64, f64)>,
+    position: u64,
+    envelope_gain: f64,
+    release_coefficient: f64,
+    smoothing_first: GainAverage,
+    smoothing_second: GainAverage,
+}
+
+impl LookaheadLimiter {
+    fn new() -> Self {
+        Self {
+            delay: VecDeque::with_capacity(LOOKAHEAD_SAMPLES + 1),
+            peaks: VecDeque::with_capacity(LOOKAHEAD_SAMPLES + PEAK_HOLD_SAMPLES + 1),
+            position: 0,
+            envelope_gain: 1.0,
+            release_coefficient: (-1.0 / (SAMPLE_RATE as f64 * 0.120)).exp(),
+            smoothing_first: GainAverage::new(),
+            smoothing_second: GainAverage::new(),
+        }
+    }
+
+    fn push(&mut self, sample: f64) -> Option<(f32, bool)> {
+        let position = self.position;
+        self.position += 1;
+        let oldest = position.saturating_sub((LOOKAHEAD_SAMPLES + PEAK_HOLD_SAMPLES) as u64);
+        while self.peaks.front().is_some_and(|&(index, _)| index < oldest) {
+            self.peaks.pop_front();
+        }
+        let peak = sample.abs();
+        while self.peaks.back().is_some_and(|&(_, value)| value <= peak) {
+            self.peaks.pop_back();
+        }
+        self.peaks.push_back((position, peak));
+        let window_peak = self.peaks.front().unwrap().1;
+        let required_gain = LIMITER_CEILING / window_peak.max(LIMITER_CEILING);
+        self.envelope_gain =
+            required_gain.min(1.0 - (1.0 - self.envelope_gain) * self.release_coefficient);
+
+        // Both positive-weight averages span exactly the audio delay. The peak window
+        // keeps every contributing gain safe for the delayed sample, even for impulses.
+        let gain = self.smoothing_first.push(self.envelope_gain);
+        let gain = self.smoothing_second.push(gain);
+        self.delay.push_back(sample);
+        if self.delay.len() <= LOOKAHEAD_SAMPLES {
+            return None;
+        }
+        let delayed = self.delay.pop_front().unwrap();
+        // This bound only absorbs floating-point roundoff; the envelope does the limiting.
+        let gain = gain.min(LIMITER_CEILING / delayed.abs().max(LIMITER_CEILING));
+        Some(((delayed * gain) as f32, gain < 0.999))
+    }
+
+    fn drain(&mut self, mut emit: impl FnMut(f32, bool)) {
+        if self.delay.is_empty() {
+            return;
+        }
+        for _ in 0..LOOKAHEAD_SAMPLES {
+            if let Some((sample, limited)) = self.push(0.0) {
+                emit(sample, limited);
+            }
+        }
+        self.delay.clear();
+        self.peaks.clear();
+    }
+}
+
 pub struct AudioProcessor {
     resampler: SampleRateConverter,
-    limiter_gain: f32,
-    dc_x: f32,
-    dc_y: f32,
+    limiter: LookaheadLimiter,
+    microphone_gain: Option<f64>,
+    gain_smoothing: f64,
+    dc_x: f64,
+    dc_y: f64,
+    finished: bool,
 }
 
 impl AudioProcessor {
@@ -119,10 +223,13 @@ impl AudioProcessor {
             return Err("errors.unsupported_audio_rate".into());
         }
         Ok(Self {
-            resampler: SampleRateConverter::new(source_rate as usize, 16_000)?,
-            limiter_gain: 1.0,
+            resampler: SampleRateConverter::new(source_rate as usize, SAMPLE_RATE)?,
+            limiter: LookaheadLimiter::new(),
+            microphone_gain: None,
+            gain_smoothing: 1.0 - (-1.0 / (SAMPLE_RATE as f64 * 0.010)).exp(),
             dc_x: 0.0,
             dc_y: 0.0,
+            finished: false,
         })
     }
 
@@ -132,6 +239,14 @@ impl AudioProcessor {
         settings: AudioProcessingSettings,
         finish: bool,
     ) -> Result<(Vec<f32>, MicrophoneLevel), String> {
+        let settings = settings.validate()?;
+        if self.finished {
+            return if input.is_empty() {
+                Ok((Vec::new(), MicrophoneLevel::default()))
+            } else {
+                Err("Audio processor has already been finalized".into())
+            };
+        }
         let mut level = MicrophoneLevel::default();
         let input: Vec<f32> = input
             .iter()
@@ -146,27 +261,31 @@ impl AudioProcessor {
                 sample
             })
             .collect();
-        let mut output = self.resampler.push(&input, finish)?;
-        let gain = 10.0_f32.powf(settings.microphone_gain_db / 20.0);
-        for sample in &mut output {
-            let filtered = *sample - self.dc_x + 0.995 * self.dc_y;
-            self.dc_x = *sample;
-            self.dc_y = filtered;
-            *sample = filtered * gain;
-        }
-        let peak = output
-            .iter()
-            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
-        let required = (0.98 / peak.max(0.000001)).min(1.0);
-        let release = 1.0 - (-(output.len() as f32) / 3200.0).exp();
-        self.limiter_gain = required.min(self.limiter_gain + (1.0 - self.limiter_gain) * release);
-        level.limited = self.limiter_gain < 0.999;
-        for sample in &mut output {
-            *sample *= self.limiter_gain;
+        let resampled = self.resampler.push(&input, finish)?;
+        let mut output = Vec::with_capacity(resampled.len() + LOOKAHEAD_SAMPLES);
+        let mut energy = 0.0_f64;
+        let mut emit = |sample: f32, limited: bool| {
+            level.limited |= limited;
             level.peak = level.peak.max(sample.abs());
-            level.rms += *sample * *sample;
+            energy += (sample as f64).powi(2);
+            output.push(sample);
+        };
+        let target_gain = 10.0_f64.powf(settings.microphone_gain_db as f64 / 20.0);
+        for sample in resampled {
+            let gain = self.microphone_gain.get_or_insert(target_gain);
+            *gain += (target_gain - *gain) * self.gain_smoothing;
+            let filtered = sample as f64 - self.dc_x + 0.995 * self.dc_y;
+            self.dc_x = sample as f64;
+            self.dc_y = filtered;
+            if let Some((sample, limited)) = self.limiter.push(filtered * *gain) {
+                emit(sample, limited);
+            }
         }
-        level.rms = (level.rms / output.len().max(1) as f32).sqrt();
+        if finish {
+            self.limiter.drain(&mut emit);
+            self.finished = true;
+        }
+        level.rms = (energy / output.len().max(1) as f64).sqrt() as f32;
         Ok((output, level))
     }
 }
@@ -177,12 +296,255 @@ mod tests {
 
     fn tone(rate: usize, count: usize, amplitude: f32) -> Vec<f32> {
         (0..count)
-            .map(|i| (i as f32 * 440.0 * std::f32::consts::TAU / rate as f32).sin() * amplitude)
+            .map(|i| {
+                (i as f64 * 440.0 * std::f64::consts::TAU / rate as f64).sin() as f32 * amplitude
+            })
             .collect()
     }
 
     fn rms(samples: &[f32]) -> f32 {
         (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt()
+    }
+
+    fn render(input: &[f32], rate: u32, gain: f32, chunk_size: usize) -> Vec<f32> {
+        let mut processor = AudioProcessor::new(rate).unwrap();
+        let settings = AudioProcessingSettings {
+            microphone_gain_db: gain,
+        };
+        let mut output = Vec::new();
+        for chunk in input.chunks(chunk_size) {
+            output.extend(processor.process(chunk, settings, false).unwrap().0);
+        }
+        output.extend(processor.process(&[], settings, true).unwrap().0);
+        output
+    }
+
+    #[test]
+    fn boost_is_independent_of_capture_chunk_boundaries() {
+        for rate in [16_000, 44_100, 48_000] {
+            let input: Vec<f32> = (0..rate)
+                .map(|i| {
+                    let time = i as f64 / rate as f64;
+                    let envelope = 0.02 + 0.2 * (time * 13.0).sin().powi(2);
+                    (envelope * (time * 173.0 * std::f64::consts::TAU).sin()) as f32
+                })
+                .collect();
+            let reference = render(&input, rate, 30.0, input.len());
+            for chunk_size in [1, 37, 137, 160, 320, 1024] {
+                let output = render(&input, rate, 30.0, chunk_size);
+                assert_eq!(output.len(), reference.len());
+                let error = output
+                    .iter()
+                    .zip(&reference)
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0_f32, f32::max);
+                assert!(
+                    error < 0.000002,
+                    "{rate} Hz, {chunk_size}-sample chunks: maximum difference {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sustained_limiting_preserves_tonal_purity() {
+        for frequency in [60.0, 83.0, 137.0, 440.0, 1000.0, 3100.0] {
+            let input: Vec<f32> = (0..48_000)
+                .map(|i| {
+                    (0.5 * (i as f64 * frequency * std::f64::consts::TAU / 16_000.0).sin()) as f32
+                })
+                .collect();
+            let output = render(&input, 16_000, 30.0, 37);
+            let measured = &output[32_000..];
+            let mut sine = 0.0;
+            let mut cosine = 0.0;
+            for (i, &sample) in measured.iter().enumerate() {
+                let phase = i as f64 * frequency * std::f64::consts::TAU / 16_000.0;
+                sine += sample as f64 * phase.sin();
+                cosine += sample as f64 * phase.cos();
+            }
+            sine *= 2.0 / measured.len() as f64;
+            cosine *= 2.0 / measured.len() as f64;
+            let residual: f64 = measured
+                .iter()
+                .enumerate()
+                .map(|(i, &sample)| {
+                    let phase = i as f64 * frequency * std::f64::consts::TAU / 16_000.0;
+                    (sample as f64 - sine * phase.sin() - cosine * phase.cos()).powi(2)
+                })
+                .sum();
+            let energy: f64 = measured.iter().map(|&sample| (sample as f64).powi(2)).sum();
+            let distortion = (residual / energy).sqrt();
+            eprintln!(
+                "{frequency} Hz: residual {:.2} dB",
+                20.0 * distortion.log10()
+            );
+            assert!(distortion < 0.0002, "{frequency} Hz: residual {distortion}");
+        }
+    }
+
+    #[test]
+    fn moving_the_gain_slider_does_not_create_amplitude_steps() {
+        let mut processor = AudioProcessor::new(16_000).unwrap();
+        let mut output = Vec::new();
+        for gain in [0.0, 30.0, -20.0, 0.0] {
+            let input: Vec<f32> = (0..4000)
+                .map(|i| {
+                    (0.005 * (i as f64 * 100.0 * std::f64::consts::TAU / 16_000.0).cos()) as f32
+                })
+                .collect();
+            output.extend(
+                processor
+                    .process(
+                        &input,
+                        AudioProcessingSettings {
+                            microphone_gain_db: gain,
+                        },
+                        false,
+                    )
+                    .unwrap()
+                    .0,
+            );
+        }
+        output.extend(
+            processor
+                .process(&[], AudioProcessingSettings::default(), true)
+                .unwrap()
+                .0,
+        );
+        let largest_step = output
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(largest_step < 0.012, "sample discontinuity: {largest_step}");
+        assert_eq!(output.len(), 16_000);
+    }
+
+    #[test]
+    fn maximum_boost_is_linear_when_there_is_headroom() {
+        let input = tone(48_000, 48_000, 0.003);
+        let normal = render(&input, 48_000, 0.0, 137);
+        let boosted = render(&input, 48_000, 30.0, 137);
+        for (normal, boosted) in normal.iter().zip(&boosted) {
+            assert!((boosted - normal * 31.622776).abs() < 0.0000002);
+        }
+        assert!(rms(&boosted) > 0.06);
+    }
+
+    #[test]
+    fn short_recordings_preserve_the_first_and_last_samples() {
+        let settings = AudioProcessingSettings {
+            microphone_gain_db: 30.0,
+        };
+        for count in [1, 7, 79, 80, 81, 160, 337] {
+            let mut input = vec![0.0; count];
+            input[0] = 0.9;
+            input[count - 1] = -0.9;
+            let mut processor = AudioProcessor::new(16_000).unwrap();
+            let mut output = processor.process(&input, settings, false).unwrap().0;
+            assert_eq!(output.len(), count.saturating_sub(80));
+            output.extend(processor.process(&[], settings, true).unwrap().0);
+            assert_eq!(output.len(), count);
+            assert!(output[0].abs() > 0.5);
+            assert!(output[count - 1] < -0.5);
+            assert!(output.iter().all(|sample| sample.abs() <= 0.891251));
+            assert!(processor.process(&[], settings, true).unwrap().0.is_empty());
+            assert!(processor.process(&[0.1], settings, false).is_err());
+        }
+    }
+
+    #[test]
+    fn peaks_are_bounded_across_device_rates_and_gain_extremes() {
+        for rate in [
+            8_000, 16_000, 22_050, 44_100, 48_000, 88_200, 96_000, 192_000, 384_000,
+        ] {
+            let mut random = 0x5eed_u32;
+            let input: Vec<f32> = (0..rate / 5 + 13)
+                .map(|i| {
+                    random = random.wrapping_mul(1664525).wrapping_add(1013904223);
+                    match i % 11 {
+                        0 => 1.0,
+                        1 => -1.0,
+                        2 => f32::NAN,
+                        3 => f32::INFINITY,
+                        _ => (random as f64 / u32::MAX as f64 * 2.0 - 1.0) as f32,
+                    }
+                })
+                .collect();
+            for gain in [-20.0, 0.0, 30.0] {
+                let output = render(&input, rate, gain, 113);
+                assert_eq!(output.len(), (input.len() * 16_000).div_ceil(rate as usize));
+                assert!(
+                    output
+                        .iter()
+                        .all(|sample| sample.is_finite() && sample.abs() <= 0.891251),
+                    "rate {rate}, gain {gain}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn limiter_releases_after_a_transient_without_expanding_its_buffers() {
+        let mut limiter = LookaheadLimiter::new();
+        let delay_capacity = limiter.delay.capacity();
+        let peak_capacity = limiter.peaks.capacity();
+        let mut output = Vec::new();
+        for i in 0..32_000 {
+            let sample = if i < 16_000 {
+                30.0 * (1.0 - i as f64 / 16_000.0)
+            } else {
+                0.001
+            };
+            if let Some((sample, _)) = limiter.push(sample) {
+                output.push(sample);
+            }
+            assert_eq!(limiter.delay.capacity(), delay_capacity);
+            assert_eq!(limiter.peaks.capacity(), peak_capacity);
+        }
+        limiter.drain(|sample, _| output.push(sample));
+        assert_eq!(output.len(), 32_000);
+        assert!(output.iter().all(|sample| sample.abs() <= 0.891251));
+        assert!((output.last().unwrap() - 0.001).abs() < 0.000001);
+    }
+
+    #[test]
+    fn silence_stays_silent_at_maximum_boost() {
+        let mut processor = AudioProcessor::new(48_000).unwrap();
+        let (output, level) = processor
+            .process(
+                &vec![0.0; 48_000],
+                AudioProcessingSettings {
+                    microphone_gain_db: 30.0,
+                },
+                true,
+            )
+            .unwrap();
+        assert_eq!(output.len(), 16_000);
+        assert!(output.iter().all(|&sample| sample == 0.0));
+        assert!(!level.clipped && !level.limited);
+        assert_eq!(level.rms, 0.0);
+    }
+
+    #[test]
+    fn invalid_gain_is_rejected_before_consuming_audio() {
+        for gain in [f32::NAN, f32::INFINITY, -21.0, 31.0] {
+            let mut processor = AudioProcessor::new(16_000).unwrap();
+            assert!(processor
+                .process(
+                    &[0.1],
+                    AudioProcessingSettings {
+                        microphone_gain_db: gain
+                    },
+                    false
+                )
+                .is_err());
+            let (output, _) = processor
+                .process(&[0.1], AudioProcessingSettings::default(), true)
+                .unwrap();
+            assert_eq!(output.len(), 1);
+            assert!((output[0] - 0.1).abs() < 0.000001);
+        }
     }
 
     #[test]

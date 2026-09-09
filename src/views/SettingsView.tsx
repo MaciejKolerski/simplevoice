@@ -1072,8 +1072,6 @@ export function SettingsView({ active = true }: { active?: boolean }) {
               </Select>
             </SettingRow>
 
-            <MicrophoneSettings active={active && activeTab === "general"} device={selectedDevice} />
-
             <SettingRow layout="column" title={t("settings.transcriptionLanguage")}>
               <Select
                 value={asrLanguage}
@@ -1355,6 +1353,9 @@ export function SettingsView({ active = true }: { active?: boolean }) {
         </TabsContent>
 
         <TabsContent value="recording" className="flex flex-col gap-6">
+          <SettingsCard>
+            <MicrophoneSettings active={active && activeTab === "recording"} device={selectedDevice} />
+          </SettingsCard>
           <SettingsCard>
             <SettingRow title={t("settings.vad")} description={t("settings.vadDesc")}>
               <Switch checked={vadEnabled} onCheckedChange={handleVadToggle} />

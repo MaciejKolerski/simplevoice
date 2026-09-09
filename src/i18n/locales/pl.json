@@ -68,7 +68,7 @@
     "microphoneInputLevel": "Wejście mikrofonu",
     "microphoneLimited": "Ogranicznik zmniejsza głośne szczyty. Obniż wzmocnienie, aby zostawić większy zapas.",
     "microphoneGain": "Głośność mikrofonu",
-    "microphoneGainDesc": "Zmiany głośności działają od razu w teście i nagraniach. Ogranicznik chroni głośne fragmenty przed przesterowaniem.",
+    "microphoneGainDesc": "Dopasuj głośność mikrofonu w teście i nagraniach. Wzmocnienie zmienia się płynnie, a ogranicznik szczytów chroni przed przesterowaniem.",
     "microphoneGainReset": "Resetuj",
     "microphoneTest": "Test poziomu mikrofonu",
     "microphoneTestDesc": "Mów normalnie i dopasuj głośność. Test kończy się po 30 sekundach. Dźwięk testowy nie jest zapisywany ani wysyłany do modelu.",

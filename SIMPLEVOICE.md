@@ -129,13 +129,17 @@ provider, not only OpenAI. Do not rename it without a complete state migration.
 prefers a native 16 kHz input configuration, supports CPAL sample formats, and
 downmixes multichannel input into a bounded ring. The consumer runs the shared
 `audio_processing.rs` pipeline: direct Rubato resampling to 16 kHz, DC blocking,
-gain, and a peak limiter. `microphone_gain_db` defaults to 0 dB and accepts
-−20 to +30 dB. Gain is applied before VAD, recording storage, and live fan-out.
-The limiter keeps output peaks below full scale without hard clipping.
-Settings can test the same capture path for up to 30 seconds without saving or
-transcribing audio, with separate raw-input and processed-output meters; a
-recording or device change ends that test. Manual stop drains the bounded input
-queue and flushes resampler delays before saving and finalizing live audio.
+gain, and a lookahead peak limiter. `microphone_gain_db` defaults to 0 dB and accepts
+−20 to +30 dB. Gain changes use sample-based smoothing with a 10 ms time constant.
+The limiter delays audio by 5 ms, smooths attenuation with two moving averages,
+holds peaks for an additional 10 ms, and releases with a 120 ms time constant.
+Its sample-peak ceiling is −1 dBFS. Processing is independent of capture chunk
+boundaries and runs before VAD, recording storage, and live fan-out.
+Settings > Recording can test the same capture path for up to 30 seconds without
+saving or transcribing audio, with separate raw-input and processed-output meters;
+a recording or device change ends that test. Manual stop drains the bounded input
+queue. Manual and automatic stops flush resampler and limiter delays before saving
+and finalizing live audio. See `docs/audio-processing.md` for the DSP contract.
 The saved WAV is 16-bit PCM, mono, 16 kHz:
 
 `app_local_data_dir/recordings/YYYY-MM-DD_HH-MM-SS/output.wav`

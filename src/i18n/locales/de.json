@@ -68,7 +68,7 @@
     "microphoneInputLevel": "Mikrofoneingang",
     "microphoneLimited": "Der Limiter reduziert laute Spitzen. Senke die Verstärkung für mehr Spielraum.",
     "microphoneGain": "Mikrofonlautstärke",
-    "microphoneGainDesc": "Lautstärkeänderungen gelten sofort für den Test und Aufnahmen. Ein Limiter schützt laute Spitzen vor Übersteuerung.",
+    "microphoneGainDesc": "Passe die Mikrofonlautstärke für den Test und Aufnahmen an. Die Verstärkung ändert sich sanft, und ein Spitzenbegrenzer schützt vor Übersteuerung.",
     "microphoneGainReset": "Zurücksetzen",
     "microphoneTest": "Mikrofonpegel testen",
     "microphoneTestDesc": "Sprich normal und passe die Lautstärke an. Der Test endet nach 30 Sekunden. Testaudio wird weder gespeichert noch an ein Modell gesendet.",

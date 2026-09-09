@@ -95,17 +95,13 @@ pub(crate) fn save_wav_file(
     Ok(Some(wav_path.to_string_lossy().to_string()))
 }
 
-/// Completes an automatic stop (VAD silence or the max-duration cap) from the
-/// consumer thread. Consumes the held state guard so the lock is released
-/// before any blocking work; WAV save and notifications run on a new thread,
-/// mirroring the previous VAD auto-stop behavior. The is_recording guard makes
-/// it a no-op when a manual stop won the race in between two consumer
-/// iterations. Without it, this would overwrite last_samples (the real
-/// recording) with the ≤1024-sample residue drained after the manual stop.
+/// Drains DSP state on the consumer before handing automatic-stop persistence to
+/// a worker. The recording guard preserves audio when a manual stop wins the race.
 fn auto_stop_recording(
     mut s: std::sync::MutexGuard<'_, AudioState>,
     state: &Arc<Mutex<AudioState>>,
     app_handle: &tauri::AppHandle,
+    processor: &mut AudioProcessor,
 ) {
     if !s.is_recording {
         return;
@@ -114,6 +110,23 @@ fn auto_stop_recording(
     s.is_saving = true;
     if let Some(wrapper) = s.stream.take() {
         let _ = wrapper.0.pause();
+    }
+
+    match processor.process(&[], s.processing, true) {
+        Ok((tail, _)) => {
+            s.buffer.extend_from_slice(&tail);
+            if !tail.is_empty() {
+                if let Some(tx) = &s.stream_tx {
+                    if tx.try_send(tail).is_err() {
+                        note_live_drop();
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            tracing::error!("Could not drain audio processing: {}", error);
+            let _ = app_handle.emit("recording-error", "audio_processing");
+        }
     }
 
     let paused_apps: Vec<String> = s.paused_media_apps.drain(..).collect();
@@ -128,7 +141,6 @@ fn auto_stop_recording(
     let live_tx = s.stream_tx.take();
     s.live_mode_active = false;
 
-    // Resume media before dropping the lock
     if !paused_apps.is_empty() {
         crate::media_control::resume_system_media(&paused_apps);
     }
@@ -146,7 +158,7 @@ fn auto_stop_recording(
     let state_save_clone = Arc::clone(state);
     let app_handle_save_clone = app_handle.clone();
     std::thread::spawn(move || {
-        // Give immediate stop feedback before the multi-second WAV write.
+        // WAV persistence must not delay stop feedback.
         crate::play_backend_sound(&app_handle_save_clone, "stop");
         let _ = crate::rebuild_tray_menu(&app_handle_save_clone);
 
@@ -438,7 +450,12 @@ impl AudioController {
                                 if testing {
                                     stop_microphone_test(&mut s);
                                 } else if s.is_recording {
-                                    auto_stop_recording(s, &state_clone, &app_handle_clone);
+                                    auto_stop_recording(
+                                        s,
+                                        &state_clone,
+                                        &app_handle_clone,
+                                        &mut processor,
+                                    );
                                 }
                                 let _ =
                                     app_handle_clone.emit("recording-error", "audio_processing");
@@ -493,7 +510,7 @@ impl AudioController {
                         }
 
                         if buffer_len >= RECORDING_MAX_SECS * 16_000 {
-                            auto_stop_recording(s, &state_clone, &app_handle_clone);
+                            auto_stop_recording(s, &state_clone, &app_handle_clone, &mut processor);
                             break;
                         }
 
@@ -506,7 +523,12 @@ impl AudioController {
                                 let timeout_samples =
                                     (vad_silence_duration_ms as f32 / 1000.0 * 16000.0) as usize;
                                 if silence_samples >= timeout_samples {
-                                    auto_stop_recording(s, &state_clone, &app_handle_clone);
+                                    auto_stop_recording(
+                                        s,
+                                        &state_clone,
+                                        &app_handle_clone,
+                                        &mut processor,
+                                    );
                                     break;
                                 }
                             }
@@ -533,7 +555,7 @@ impl AudioController {
                 if is_recording && last_audio.elapsed() > std::time::Duration::from_secs(5) {
                     let _ = app_handle_clone.emit("recording-error", "device_lost");
                     let s = state_clone.lock().unwrap();
-                    auto_stop_recording(s, &state_clone, &app_handle_clone);
+                    auto_stop_recording(s, &state_clone, &app_handle_clone, &mut processor);
                     break;
                 }
 

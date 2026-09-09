@@ -68,7 +68,7 @@
     "microphoneInputLevel": "Microphone input",
     "microphoneLimited": "The limiter is reducing loud peaks. Lower the gain for more headroom.",
     "microphoneGain": "Microphone volume",
-    "microphoneGainDesc": "Volume changes apply immediately to the test and recordings. A limiter protects loud peaks.",
+    "microphoneGainDesc": "Adjust microphone volume for the test and recordings. Gain changes smoothly, and a peak limiter protects against clipping.",
     "microphoneGainReset": "Reset",
     "microphoneTest": "Test microphone level",
     "microphoneTestDesc": "Speak normally and adjust the volume. The test stops after 30 seconds. Test audio is neither saved nor sent to a model.",
