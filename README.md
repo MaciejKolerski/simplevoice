@@ -93,12 +93,13 @@ The default shortcut for copying the latest transcription is `Ctrl+Shift+C` on L
 
 Requirements:
 
-- Rust stable
+- Rust stable 1.94.1 or newer (required by the AWS SDK dependencies)
 - Node.js 20 or newer
 - pnpm
 - The [Tauri 2 system prerequisites](https://tauri.app/start/prerequisites/) for your platform
 
 ```bash
+rustup update stable
 pnpm install
 pnpm tauri dev
 ```

@@ -4,6 +4,7 @@ version = "0.2.0"
 description = "Privacy-first, local & offline Speech-to-Text and voice typing for the desktop."
 authors = ["WoroWoro"]
 edition = "2021"
+rust-version = "1.94.1"
 license = "Apache-2.0"
 repository = "https://github.com/MaciejKolerski/simplevoice"
 default-run = "simplevoice"
@@ -16,13 +17,14 @@ default-run = "simplevoice"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "simplevoice_app_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop binaries consume the rlib without a standalone archive of all dependencies.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [ "tray-icon", "image-png"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
