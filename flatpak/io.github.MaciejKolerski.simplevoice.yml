@@ -58,8 +58,8 @@ modules:
     sources:
       - type: git
         url: https://github.com/MaciejKolerski/simplevoice.git
-        tag: v0.2.0
-        commit: ae104ead51ec0a49a8c2cf522906dff879de4dd4
+        tag: v0.2.1
+        commit: f499ed7731f413a856a270f2941d70932a3a46db
         x-checker-data:
           type: git
           tag-pattern: ^v([\d.]+)$
