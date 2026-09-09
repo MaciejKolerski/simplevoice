@@ -70,6 +70,16 @@
   </screenshots>
 
   <releases>
+    <release version="0.2.1" date="2026-09-09">
+      <description>
+        <ul>
+          <li>Adjust microphone gain and test input and output levels in Recording settings.</li>
+          <li>Smooth gain changes and limit audio peaks to reduce distortion.</li>
+          <li>Preserve capture precision and the end of recordings during audio processing.</li>
+          <li>Restore desktop development startup across supported platforms.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-09-04">
       <description>
         <ul>
